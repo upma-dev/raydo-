@@ -1,0 +1,2269 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
+import { useProximityCheck } from '@/modules/DeliveryV2/hooks/useProximityCheck';
+import { useOrderManager } from '@/modules/DeliveryV2/hooks/useOrderManager';
+import { useDeliveryNotifications } from '@food/hooks/useDeliveryNotifications';
+import { writeOrderTracking } from '@food/realtimeTracking';
+import { deliveryAPI } from '@food/api';
+import { uploadService } from '@/modules/Taxi/shared/services/uploadService';
+import { toast } from 'sonner';
+import { showChatNotification } from '@/shared/utils/chatNotificationSound';
+
+// Components
+import LiveMap from '@/modules/DeliveryV2/components/map/LiveMap';
+import { NewOrderModal } from '@/modules/DeliveryV2/components/modals/NewOrderModal';
+import { PickupActionModal } from '@/modules/DeliveryV2/components/modals/PickupActionModal';
+import { DeliveryVerificationModal } from '@/modules/DeliveryV2/components/modals/DeliveryVerificationModal';
+import { OrderSummaryModal } from '@/modules/DeliveryV2/components/modals/OrderSummaryModal';
+import { BookGigModal } from '@/modules/DeliveryV2/components/modals/BookGigModal';
+import { SelfieVerificationModal } from '@/modules/DeliveryV2/components/modals/SelfieVerificationModal';
+import FoodOrderChatScreen from '@food/pages/user/orders/FoodOrderChatScreen';
+import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
+
+// Sub Pages
+import PocketV2 from '@/modules/DeliveryV2/pages/PocketV2';
+import HistoryV2 from '@/modules/DeliveryV2/pages/HistoryV2';
+import ProfileV2 from '@/modules/DeliveryV2/pages/ProfileV2';
+
+// Icons
+import {
+  Bell, HelpCircle, AlertTriangle,
+  Wallet, History, User as UserIcon, LayoutGrid,
+  Plus, Minus, Navigation2, Navigation, Target, Play, CheckCircle2, Clock, ChevronDown, Phone,
+  Contact, Package, Camera, MessageCircle, Compass, RefreshCw, MapPin
+} from 'lucide-react';
+
+import { getHaversineDistance, calculateETA, calculateHeading } from '@/modules/DeliveryV2/utils/geo';
+import { useCompanyName } from "@food/hooks/useCompanyName";
+import { useNavigate } from 'react-router-dom';
+import useNotificationInbox from "@food/hooks/useNotificationInbox";
+
+/** Minimal bottom-sheet popup (Restored from legacy FeedNavbar) */
+function BottomPopup({ isOpen, onClose, title, children, maxHeight = "85vh" }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[600] flex items-end justify-center">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        className="relative w-full max-w-lg bg-white rounded-t-[3.5rem] shadow-[0_-25px_80px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden"
+        style={{ maxHeight }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-full flex justify-center py-3">
+          <div className="w-12 h-1.5 bg-gray-200 rounded-full" />
+        </div>
+        <div className="flex-1 overflow-y-auto no-scrollbar px-8 pb-12">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tight">{title}</h2>
+            <button onClick={onClose} className="w-10 h-10 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all active:scale-95">
+              <AlertTriangle className="w-5 h-5" />
+            </button>
+          </div>
+          {children}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+const getTodaySelfieKey = () => new Date().toISOString().slice(0, 10);
+
+const SELFIE_MAX_AGE_MS = 60 * 60 * 1000; // 1 Hour Interval
+
+const hasSelfieForToday = (onlineSelfie = null) => {
+  if (!onlineSelfie || !String(onlineSelfie.imageUrl || '').trim()) return false;
+  if (String(onlineSelfie.forDate || '').trim() !== getTodaySelfieKey()) return false;
+
+  if (onlineSelfie.capturedAt) {
+    const capturedMs = new Date(onlineSelfie.capturedAt).getTime();
+    if (Number.isFinite(capturedMs)) {
+      const ageMs = Date.now() - capturedMs;
+      if (ageMs > SELFIE_MAX_AGE_MS) return false; // Expired after 1 hour
+    }
+  }
+  return true;
+};
+
+const validateHumanFaceInImage = async (dataUrl) => {
+  if (typeof document === 'undefined') return true;
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const w = 120;
+        const h = 120;
+        canvas.width = w;
+        canvas.height = h;
+        ctx.drawImage(img, 0, 0, w, h);
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+
+        let totalR = 0, totalG = 0, totalB = 0;
+        const pixelCount = w * h;
+        for (let i = 0; i < data.length; i += 4) {
+          totalR += data[i];
+          totalG += data[i + 1];
+          totalB += data[i + 2];
+        }
+        const avgR = totalR / pixelCount;
+        const avgG = totalG / pixelCount;
+        const avgB = totalB / pixelCount;
+
+        let varR = 0, varG = 0, varB = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          varR += Math.pow(data[i] - avgR, 2);
+          varG += Math.pow(data[i + 1] - avgG, 2);
+          varB += Math.pow(data[i + 2] - avgB, 2);
+        }
+        const stdDevR = Math.sqrt(varR / pixelCount);
+        const stdDevG = Math.sqrt(varG / pixelCount);
+        const stdDevB = Math.sqrt(varB / pixelCount);
+        const totalStdDev = (stdDevR + stdDevG + stdDevB) / 3;
+
+        // Solid object, thumb, or blank wall has low stdDev (< 18)
+        if (totalStdDev < 20) {
+          reject(new Error('Face verification failed! Thumb/object photo detected. Please capture a clear live photo of your face.'));
+          return;
+        }
+
+        resolve(true);
+      } catch (err) {
+        resolve(true);
+      }
+    };
+    img.onerror = () => reject(new Error('Invalid image file'));
+    img.src = dataUrl;
+  });
+};
+
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Failed to read selected selfie'));
+    reader.readAsDataURL(file);
+  });
+
+const loadImageFromDataUrl = (dataUrl) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to process selected selfie'));
+    image.src = dataUrl;
+  });
+
+const dataUrlToBlob = async (dataUrl) => {
+  const response = await fetch(dataUrl);
+  return response.blob();
+};
+
+const compressSelfieForUpload = async (file) => {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  if (typeof document === 'undefined') return originalDataUrl;
+
+  const image = await loadImageFromDataUrl(originalDataUrl);
+  const maxSide = 960;
+  const largestSide = Math.max(image.width, image.height, 1);
+  const scale = largestSide > maxSide ? maxSide / largestSide : 1;
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) return originalDataUrl;
+
+  context.drawImage(image, 0, 0, width, height);
+  let quality = 0.82;
+  let compressed = canvas.toDataURL('image/jpeg', quality);
+  while (compressed.length > 8_500_000 && quality > 0.45) {
+    quality -= 0.1;
+    compressed = canvas.toDataURL('image/jpeg', quality);
+  }
+  return compressed;
+};
+
+const compressSelfieDataUrl = async (dataUrl) => {
+  const image = await loadImageFromDataUrl(dataUrl);
+  const maxSide = 960;
+  const largestSide = Math.max(image.width, image.height, 1);
+  const scale = largestSide > maxSide ? maxSide / largestSide : 1;
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) return dataUrl;
+
+  context.drawImage(image, 0, 0, width, height);
+  let quality = 0.82;
+  let compressed = canvas.toDataURL('image/jpeg', quality);
+  while (compressed.length > 8_500_000 && quality > 0.45) {
+    quality -= 0.1;
+    compressed = canvas.toDataURL('image/jpeg', quality);
+  }
+  return compressed;
+};
+
+/**
+ * DeliveryHomeV2 - Premium 1:1 Match with Original App UI.
+ * Featuring logical tab switching for Feed, Pocket, History, and Profile.
+ */
+export default function DeliveryHomeV2({ tab = 'feed' }) {
+  const navigate = useNavigate();
+  const { isOnline, setOnline, activeOrder, tripStatus, riderLocation, setRiderLocation, setActiveOrder, updateTripStatus, clearActiveOrder } = useDeliveryStore();
+  const { isWithinRange, distanceToTarget } = useProximityCheck();
+  const { acceptOrder, reachPickup, pickUpOrder, reachDrop, completeDelivery, resetTrip } = useOrderManager();
+  const {
+    newOrder,
+    clearNewOrder,
+    orderStatusUpdate,
+    clearOrderStatusUpdate,
+    orderReady,
+    clearOrderReady,
+    isConnected: isSocketConnected,
+    emitLocation,
+    joinTrackingForOrder,
+    leaveAllTrackingRooms,
+  } = useDeliveryNotifications();
+  const companyName = useCompanyName();
+  const { unreadCount: notificationUnreadCount } = useNotificationInbox("delivery", { limit: 20 });
+
+  const [incomingOrder, setIncomingOrder] = useState(null);
+  const [currentTab, setCurrentTab] = useState(tab);
+  const ignoredOrderIdsRef = useRef(new Set());
+
+  // Track URL changes (Prop changes) to update sub-page content
+  useEffect(() => {
+    setCurrentTab(tab);
+  }, [tab]);
+
+  const [showVerification, setShowVerification] = useState(false);
+  const [showEmergencyPopup, setShowEmergencyPopup] = useState(false);
+  const [showBookGigModal, setShowBookGigModal] = useState(false);
+  const [showSelfieVerificationModal, setShowSelfieVerificationModal] = useState(false);
+  const [showGpsModal, setShowGpsModal] = useState(false);
+  const [gpsErrorMessage, setGpsErrorMessage] = useState('');
+  const [profileImage, setProfileImage] = useState(null);
+  const [showOnlineSelfiePrompt, setShowOnlineSelfiePrompt] = useState(false);
+  const [showSelfieCameraCapture, setShowSelfieCameraCapture] = useState(false);
+  const [selfieUploading, setSelfieUploading] = useState(false);
+  const [selfieError, setSelfieError] = useState('');
+  const [onlineSelfie, setOnlineSelfie] = useState(null);
+  const [showEmergencyOfflineModal, setShowEmergencyOfflineModal] = useState(false);
+  const [emergencyOfflineReason, setEmergencyOfflineReason] = useState('');
+  const [isSubmittingEmergencyOffline, setIsSubmittingEmergencyOffline] = useState(false);
+  const [isTogglingDuty, setIsTogglingDuty] = useState(false);
+  const [emergencyNumbers, setEmergencyNumbers] = useState({
+    medicalEmergency: "",
+    accidentHelpline: "",
+    contactPolice: "",
+    insurance: "",
+  });
+
+  const [isModalMinimized, setIsModalMinimized] = useState(false);
+  const [eta, setEta] = useState(null);
+  const [partnerUnreadChatCount, setPartnerUnreadChatCount] = useState(0);
+  const [searchParams] = useSearchParams();
+  const [showEmbeddedChatModal, setShowEmbeddedChatModal] = useState(false);
+  const [gigEarlyLoginInfo, setGigEarlyLoginInfo] = useState({ isOpen: false, startTime: '', message: '' });
+
+  // Automatically open embedded chat modal if openChat=true query param is present
+  useEffect(() => {
+    const shouldOpenChat = searchParams.get("openChat") === "true" || searchParams.get("chat") === "true";
+    if (shouldOpenChat) {
+      setShowEmbeddedChatModal(true);
+    }
+  }, [searchParams]);
+
+  // Real-time delivery partner chat listener
+  useEffect(() => {
+    const activeOrderId = activeOrder?.order_id || activeOrder?.orderId || activeOrder?._id;
+    if (!activeOrderId) return;
+
+    fetch(`/api/v1/food/orders/${activeOrderId}/chat`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('delivery_accessToken') || localStorage.getItem('accessToken') || ''}` }
+    })
+      .then(async (r) => {
+        if (!r.ok) return null;
+        const text = await r.text();
+        return text ? JSON.parse(text) : null;
+      })
+      .then((d) => {
+        if (d?.data?.conversation?.partnerUnreadCount != null) {
+          setPartnerUnreadChatCount(Number(d.data.conversation.partnerUnreadCount || 0));
+        }
+      })
+      .catch(() => { });
+  }, [activeOrder]);
+  const lastLocationSentAt = useRef(0);
+  const lastCoordRef = useRef(null);
+  const rollingSpeedRef = useRef([]);
+  const lastAutoArrivalRef = useRef({ PICKING_UP: false, PICKED_UP: false });
+  const customerPhone =
+    activeOrder?.userPhone ||
+    activeOrder?.customerPhone ||
+    activeOrder?.deliveryAddress?.phone ||
+    activeOrder?.userId?.phone ||
+    activeOrder?.user?.phone ||
+    '';
+
+  const deliveryAddress = activeOrder?.deliveryAddress || {};
+  const addressPartsFromSchema = [
+    deliveryAddress.street,
+    deliveryAddress.additionalDetails,
+    deliveryAddress.city,
+    deliveryAddress.state,
+    deliveryAddress.zipCode,
+  ]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+
+  const customerAddress =
+    activeOrder?.customerAddress ||
+    activeOrder?.customer_address ||
+    (addressPartsFromSchema.length ? addressPartsFromSchema.join(', ') : '') ||
+    '';
+
+  const customerName =
+    activeOrder?.customerName ||
+    activeOrder?.deliveryAddress?.fullName ||
+    activeOrder?.deliveryAddress?.name ||
+    activeOrder?.userId?.name ||
+    activeOrder?.user?.name ||
+    '';
+
+  const customerLocation = activeOrder?.customerLocation || null;
+
+  const mapNavUrl = customerLocation?.lat != null && customerLocation?.lng != null
+    ? `https://www.google.com/maps/dir/?api=1&destination=${customerLocation.lat},${customerLocation.lng}`
+    : customerAddress
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(customerAddress)}`
+      : null;
+
+  const [zoom, setZoom] = useState(14);
+  const [isSimMode, setIsSimMode] = useState(false);
+  const [simPath, setSimPath] = useState([]);
+  const [simIndex, setSimIndex] = useState(0);
+  const [simProgress, setSimProgress] = useState(0); // 0 to 1 between points
+  const [activePolyline, setActivePolyline] = useState(null);
+  const mapRef = useRef(null);
+
+  // Refs so geolocation watchPosition always sees the current active order + emitters
+  const activeOrderRef = useRef(activeOrder);
+  const emitLocationRef = useRef(emitLocation);
+  const activePolylineRef = useRef(activePolyline);
+  const etaRef = useRef(eta);
+  const tripStatusRef = useRef(tripStatus);
+  const onlineSelfieRef = useRef(null);
+  const selfieCameraInputRef = useRef(null);
+  const selfieVideoRef = useRef(null);
+  const selfieStreamRef = useRef(null);
+
+  useEffect(() => { onlineSelfieRef.current = onlineSelfie; }, [onlineSelfie]);
+
+  useEffect(() => { activeOrderRef.current = activeOrder; }, [activeOrder]);
+  useEffect(() => { emitLocationRef.current = emitLocation; }, [emitLocation]);
+  useEffect(() => { activePolylineRef.current = activePolyline; }, [activePolyline]);
+  useEffect(() => { etaRef.current = eta; }, [eta]);
+  useEffect(() => { tripStatusRef.current = tripStatus; }, [tripStatus]);
+
+  const publishLiveRiderLocation = useCallback((lat, lng, heading = 0, speed = 0, accuracy = null) => {
+    const order = activeOrderRef.current;
+    const orderId = order?.orderId || order?._id;
+    const userId = order?.userId?._id || order?.userId || null;
+    const restaurantId = order?.restaurantId?._id || order?.restaurantId || null;
+
+    deliveryAPI.updateLocation(lat, lng, true, {
+      heading: heading || 0,
+      speed: speed || 0,
+      accuracy,
+      ...(onlineSelfieRef.current?.imageUrl
+        ? { selfieImageUrl: onlineSelfieRef.current.imageUrl }
+        : {}),
+    }).catch(() => { });
+
+    if (!orderId) return;
+
+    const payload = {
+      lat,
+      lng,
+      heading: heading || 0,
+      speed: speed || 0,
+      accuracy,
+      orderId,
+      userId,
+      restaurantId,
+      status: 'on_the_way',
+      polyline: activePolylineRef.current,
+    };
+
+    emitLocationRef.current?.(payload);
+
+    writeOrderTracking(orderId, {
+      lat,
+      lng,
+      heading: heading || 0,
+      polyline: activePolylineRef.current,
+      status: tripStatusRef.current,
+      eta: etaRef.current,
+    }).catch(() => { });
+  }, []);
+
+  // Join the same tracking rooms the customer uses when a trip becomes active
+  useEffect(() => {
+    if (!activeOrder) {
+      leaveAllTrackingRooms();
+      return;
+    }
+
+    if (!isSocketConnected) return;
+
+    joinTrackingForOrder(activeOrder);
+
+    const orderId = activeOrder.orderId || activeOrder._id;
+    const loc = useDeliveryStore.getState().riderLocation;
+    if (orderId && loc?.lat != null && loc?.lng != null) {
+      publishLiveRiderLocation(loc.lat, loc.lng, loc.heading || 0, 0, null);
+    }
+  }, [
+    activeOrder,
+    activeOrder?.orderId,
+    activeOrder?._id,
+    isSocketConnected,
+    joinTrackingForOrder,
+    leaveAllTrackingRooms,
+    publishLiveRiderLocation,
+  ]);
+
+  const isLoggingOut = useRef(false);
+  const handleLogout = useCallback(() => {
+    if (isLoggingOut.current) return;
+    isLoggingOut.current = true;
+
+    // 1. Clear tokens and state
+    localStorage.removeItem('delivery_accessToken');
+    localStorage.removeItem('delivery_refreshToken');
+    localStorage.removeItem('delivery_authenticated');
+    localStorage.removeItem('delivery_user');
+
+    // 2. Alert user and redirect
+    toast.error("Session Expired", { description: "Please log in again." });
+    navigate("/food/delivery/login", { replace: true });
+
+    // Optional: Full refresh after delay ONLY if we're not already on login
+    setTimeout(() => {
+      if (!window.location.pathname.includes('/login')) {
+        window.location.reload();
+      }
+    }, 1500);
+  }, [navigate]);
+
+  useEffect(() => {
+    const onAuthFailure = (e) => {
+      if (e.detail?.module === 'delivery') {
+        handleLogout();
+      }
+    };
+    window.addEventListener('authRefreshFailed', onAuthFailure);
+    return () => window.removeEventListener('authRefreshFailed', onAuthFailure);
+  }, [handleLogout]);
+
+  // 0. Auto-Simulation Effect (High-Precision Smooth Glide)
+  const lastSimUpdateSentAt = useRef(0);
+  useEffect(() => {
+    let interval;
+    if (isSimMode && simPath.length > 1 && simIndex < simPath.length - 1) {
+      interval = setInterval(() => {
+        setSimProgress(prev => {
+          const nextProgress = prev + 0.08; // 8% movement per tick
+
+          if (nextProgress >= 1) {
+            setSimIndex(idx => idx + 1);
+            return 0; // Move to next segment
+          }
+
+          const currentPoint = simPath[simIndex];
+          const nextPoint = simPath[simIndex + 1];
+
+          if (currentPoint && nextPoint) {
+            // Linear Interpolation (LERP)
+            const lat = currentPoint.lat + (nextPoint.lat - currentPoint.lat) * nextProgress;
+            const lng = currentPoint.lng + (nextPoint.lng - currentPoint.lng) * nextProgress;
+            const heading = calculateHeading(currentPoint.lat, currentPoint.lng, nextPoint.lat, nextPoint.lng);
+
+            setRiderLocation({ lat, lng, heading });
+
+            if (mapRef.current) {
+              mapRef.current.panTo({ lat, lng });
+            }
+
+            // Sync with backend every 2.5 seconds during simulation so customer sees it
+            const now = Date.now();
+            if (now - lastSimUpdateSentAt.current >= 2000) {
+              lastSimUpdateSentAt.current = now;
+              publishLiveRiderLocation(lat, lng, heading, 0, null);
+            }
+          }
+          return nextProgress;
+        });
+      }, 50); // 20 FPS movement
+    }
+    return () => clearInterval(interval);
+  }, [isSimMode, simPath, simIndex, activeOrder, publishLiveRiderLocation, setRiderLocation]);
+
+  // Fetch Emergency numbers and Profile (Restored logic)
+  useEffect(() => {
+    (async () => {
+      try {
+        const [emergencyRes, profileRes] = await Promise.all([
+          deliveryAPI.getEmergencyHelp(),
+          deliveryAPI.getProfile()
+        ]);
+        if (emergencyRes?.data?.success && emergencyRes.data.data) {
+          setEmergencyNumbers(emergencyRes.data.data);
+        }
+        if (profileRes?.data?.success && profileRes.data.data?.profile) {
+          const profile = profileRes.data.data.profile;
+          setProfileImage(profile.profileImage?.url || profile.documents?.photo || null);
+          setOnlineSelfie(profile.onlineSelfie || null);
+        }
+      } catch (err) { console.warn('Navbar Data Fetch Error:', err); }
+    })();
+  }, []);
+
+  const emergencyOptions = [
+    { title: "Medical Emergency", subtitle: "Call an ambulance", icon: <AlertTriangle className="text-red-600" />, phone: emergencyNumbers.medicalEmergency },
+    { title: "Accident Helpline", subtitle: "Report an accident", icon: <AlertTriangle className="text-orange-600" />, phone: emergencyNumbers.accidentHelpline },
+    { title: "Contact Police", subtitle: "Nearest police support", icon: <AlertTriangle className="text-blue-600" />, phone: emergencyNumbers.contactPolice },
+    { title: "Insurance", subtitle: "Policy & claim help", icon: <AlertTriangle className="text-green-600" />, phone: emergencyNumbers.insurance },
+  ];
+
+  // Reset simulation when path, order or mode changes
+  useEffect(() => {
+    if (isSimMode) {
+      setSimIndex(0);
+      setSimProgress(0);
+    }
+  }, [simPath, tripStatus, isSimMode]);
+
+  // Auto-restore modal when status or content changes
+  useEffect(() => {
+    setIsModalMinimized(false);
+  }, [tripStatus, showVerification, incomingOrder]);
+
+  // 1. Initial Sync (Force sync with server to avoid 'stuck' persistent state)
+  useEffect(() => {
+    const syncWithServer = async () => {
+      try {
+        const response = await deliveryAPI.getCurrentDelivery();
+        const rawData = response?.data?.data?.activeOrder || response?.data?.data;
+        const serverData = (rawData && (rawData._id || rawData.orderId)) ? rawData : null;
+
+        if (serverData) {
+          // Robust location mapping (Same as acceptOrder logic)
+          const getLoc = (ref, keysLat, keysLng) => {
+            if (!ref) return null;
+            if (ref.location) {
+              if (Array.isArray(ref.location.coordinates) && ref.location.coordinates.length >= 2) {
+                return {
+                  lat: ref.location.coordinates[1],
+                  lng: ref.location.coordinates[0]
+                };
+              }
+              return {
+                lat: ref.location.latitude || ref.location.lat,
+                lng: ref.location.longitude || ref.location.lng
+              };
+            }
+            for (const k of keysLat) { if (ref[k] != null) return { lat: ref[k], lng: ref[keysLng[keysLat.indexOf(k)]] }; }
+            return null;
+          };
+
+          const resLoc = getLoc(serverData.restaurantId, ['latitude', 'lat'], ['longitude', 'lng']) ||
+            getLoc(serverData, ['restaurant_lat', 'restaurantLat', 'latitude'], ['restaurant_lng', 'restaurantLng', 'longitude']);
+
+          const cusLoc = getLoc(serverData.deliveryAddress, ['latitude', 'lat'], ['longitude', 'lng']) ||
+            getLoc(serverData, ['customer_lat', 'customerLat', 'latitude'], ['customer_lng', 'customerLng', 'longitude']);
+
+          const syncedOrder = {
+            ...serverData,
+            restaurantLocation: resLoc,
+            customerLocation: cusLoc
+          };
+
+          const backendStatus = serverData.deliveryStatus || serverData.orderState?.status || serverData.orderStatus || serverData.status;
+          const currentPhase = serverData.deliveryState?.currentPhase;
+
+          let targetTripStatus = 'PICKING_UP';
+          if (['delivered', 'completed', 'DELIVERED'].includes(backendStatus)) {
+            targetTripStatus = 'COMPLETED';
+          } else if (currentPhase === 'at_drop' || ['reached_drop', 'REACHED_DROP'].includes(backendStatus)) {
+            targetTripStatus = 'REACHED_DROP';
+          } else if (['picked_up', 'PICKED_UP', 'delivering'].includes(backendStatus) || currentPhase === 'en_route_to_delivery') {
+            targetTripStatus = 'PICKED_UP';
+          } else if (currentPhase === 'at_pickup' || ['reached_pickup', 'REACHED_PICKUP'].includes(backendStatus)) {
+            targetTripStatus = 'REACHED_PICKUP';
+          } else if (['confirmed', 'preparing', 'ready_for_pickup', 'ready'].includes(backendStatus)) {
+            targetTripStatus = 'PICKING_UP';
+          }
+
+          setActiveOrder(syncedOrder, targetTripStatus);
+          updateTripStatus(targetTripStatus);
+        } else {
+          clearActiveOrder();
+        }
+      } catch (err) {
+        console.error('Order Sync Failed:', err);
+        clearActiveOrder();
+      }
+    };
+    syncWithServer();
+  }, []); // Only on mount to stabilize state
+
+  // 1.5 Professional Unified ETA Calculation Hook
+  useEffect(() => {
+    // If we have distance, calculate ETA. Fallback to 8m/s (28km/h) avg if GPS speed is unknown.
+    if (distanceToTarget != null && distanceToTarget !== Infinity) {
+      const avgSpeed = rollingSpeedRef.current.length > 0
+        ? rollingSpeedRef.current.reduce((a, b) => a + b, 0) / rollingSpeedRef.current.length
+        : 8;
+
+      setEta(calculateETA(distanceToTarget, avgSpeed));
+    } else {
+      setEta(null);
+    }
+  }, [distanceToTarget]);
+
+  const stopSelfieCameraStream = useCallback(() => {
+    if (selfieStreamRef.current) {
+      selfieStreamRef.current.getTracks().forEach((track) => track.stop());
+      selfieStreamRef.current = null;
+    }
+  }, []);
+
+  const goOnline = useCallback(async (selfieImageUrl = '') => {
+    setIsTogglingDuty(true);
+    try {
+      if (typeof window === 'undefined' || !navigator.geolocation) {
+        const errorMsg = 'GPS Location services are not supported on this device or browser.';
+        setGpsErrorMessage(errorMsg);
+        setShowGpsModal(true);
+        throw new Error(errorMsg);
+      }
+
+      let position;
+      try {
+        position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 5000,
+          });
+        });
+      } catch (highAccError) {
+        try {
+          position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: false,
+              timeout: 10000,
+              maximumAge: 15000,
+            });
+          });
+        } catch (geoError) {
+          setOnline(false);
+          setIsTogglingDuty(false);
+          let errorMsg = 'GPS Location is required to go online. Please turn ON location / GPS on your mobile.';
+          if (geoError.code === 1) {
+            errorMsg = 'Location permission is denied in phone/browser settings. Please grant location permission to go online.';
+          } else if (geoError.code === 2) {
+            errorMsg = 'Your mobile GPS / Location is turned OFF. Please turn ON location services on your phone to go online and accept delivery orders.';
+          } else if (geoError.code === 3) {
+            errorMsg = 'GPS signal request timed out. Please make sure location / GPS is turned ON and try again.';
+          }
+          setGpsErrorMessage(errorMsg);
+          setShowGpsModal(true);
+          toast.error(errorMsg);
+          return;
+        }
+      }
+
+      const { latitude, longitude } = position.coords;
+      const cachedSelfieUrl = selfieImageUrl || onlineSelfieRef.current?.imageUrl || '';
+      const response = cachedSelfieUrl
+        ? await deliveryAPI.updateLocation(latitude, longitude, true, { selfieImageUrl: cachedSelfieUrl })
+        : await deliveryAPI.updateLocation(latitude, longitude, true);
+
+      const data = response?.data?.data || response?.data || {};
+      if (data.onlineSelfie) {
+        setOnlineSelfie(data.onlineSelfie);
+      }
+      setOnline(true);
+      setShowGpsModal(false);
+      toast.success('You are now online');
+    } catch (error) {
+      setOnline(false);
+      const data = error?.response?.data;
+      const errCode = data?.code || error?.code;
+      const details = data?.details;
+      const message = data?.message || data?.error || error?.message || 'Failed to go online';
+
+      if (errCode === 'GIG_LOGIN_TOO_EARLY' || String(message).includes('30 minute pehle') || String(message).includes('scheduled time')) {
+        setGigEarlyLoginInfo({
+          isOpen: true,
+          startTime: details?.startTime || 'upcoming shift',
+          message,
+        });
+      } else if (errCode === 'NO_ACTIVE_GIG' || String(message).includes('active gig nahi') || String(message).includes('gig book')) {
+        setShowBookGigModal(true);
+        toast.warning(message);
+      } else {
+        toast.error(message);
+      }
+
+      if (String(message).toLowerCase().includes('selfie')) {
+        setShowOnlineSelfiePrompt(true);
+      }
+    } finally {
+      setIsTogglingDuty(false);
+    }
+  }, [setOnline]);
+
+  const goOffline = useCallback(async () => {
+    setIsTogglingDuty(true);
+    try {
+      await deliveryAPI.updateOnlineStatus(false);
+      setOnline(false);
+      toast('You are now offline');
+    } catch (error) {
+      const errCode = error?.response?.data?.code || error?.code;
+      const errMsg = error?.response?.data?.message || error?.message || 'Failed to go offline';
+      if (errCode === 'EMERGENCY_OFFLINE_REQUIRED' || error?.response?.data?.canRequestEmergency) {
+        setShowEmergencyOfflineModal(true);
+      } else {
+        toast.error(errMsg);
+      }
+    } finally {
+      setIsTogglingDuty(false);
+    }
+  }, [setOnline]);
+
+  const handleSubmitEmergencyOffline = async () => {
+    if (!emergencyOfflineReason.trim()) {
+      toast.error('Please provide a reason for emergency offline request');
+      return;
+    }
+    setIsSubmittingEmergencyOffline(true);
+    try {
+      const res = await deliveryAPI.requestEmergencyOffline(emergencyOfflineReason.trim());
+      if (res?.data?.success) {
+        toast.success('Emergency offline request submitted to Admin! Waiting for approval.');
+        setShowEmergencyOfflineModal(false);
+        setEmergencyOfflineReason('');
+      } else {
+        toast.error(res?.data?.message || 'Failed to submit request');
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Error submitting emergency offline request');
+    } finally {
+      setIsSubmittingEmergencyOffline(false);
+    }
+  };
+
+  // Listen for real-time status changes from socket (e.g. admin approves emergency offline or handover)
+  useEffect(() => {
+    const handleStatusChanged = (e) => {
+      const newStatus = e.detail?.availabilityStatus;
+      if (newStatus === 'offline') {
+        setOnline(false);
+      } else if (newStatus === 'online') {
+        setOnline(true);
+      }
+    };
+
+    window.addEventListener('deliveryStatusChanged', handleStatusChanged);
+    return () => window.removeEventListener('deliveryStatusChanged', handleStatusChanged);
+  }, [setOnline]);
+
+  const handleDutyToggle = useCallback(async () => {
+    if (isTogglingDuty) return;
+
+    if (isOnline) {
+      await goOffline();
+      return;
+    }
+
+    setIsTogglingDuty(true);
+    try {
+      // Step 1: Check for active booked gig
+      const gigRes = await deliveryAPI.getActiveGig();
+      const activeGig = gigRes.data?.data?.activeGig;
+
+      if (!activeGig) {
+        toast.error("You don't have an active gig. Please book a gig before going online.");
+        setShowBookGigModal(true);
+        setIsTogglingDuty(false);
+        return;
+      }
+
+      // Step 2: Check Selfie Verification
+      if (hasSelfieForToday(onlineSelfie)) {
+        await goOnline();
+      } else {
+        setShowSelfieVerificationModal(true);
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Error checking gig status';
+      toast.error(msg);
+    } finally {
+      setIsTogglingDuty(false);
+    }
+  }, [goOffline, goOnline, isOnline, isTogglingDuty, onlineSelfie]);
+
+  const uploadSelfieDataUrl = useCallback(async (sourceDataUrl) => {
+    setSelfieUploading(true);
+    setSelfieError('');
+
+    try {
+      await validateHumanFaceInImage(sourceDataUrl);
+      const compressedDataUrl = await compressSelfieDataUrl(sourceDataUrl);
+      const imageBlob = await dataUrlToBlob(compressedDataUrl);
+      const imageFile = new File([imageBlob], `selfie-${Date.now()}.jpg`, {
+        type: imageBlob.type || 'image/jpeg',
+      });
+
+      const uploadResult = await uploadService.uploadImageFile(imageFile, 'driver-online-selfies');
+      const selfieUrl = uploadResult?.url || uploadResult?.secureUrl || uploadResult?.data?.url || '';
+
+      if (!selfieUrl) {
+        throw new Error('Selfie upload did not return an image URL');
+      }
+
+      setOnlineSelfie({
+        imageUrl: selfieUrl,
+        capturedAt: new Date().toISOString(),
+        forDate: getTodaySelfieKey(),
+      });
+      setShowSelfieCameraCapture(false);
+      setShowOnlineSelfiePrompt(false);
+      stopSelfieCameraStream();
+      await goOnline(selfieUrl);
+    } catch (error) {
+      setSelfieError(error?.message || 'Failed to upload selfie');
+      setOnline(false);
+    } finally {
+      setSelfieUploading(false);
+      if (selfieCameraInputRef.current) {
+        selfieCameraInputRef.current.value = '';
+      }
+    }
+  }, [goOnline, stopSelfieCameraStream]);
+
+  const openSelfieCamera = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      selfieCameraInputRef.current?.click();
+      return;
+    }
+
+    try {
+      setSelfieError('');
+      stopSelfieCameraStream();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+      selfieStreamRef.current = stream;
+      setShowSelfieCameraCapture(true);
+    } catch (error) {
+      setSelfieError(error?.message || 'Could not access the camera.');
+      selfieCameraInputRef.current?.click();
+    }
+  }, [stopSelfieCameraStream]);
+
+  const captureSelfieFromCamera = useCallback(async () => {
+    const video = selfieVideoRef.current;
+    if (!video) {
+      setSelfieError('Camera preview is not ready yet.');
+      return;
+    }
+
+    const width = video.videoWidth || 720;
+    const height = video.videoHeight || 1280;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setSelfieError('Could not capture selfie frame.');
+      return;
+    }
+
+    context.drawImage(video, 0, 0, width, height);
+    await uploadSelfieDataUrl(canvas.toDataURL('image/jpeg', 0.9));
+  }, [uploadSelfieDataUrl]);
+
+  const handleSelfieSelected = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const base64Image = await compressSelfieForUpload(file);
+    await uploadSelfieDataUrl(base64Image);
+  }, [uploadSelfieDataUrl]);
+
+  useEffect(() => {
+    if (!showSelfieCameraCapture || !selfieVideoRef.current || !selfieStreamRef.current) return;
+    const video = selfieVideoRef.current;
+    video.srcObject = selfieStreamRef.current;
+    video.play().catch(() => { });
+  }, [showSelfieCameraCapture]);
+
+  useEffect(() => () => {
+    stopSelfieCameraStream();
+  }, [stopSelfieCameraStream]);
+
+  // 3. Location logic (Smart Frequency Tracking)
+  useEffect(() => {
+    if (!isOnline) {
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition((pos) => {
+      // CRITICAL: In Simulation Mode, we disable actual GPS to prevent overwriting our test position
+      if (isSimMode) return;
+
+      const { latitude: lat, longitude: lng, heading: rawHeading, speed } = pos.coords;
+      const now = Date.now();
+
+      let heading = (rawHeading != null && !isNaN(rawHeading) && rawHeading > 0) ? rawHeading : 0;
+      if (lastCoordRef.current && (!rawHeading || isNaN(rawHeading))) {
+        const dist = getHaversineDistance(lastCoordRef.current.lat, lastCoordRef.current.lng, lat, lng);
+        if (dist >= 1.5) {
+          heading = calculateHeading(lastCoordRef.current.lat, lastCoordRef.current.lng, lat, lng);
+        } else if (riderLocation?.heading) {
+          heading = riderLocation.heading;
+        }
+      }
+
+      const currentRiderPos = { lat, lng, heading: heading || 0 };
+      setRiderLocation(currentRiderPos);
+
+      // Calculate Rolling Average Speed for Smart ETA
+      if (speed && speed > 0) {
+        rollingSpeedRef.current = [...rollingSpeedRef.current.slice(-4), speed]; // keep last 5 points
+      }
+
+      const avgSpeed = rollingSpeedRef.current.length > 0
+        ? rollingSpeedRef.current.reduce((a, b) => a + b, 0) / rollingSpeedRef.current.length
+        : speed || 0;
+
+      // ETA update is now handled by a separate globally-synchronized effect
+
+      // Phase 11: Geo-fencing Auto-arrival (within 100m) - Disabled in DEV so UI steps can be tested manually
+      if (!isSimMode && !import.meta.env.DEV && distanceToTarget && distanceToTarget <= 100 && !lastAutoArrivalRef.current[tripStatus]) {
+        if (tripStatus === 'PICKING_UP') {
+          lastAutoArrivalRef.current[tripStatus] = true;
+          reachPickup().catch(() => { lastAutoArrivalRef.current[tripStatus] = false; });
+          // toast.success('Auto-arrived at Restaurant');
+        } else if (tripStatus === 'PICKED_UP') {
+          lastAutoArrivalRef.current[tripStatus] = true;
+          reachDrop().catch(() => { lastAutoArrivalRef.current[tripStatus] = false; });
+          // toast.success('Auto-arrived at Customer');
+        }
+      }
+
+      // Reset auto-arrival flag if we move away or status resets (usually handled by component mount, but for safety)
+      if (distanceToTarget > 200) {
+        lastAutoArrivalRef.current[tripStatus] = false;
+      }
+
+      // Check threshold for Sync (distance-based or 7s time-based)
+      const distMoved = lastCoordRef.current
+        ? getHaversineDistance(lat, lng, lastCoordRef.current.lat, lastCoordRef.current.lng)
+        : 1000; // assume huge distance if first update
+
+      if (distMoved >= 25 || (now - lastLocationSentAt.current >= 7000)) {
+        lastLocationSentAt.current = now;
+        lastCoordRef.current = { lat, lng };
+        publishLiveRiderLocation(lat, lng, heading || 0, speed || 0, pos.coords.accuracy);
+      }
+    }, (err) => {
+      if (err?.code === 1) {
+        toast.error('Location Permission Denied!');
+      } else {
+        // Fallback check with low accuracy if high accuracy satellite lock temporarily times out
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude: lat, longitude: lng } = pos.coords;
+            setRiderLocation((prev) => ({ ...prev, lat, lng }));
+          },
+          () => {},
+          { enableHighAccuracy: false, maximumAge: 10000, timeout: 10000 }
+        );
+      }
+    }, {
+      enableHighAccuracy: true,
+      maximumAge: 3000,
+      timeout: 15000
+    });
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [isOnline, setRiderLocation, isSimMode, publishLiveRiderLocation]);
+
+  // 3.1 Auto-Recovery Effect: Automatically restore ONLINE status when GPS Location is re-enabled during a booked gig or active order!
+  useEffect(() => {
+    if (isOnline) return;
+
+    let isSubscribed = true;
+
+    const checkAndAutoRestoreOnline = () => {
+      if (typeof window === 'undefined' || !navigator.geolocation) return;
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          if (!isSubscribed) return;
+          try {
+            const gigRes = await deliveryAPI.getActiveGig();
+            const activeGigData = gigRes?.data?.data?.activeGig || gigRes?.data?.data?.order || gigRes?.data?.data;
+            if (activeGigData && typeof activeGigData === 'object' && Object.keys(activeGigData).length > 0) {
+              const { latitude: lat, longitude: lng } = pos.coords;
+              setRiderLocation({ lat, lng });
+              setShowGpsModal(false);
+              setGpsErrorMessage('');
+              await goOnline();
+              toast.success('GPS restored! You are back Online 🟢');
+            }
+          } catch (err) {
+            // quiet catch if no active gig or network error
+          }
+        },
+        () => {},
+        { enableHighAccuracy: false, maximumAge: 10000, timeout: 5000 }
+      );
+    };
+
+    // Check immediately on mount/offline transition and poll every 5 seconds
+    checkAndAutoRestoreOnline();
+    const interval = setInterval(checkAndAutoRestoreOnline, 5000);
+
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
+  }, [isOnline, goOnline, setRiderLocation]);
+
+  // 1-Hour Periodic Selfie Security Guard: Force re-verification every 60 minutes
+  useEffect(() => {
+    if (!isOnline) return;
+
+    const interval = setInterval(() => {
+      if (!hasSelfieForToday(onlineSelfie)) {
+        toast.warning('Security Check: 1 hour has elapsed. Please verify your face to stay online.');
+        setShowSelfieVerificationModal(true);
+      }
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [isOnline, onlineSelfie]);
+
+  // Periodic active gig check: auto-offline driver if shift has ended with no next gig
+  useEffect(() => {
+    if (!isOnline) return;
+
+    const checkGigStatus = async () => {
+      try {
+        const gigRes = await deliveryAPI.getActiveGig();
+        const activeGig = gigRes?.data?.data?.activeGig;
+        const serverStatus = gigRes?.data?.data?.availabilityStatus;
+
+        if (!activeGig || serverStatus === 'offline') {
+          setOnline(false);
+          localStorage.setItem('delivery_online_status', 'false');
+          toast.warning('Your shift has ended and you have no upcoming active gig. You are now offline.');
+        }
+      } catch (err) {
+        // ignore network error during polling
+      }
+    };
+
+    const interval = setInterval(checkGigStatus, 30000);
+    return () => clearInterval(interval);
+  }, [isOnline, setOnline]);
+
+  // 3.5. Background Ping / Heartbeat
+  // If watchPosition stops firing (e.g. app in background or device stationary),
+  // this ensures we ping the backend periodically. This keeps the token fresh (via 401 interceptor)
+  // and keeps the Delivery Partner "online" in the backend.
+  useEffect(() => {
+    if (!isOnline) return;
+
+    const pingInterval = setInterval(() => {
+      const now = Date.now();
+      // If no natural GPS update happened in the last 15 seconds, force a fresh ping
+      if (now - lastLocationSentAt.current >= 15000) {
+        // Try to force a fresh GPS read instead of just sending old coordinates
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const { latitude: lat, longitude: lng, heading, speed, accuracy } = pos.coords;
+          lastLocationSentAt.current = Date.now();
+          lastCoordRef.current = { lat, lng };
+          publishLiveRiderLocation(lat, lng, heading || 0, speed || 0, accuracy);
+        }, () => {
+          // Fallback to last known if GPS fails to acquire
+          if (lastCoordRef.current) {
+            lastLocationSentAt.current = Date.now();
+            deliveryAPI.updateLocation(
+              lastCoordRef.current.lat,
+              lastCoordRef.current.lng,
+              true,
+              {
+                heading: 0,
+                speed: 0,
+                accuracy: null,
+                ...(onlineSelfieRef.current?.imageUrl
+                  ? { selfieImageUrl: onlineSelfieRef.current.imageUrl }
+                  : {}),
+              }
+            ).catch(() => { });
+          }
+        }, { enableHighAccuracy: false, maximumAge: 10000, timeout: 10000 });
+      }
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(pingInterval);
+  }, [isOnline, publishLiveRiderLocation]);
+
+  // 3.6 Auto-fetch GPS location on App Mount and whenever App/Tab is Re-opened (visibilitychange / focus)
+  useEffect(() => {
+    const autoFetchCurrentLocation = () => {
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude: lat, longitude: lng, heading, speed, accuracy } = pos.coords;
+            setRiderLocation({ lat, lng });
+            lastCoordRef.current = { lat, lng };
+            if (isOnline) {
+              publishLiveRiderLocation(lat, lng, heading || 0, speed || 0, accuracy);
+            }
+          },
+          (err) => console.warn('Auto location re-fetch error:', err),
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+        );
+      }
+    };
+
+    // Trigger on initial mount
+    autoFetchCurrentLocation();
+
+    // Trigger on app re-open / tab switch back
+    const handleReopen = () => {
+      if (document.visibilityState === 'visible') {
+        autoFetchCurrentLocation();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleReopen);
+    window.addEventListener('focus', handleReopen);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleReopen);
+      window.removeEventListener('focus', handleReopen);
+    };
+  }, [isOnline, setRiderLocation, publishLiveRiderLocation]);
+
+  useEffect(() => { setIncomingOrder(newOrder); }, [newOrder]);
+
+  useEffect(() => {
+    if (activeOrder && incomingOrder) {
+      setIncomingOrder(null);
+    }
+  }, [activeOrder, incomingOrder]);
+
+  useEffect(() => {
+    if (!isOnline) return;
+    if (currentTab !== 'feed') return;
+    if (activeOrder) return;
+
+    let cancelled = false;
+
+    const hydrateAvailableOrder = async () => {
+      try {
+        const currentResponse = await deliveryAPI.getCurrentDelivery();
+        const currentPayload =
+          currentResponse?.data?.data?.activeOrder ||
+          currentResponse?.data?.data ||
+          null;
+
+        if (!cancelled && currentPayload && (currentPayload._id || currentPayload.orderId)) {
+          const dispatchStatus = String(currentPayload?.dispatch?.status || '').toLowerCase();
+          if (dispatchStatus === 'assigned') {
+            setIncomingOrder(currentPayload);
+          } else {
+            setActiveOrder(currentPayload);
+          }
+          return;
+        }
+
+        const availableResponse = await deliveryAPI.getOrders({ limit: 20, page: 1 });
+        const availablePayload =
+          availableResponse?.data?.data ||
+          availableResponse?.data ||
+          {};
+        const availableOrders = Array.isArray(availablePayload?.docs)
+          ? availablePayload.docs
+          : Array.isArray(availablePayload?.items)
+            ? availablePayload.items
+            : Array.isArray(availablePayload)
+              ? availablePayload
+              : [];
+
+        const nextIncomingOrder = availableOrders.find((order) => {
+          const oId = String(order?.orderId || order?._id || order?.orderMongoId || '');
+          if (ignoredOrderIdsRef.current.has(oId)) return false;
+
+          const offeredTo = order?.dispatch?.offeredTo || [];
+          const isRejectedByMe = offeredTo.some(
+            (o) => String(o.partnerId) === String(deliveryPartnerId) && ['rejected', 'timeout', 'handed_over'].includes(o.action)
+          );
+          if (isRejectedByMe) return false;
+
+          const dispatchStatus = String(order?.dispatch?.status || '').toLowerCase();
+          const orderStatus = String(order?.orderStatus || order?.status || '').toLowerCase();
+          return (
+            ['unassigned', 'assigned'].includes(dispatchStatus) &&
+            ['created', 'confirmed', 'preparing', 'ready_for_pickup', 'ready'].includes(orderStatus)
+          );
+        });
+
+        if (!cancelled && nextIncomingOrder) {
+          setIncomingOrder((prev) => {
+            const prevId = prev?.orderId || prev?._id || prev?.orderMongoId;
+            const nextId =
+              nextIncomingOrder?.orderId ||
+              nextIncomingOrder?._id ||
+              nextIncomingOrder?.orderMongoId;
+            return prevId === nextId && prev ? prev : nextIncomingOrder;
+          });
+        }
+      } catch (error) {
+        console.warn('[DeliveryHomeV2] Available order fallback sync failed:', error?.message || error);
+      }
+    };
+
+    void hydrateAvailableOrder();
+    const poller = window.setInterval(() => {
+      if (!document.hidden) {
+        void hydrateAvailableOrder();
+      }
+    }, isSocketConnected ? 12000 : 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(poller);
+    };
+  }, [activeOrder, currentTab, isOnline, isSocketConnected, setActiveOrder]);
+
+  useEffect(() => {
+    const handleHandoverApproved = () => {
+      resetTrip();
+      setIncomingOrder(null);
+      setOnline(false);
+      try {
+        localStorage.setItem('app:isOnline', 'false');
+      } catch (_) {}
+      toast.success('Handover Approved by Admin. You are now Offline.');
+    };
+
+    window.addEventListener('deliveryHandoverApproved', handleHandoverApproved);
+    return () => window.removeEventListener('deliveryHandoverApproved', handleHandoverApproved);
+  }, [resetTrip, setOnline]);
+
+  useEffect(() => {
+    const handleOrderClaimedByOther = (event) => {
+      const data = event.detail || {};
+      const claimedId = String(data.orderId || data.orderMongoId || '');
+      setIncomingOrder((prev) => {
+        if (!prev) return null;
+        const prevId = String(prev.orderId || prev._id || prev.orderMongoId || '');
+        if (prevId === claimedId) {
+          return {
+            ...prev,
+            isClaimedByOther: true,
+            isAcceptedByOther: true,
+            status: 'accepted_by_other',
+          };
+        }
+        return prev;
+      });
+    };
+
+    window.addEventListener('order_claimed_by_other', handleOrderClaimedByOther);
+    return () => window.removeEventListener('order_claimed_by_other', handleOrderClaimedByOther);
+  }, []);
+
+  useEffect(() => {
+    if (orderStatusUpdate) {
+      const status = String(orderStatusUpdate.orderStatus || orderStatusUpdate.status || '').toLowerCase();
+      if (status.includes('cancel')) {
+        toast.error('Order cancelled by restaurant');
+        resetTrip();
+      } else if (activeOrder) {
+        const isReady = status === 'ready_for_pickup' || status === 'ready' || Boolean(orderStatusUpdate.isFoodReady);
+        const nextStatus = orderStatusUpdate.orderStatus || orderStatusUpdate.status || activeOrder.orderStatus;
+        setActiveOrder({
+          ...activeOrder,
+          ...orderStatusUpdate,
+          orderStatus: nextStatus,
+          isFoodReady: isReady || activeOrder.isFoodReady,
+          deliveryState: {
+            ...(activeOrder.deliveryState || {}),
+            ...(orderStatusUpdate.deliveryState || {}),
+            status: nextStatus,
+            isFoodReady: isReady || activeOrder.deliveryState?.isFoodReady,
+            foodReadyAt: orderStatusUpdate.deliveryState?.foodReadyAt || activeOrder.deliveryState?.foodReadyAt || (isReady ? new Date() : null)
+          }
+        });
+        if (isReady && !activeOrder.isFoodReady && activeOrder.orderStatus !== 'ready_for_pickup') {
+          toast.success('Food is ready for pickup! 🟢');
+        }
+      }
+      clearOrderStatusUpdate();
+    }
+  }, [orderStatusUpdate, activeOrder, setActiveOrder, resetTrip, clearOrderStatusUpdate]);
+
+  useEffect(() => {
+    if (orderReady) {
+      if (activeOrder) {
+        setActiveOrder({
+          ...activeOrder,
+          ...orderReady,
+          orderStatus: 'ready_for_pickup',
+          isFoodReady: true,
+          deliveryState: {
+            ...(activeOrder.deliveryState || {}),
+            ...(orderReady.deliveryState || {}),
+            status: 'ready_for_pickup',
+            isFoodReady: true,
+            foodReadyAt: new Date()
+          }
+        });
+        toast.success('Food is ready for pickup! 🟢');
+      } else if (isOnline) {
+        setIncomingOrder(orderReady);
+      }
+      clearOrderReady();
+    }
+  }, [orderReady, activeOrder, isOnline, setActiveOrder, clearOrderReady]);
+
+  // Poller to sync active order status from server every 4s while an active trip is ongoing
+  useEffect(() => {
+    if (!activeOrder) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await deliveryAPI.getCurrentDelivery();
+        const serverOrder = res?.data?.data?.order || res?.data?.data || res?.data;
+        if (serverOrder && (serverOrder.orderStatus || serverOrder._id)) {
+          const s = String(serverOrder.orderStatus || '').toLowerCase();
+          const isReady = s === 'ready_for_pickup' || s === 'ready' || Boolean(serverOrder.isFoodReady) || Boolean(serverOrder.deliveryState?.isFoodReady);
+          if (
+            serverOrder.orderStatus !== activeOrder.orderStatus ||
+            isReady !== Boolean(activeOrder.isFoodReady)
+          ) {
+            setActiveOrder({
+              ...activeOrder,
+              ...serverOrder,
+              orderStatus: serverOrder.orderStatus || activeOrder.orderStatus,
+              isFoodReady: isReady || activeOrder.isFoodReady,
+              deliveryState: {
+                ...(activeOrder.deliveryState || {}),
+                ...(serverOrder.deliveryState || {}),
+                isFoodReady: isReady
+              }
+            });
+          }
+        }
+      } catch (e) {
+        // quiet error
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [activeOrder, setActiveOrder]);
+
+
+  const handleCenterMap = () => {
+    if (mapRef.current && useDeliveryStore.getState().riderLocation) {
+      const loc = useDeliveryStore.getState().riderLocation;
+      mapRef.current.panTo({
+        lat: parseFloat(loc.lat || loc.latitude),
+        lng: parseFloat(loc.lng || loc.longitude)
+      });
+    }
+  };
+
+  const handleMapClick = (lat, lng) => {
+    if (activeOrder || incomingOrder || showVerification) {
+      setIsModalMinimized(true);
+    }
+  };
+
+  return (
+    <div className="relative h-screen w-full bg-white text-gray-900 overflow-hidden flex flex-col">
+      {/* â”€â”€â”€ 1. TOP HEADER (Premium Dark Gray) â”€â”€â”€ */}
+      {currentTab !== 'history' && (
+        <div className="absolute top-0 inset-x-0 bg-[#121212]/95 backdrop-blur-2xl shadow-2xl z-[200] safe-top pb-2 border-b border-white/10">
+          <div className="flex items-center justify-between px-4 py-2">
+            <div className="flex items-center gap-4">
+              <div
+                onClick={() => navigate('/food/delivery/profile')}
+                className="w-10 h-10 rounded-full border border-white/20 p-0.5 shadow-xl overflow-hidden bg-white/5 cursor-pointer active:scale-95 transition-all flex items-center justify-center"
+              >
+                {profileImage ? (
+                  <img src={profileImage} alt="Profile" className="w-full h-full object-cover rounded-full" />
+                ) : (
+                  <UserIcon className="w-5 h-5 text-white/70" />
+                )}
+              </div>
+              <button
+                onClick={handleDutyToggle}
+                disabled={isTogglingDuty}
+                className={`relative w-[92px] h-8 rounded-full p-1 transition-all duration-500 flex items-center ${isOnline ? 'bg-green-500 shadow-lg shadow-green-500/20' : 'bg-gray-400'} ${isTogglingDuty ? 'opacity-70' : ''}`}
+              >
+                <div className={`flex items-center justify-between w-full px-2 text-[8.5px] font-black uppercase tracking-widest text-white`}>
+                  <span>{isOnline ? 'Online' : ''}</span>
+                  <span>{!isOnline ? 'Offline' : ''}</span>
+                </div>
+                <motion.div animate={{ x: isOnline ? 59 : 0 }} className="absolute left-1 w-6 h-6 bg-white rounded-full shadow-sm" />
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setShowEmergencyPopup(true)} className="w-9 h-9 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 border border-red-500/20 active:scale-95 transition-all shadow-lg"><AlertTriangle className="w-4 h-4" /></button>
+              <button onClick={() => navigate('/food/delivery/help/id-card')} className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 border border-blue-500/20 active:scale-95 transition-all shadow-lg"><Contact className="w-4 h-4" /></button>
+              <button onClick={() => navigate('/food/delivery/notifications')} className="relative w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white border border-white/10 active:scale-95 transition-all shadow-lg"><Bell className="w-4 h-4" />{notificationUnreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-orange-400 border border-[#1f1f1f]" />}</button>
+            </div>
+          </div>
+
+          {/* 📍 GPS OFF Sticky Alert Banner */}
+          {!isOnline && gpsErrorMessage && (
+            <div className="bg-rose-500 text-white px-4 py-1.5 text-[11px] font-bold flex items-center justify-between shadow-md">
+              <span className="flex items-center gap-1.5 truncate">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300 animate-pulse" />
+                <span className="truncate">GPS Location is OFF. Turn ON location to go online.</span>
+              </span>
+              <button
+                onClick={() => setShowGpsModal(true)}
+                className="underline font-black text-[10px] uppercase ml-2 bg-white/20 px-2.5 py-0.5 rounded-full shrink-0 hover:bg-white/30 transition-colors"
+              >
+                Turn ON GPS
+              </button>
+            </div>
+          )}
+
+          {/* â”€â”€â”€ LIVE STATUS / PROGRESS BADGE (MATCHED PRO) â”€â”€â”€ */}
+          <AnimatePresence>
+            {currentTab === 'feed' && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="px-4 mt-1"
+              >
+                {activeOrder ? (
+                  <div className="grid grid-cols-2 gap-3 w-full">
+                    {/* LEFT: DISTANCE (Vibrant Orange Card) */}
+                    <div className="bg-[#ff8100] rounded-2xl p-3.5 shadow-xl shadow-orange-500/20 border border-orange-400/50 flex items-center justify-between overflow-hidden relative">
+                      <div className="flex flex-col z-10">
+                        <span className="text-[9px] text-white/70 font-black uppercase tracking-[0.15em] mb-1">Distance</span>
+                        <div className="flex items-end gap-1">
+                          <span className="text-2xl font-black text-white leading-none tracking-tighter">
+                            {distanceToTarget && distanceToTarget !== Infinity ? (distanceToTarget / 1000).toFixed(1) : '--'}
+                          </span>
+                          <span className="text-[11px] text-white/80 font-bold mb-0.5">KM</span>
+                        </div>
+                      </div>
+                      <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center z-10 shadow-lg">
+                        <Navigation2 className="w-4 h-4 text-[#ff8100] rotate-45" />
+                      </div>
+                    </div>
+
+                    {/* RIGHT: TIME (Emerald PRO Content) */}
+                    <div className="bg-[#10B981] rounded-2xl p-3.5 shadow-xl shadow-green-500/20 border border-green-400/50 flex items-center justify-between relative overflow-hidden group">
+                      <div className="flex flex-col z-10">
+                        <span className="text-[9px] text-white/70 font-black uppercase tracking-[0.15em] mb-1">Arrival</span>
+                        <div className="flex items-end gap-1">
+                          <span className="text-2xl font-black text-white leading-none tracking-tighter">
+                            {eta ? String(eta) : '--'}
+                          </span>
+                          <span className="text-[11px] text-white/80 font-bold mb-0.5">MIN</span>
+                        </div>
+                      </div>
+                      <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center z-10 shadow-lg">
+                        <Clock className="w-4 h-4 text-[#10B981]" />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white/5 rounded-2xl p-3.5 flex items-center justify-between border border-white/5 shadow-sm backdrop-blur-md">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-green-500/10 rounded-full flex items-center justify-center">
+                        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
+                      </div>
+                      <div>
+                        <h3 className="text-white font-black text-[11px] uppercase tracking-widest leading-none mb-1">{isOnline ? 'System Online' : 'System Offline'}</h3>
+                        <p className="text-gray-400 text-[10px] font-bold uppercase tracking-tight">{isOnline ? 'Waiting for order requests' : 'Book a shift to start working'}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowBookGigModal(true)}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition-all shadow-lg active:scale-95 shrink-0 border border-emerald-400/30"
+                    >
+                      Book Gig
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* â”€â”€â”€ 2. MAIN CONTENT â”€â”€â”€ */}
+      <div className={`flex-1 relative overflow-y-auto ${currentTab === 'history' ? 'pt-0' : 'pt-[120px]'} no-scrollbar`}>
+        {currentTab === 'feed' ? (
+          <div className="absolute inset-0 top-[-120px]">
+            <LiveMap
+              onMapLoad={(m) => mapRef.current = m}
+              onMapClick={handleMapClick}
+              onPathReceived={setSimPath}
+              onPolylineReceived={(poly) => {
+                setActivePolyline(poly);
+                // If we have an order, push the INITIAL polyline to Firebase immediately for the customer
+                const orderId = activeOrder?.orderId || activeOrder?._id;
+                if (orderId && poly) {
+                  writeOrderTracking(orderId, { polyline: poly, status: tripStatus, eta: eta }).catch(() => { });
+                }
+              }}
+              zoom={zoom}
+            />
+
+            {/* SIMULATION INDICATOR */}
+            {isSimMode && (
+              <div className="absolute top-[180px] left-4 right-4 z-[100] bg-black/80 backdrop-blur-md rounded-xl p-4 border border-white/20 flex items-center justify-between shadow-2xl">
+                <div className="flex items-center gap-4">
+                  <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center animate-pulse">
+                    <Play className="w-4 h-4 text-white fill-current" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-orange-500 text-[10px] font-bold uppercase tracking-widest">Auto Navigation Active</span>
+                    <span className="text-white text-[11px] font-medium">Following actual road path...</span>
+                  </div>
+                </div>
+                <button onClick={() => setIsSimMode(false)} className="bg-white/10 text-white/50 hover:text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-white/10">Stop</button>
+              </div>
+            )}
+
+            <div className="absolute right-4 bottom-28 md:bottom-32 flex flex-col gap-4 z-[120]">
+              <div className="flex flex-col bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+                <button onClick={() => setZoom(z => Math.min(22, z + 1))} className="p-3 hover:bg-gray-50 border-b border-gray-100 text-gray-900 active:scale-90 transition-all" aria-label="Zoom in"><Plus className="w-5 h-5 stroke-[2.75]" /></button>
+                <button onClick={() => setZoom(z => Math.max(8, z - 1))} className="p-3 hover:bg-gray-50 text-gray-900 active:scale-90 transition-all" aria-label="Zoom out"><Minus className="w-5 h-5 stroke-[2.75]" /></button>
+              </div>
+              <button
+                onClick={() => {
+                  const nextSimState = !isSimMode;
+                  setIsSimMode(nextSimState);
+
+                  if (nextSimState) {
+                    toast.warning('Simulation Mode Active');
+                    // Initialize position if null
+                    if (!useDeliveryStore.getState().riderLocation && activeOrder) {
+                      const target = activeOrder.restaurantLocation || activeOrder.customerLocation;
+                      if (target) {
+                        setRiderLocation({
+                          lat: parseFloat(target.lat || target.latitude) + 0.001,
+                          lng: parseFloat(target.lng || target.longitude) + 0.001,
+                          heading: 0
+                        });
+                      }
+                    }
+                  }
+                }}
+                className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center border border-gray-100 transition-all ${isSimMode ? 'bg-orange-500 text-white' : 'bg-white text-green-500'}`}
+              >
+                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${isSimMode ? 'border-white' : 'border-green-500'}`}>
+                  <Play className={`w-4 h-4 fill-current ml-0.5 ${isSimMode ? 'animate-pulse' : ''}`} />
+                </div>
+              </button>
+              <button
+                onClick={() => mapRef.current?.setOptions({ gestureHandling: 'greedy' })}
+                className="w-14 h-14 bg-white rounded-full shadow-2xl flex items-center justify-center text-blue-600 border border-gray-100 active:scale-90 transition-all"
+              >
+                <div className="w-8 h-8 rounded-full border-2 border-blue-600 flex items-center justify-center"><Navigation2 className="w-4 h-4" /></div>
+              </button>
+              <button
+                onClick={handleCenterMap}
+                className="w-14 h-14 bg-white rounded-full shadow-2xl flex items-center justify-center text-gray-900 border border-gray-100 group active:scale-90 transition-all"
+              >
+                <Target className="w-7 h-7" />
+              </button>
+            </div>
+          </div>
+        ) : currentTab === 'pocket' ? (
+          <PocketV2 />
+        ) : currentTab === 'history' ? (
+          <HistoryV2 />
+        ) : (
+          <ProfileV2 />
+        )}
+
+        {/* OVERLAYS (Persistent if active) */}
+      </div>
+
+      {/* OVERLAYS (Persistent if active) - Outside flex container to avoid clipping and z-index issues */}
+      {(currentTab === 'feed' || activeOrder) && (
+        <AnimatePresence>
+          {!isModalMinimized && (
+            <motion.div
+              key="modal-container"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-0 z-[300] pointer-events-none flex items-end"
+            >
+              <div className="w-full pointer-events-auto relative">
+                {incomingOrder && (
+                  <NewOrderModal
+                    order={incomingOrder}
+                    onAccept={async (o) => {
+                      try {
+                        await acceptOrder(o);
+                      } catch (err) {
+                        const oId = String(o?.orderId || o?._id || o?.id || '');
+                        if (oId) ignoredOrderIdsRef.current.add(oId);
+                      } finally {
+                        setIncomingOrder(null);
+                        clearNewOrder();
+                      }
+                    }}
+                    onReject={(o) => {
+                      const oId = String(o?.orderId || o?._id || o?.id || '');
+                      if (oId) ignoredOrderIdsRef.current.add(oId);
+                      setIncomingOrder(null);
+                      clearNewOrder();
+                    }}
+                    onMinimize={() => setIsModalMinimized(true)}
+                  />
+                )}
+                {(tripStatus === 'PICKING_UP' || tripStatus === 'REACHED_PICKUP') && (
+                  <PickupActionModal
+                    order={activeOrder}
+                    status={tripStatus}
+                    isWithinRange={isWithinRange}
+                    distanceToTarget={distanceToTarget}
+                    eta={eta}
+                    onReachedPickup={reachPickup}
+                    onPickedUp={(billImageUrl) => pickUpOrder(billImageUrl)}
+                    onMinimize={() => setIsModalMinimized(true)}
+                    onOpenChat={() => {
+                      setPartnerUnreadChatCount(0);
+                      setShowEmbeddedChatModal(true);
+                    }}
+                    unreadChatCount={partnerUnreadChatCount}
+                    onHandoverSuccess={(handedOrderId) => {
+                      if (handedOrderId) ignoredOrderIdsRef.current.add(String(handedOrderId));
+                      resetTrip();
+                      clearActiveOrder();
+                      setIncomingOrder(null);
+                      clearNewOrder();
+                    }}
+                    onCancel={async () => {
+                      const orderId = activeOrder?.orderId || activeOrder?._id;
+                      if (!orderId) { resetTrip(); return; }
+                      try {
+                        await deliveryAPI.rejectOrder(orderId, { reason: 'driver_cancelled' });
+                        toast('Order cancelled');
+                      } catch (err) {
+                        const msg = err?.response?.data?.message || err?.message || 'Failed to cancel';
+                        toast.error(msg);
+                      } finally {
+                        resetTrip();
+                      }
+                    }}
+                  />
+                )}
+                {(tripStatus === 'PICKED_UP' || tripStatus === 'REACHED_DROP') && (
+                  <div className="absolute inset-0 z-[120] flex items-end justify-center pointer-events-none">
+                    {tripStatus === 'PICKED_UP' ? (
+                      <motion.div
+                        initial={{ y: '100%' }}
+                        animate={{ y: 0 }}
+                        exit={{ y: '100%' }}
+                        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+                        className="w-full max-w-lg bg-white rounded-t-[3.5rem] shadow-[0_-25px_80px_rgba(0,0,0,0.5)] flex flex-col max-h-[85vh] pointer-events-auto overflow-hidden"
+                      >
+                        {/* Handle / Minimize */}
+                        <div className="w-full flex justify-center py-3 bg-white relative z-20">
+                          <button
+                            onClick={() => setIsModalMinimized(true)}
+                            className="w-12 h-1.5 bg-gray-200 rounded-full hover:bg-gray-300 transition-colors active:scale-95"
+                          />
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto no-scrollbar p-8 pt-4">
+                          <div className="flex justify-between w-full items-center mb-8">
+                            <div className="flex items-center gap-4">
+                              <div className="w-16 h-16 rounded-[1.5rem] overflow-hidden border-4 border-gray-50 shadow-xl ring-1 ring-gray-100">
+                                <img
+                                  src={activeOrder?.user?.logo || activeOrder?.user?.profileImage || 'https://cdn-icons-png.flaticon.com/512/1275/1275302.png'}
+                                  className="w-full h-full object-cover"
+                                  alt="User"
+                                />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                  <h3 className="text-gray-950 text-2xl font-black tracking-tight leading-none underline decoration-emerald-500/30 decoration-4 underline-offset-4">Handover Drop</h3>
+                                  {(activeOrder?.order_id || activeOrder?.orderId) && (
+                                    <span className="bg-gray-100 text-gray-800 text-xs font-black px-2.5 py-1 rounded-lg border border-gray-200 shrink-0">
+                                      #{activeOrder?.order_id || activeOrder?.orderId}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${isWithinRange ? 'bg-emerald-50 border-emerald-100' : 'bg-orange-50 border-orange-100'}`}>
+                                  <div className={`w-1.5 h-1.5 rounded-full ${isWithinRange ? 'bg-emerald-500 animate-pulse' : 'bg-orange-500'}`} />
+                                  <span className={`text-[10px] font-black uppercase tracking-widest ${isWithinRange ? 'text-emerald-600' : 'text-orange-500'}`}>
+                                    {isWithinRange ? 'Ready to Arrive' : `${(distanceToTarget / 1000).toFixed(1)} km • ${eta || '--'} min`}
+                                  </span>
+                                </div>
+                                {customerName && (
+                                  <div className="mt-4 text-left">
+                                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1">Customer</span>
+                                    <p className="text-gray-950 text-base font-black tracking-tight leading-none">{customerName}</p>
+                                  </div>
+                                )}
+                                {customerAddress && (
+                                  <p className="text-gray-500 text-xs font-bold mt-3 max-w-[240px] leading-tight text-left">
+                                    {customerAddress}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2.5 shrink-0">
+                              <button
+                                onClick={() => {
+                                  setPartnerUnreadChatCount(0);
+                                  setShowEmbeddedChatModal(true);
+                                }}
+                                className="w-11 h-11 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-600 border border-orange-100 hover:bg-orange-100 transition-colors active:scale-90 relative"
+                                aria-label="Chat with customer"
+                                title="Chat with Customer"
+                              >
+                                <MessageCircle className="w-5 h-5" />
+                                {partnerUnreadChatCount > 0 && (
+                                  <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white font-black text-[10px] min-w-[20px] h-[20px] px-1 rounded-full flex items-center justify-center border-2 border-white shadow-md animate-pulse">
+                                    {partnerUnreadChatCount}
+                                  </span>
+                                )}
+                              </button>
+                              {customerPhone && (
+                                <button
+                                  onClick={() => {
+                                    window.location.href = `tel:${customerPhone}`;
+                                  }}
+                                  className="w-11 h-11 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600 border border-emerald-100 hover:bg-emerald-100 transition-colors active:scale-90"
+                                  aria-label="Call customer"
+                                >
+                                  <Phone className="w-5 h-5" />
+                                </button>
+                              )}
+                              {mapNavUrl && (
+                                <button
+                                  onClick={() => window.open(mapNavUrl, '_blank')}
+                                  className="w-11 h-11 rounded-2xl bg-gray-950 flex items-center justify-center text-white shadow-xl hover:bg-gray-800 transition-colors active:scale-90"
+                                  aria-label="Navigate to customer"
+                                >
+                                  <Navigation className="w-5 h-5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Customer Instructions Panel */}
+                          {activeOrder?.note && (
+                            <div className="w-full bg-linear-to-br from-orange-50/50 to-amber-50/50 border border-orange-100 rounded-[2rem] p-6 mb-8 flex gap-4 items-start relative overflow-hidden group">
+                              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <Package className="w-16 h-16" />
+                              </div>
+                              <div className="w-11 h-11 bg-white rounded-2xl flex items-center justify-center text-orange-600 shadow-sm shrink-0 border border-orange-50 relative z-10">
+                                <Package className="w-5 h-5" />
+                              </div>
+                              <div className="relative z-10">
+                                <p className="text-[10px] font-black text-orange-600 uppercase tracking-[0.2em] mb-1.5">Drop Message</p>
+                                <p className="text-sm font-bold text-gray-950 leading-relaxed italic">"{activeOrder.note}"</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="p-8 pt-0 pb-12 bg-white border-t border-gray-50">
+                          <div className="pt-6 space-y-3">
+                            <ActionSlider
+                              label="Slide to Arrive"
+                              disabledLabel={
+                                distanceToTarget && distanceToTarget !== Infinity
+                                  ? `Location Locked (${(distanceToTarget / 1000).toFixed(1)} km away)`
+                                  : 'Reach Location to Arrive'
+                              }
+                              successLabel="Arrived ✓"
+                              disabled={!isWithinRange}
+                              onConfirm={reachDrop}
+                              color="bg-emerald-600"
+                            />
+                            {!isWithinRange && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await reachDrop();
+                                    setShowVerification(true);
+                                    toast.success("Arrival confirmed");
+                                  } catch (e) {
+                                    toast.error("Failed to confirm arrival");
+                                  }
+                                }}
+                                className="w-full py-2.5 text-center text-[11px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-2xl border border-emerald-200/80 transition-all active:scale-95 shadow-sm"
+                              >
+                                📍 I&apos;m at Customer Location (Confirm Arrival)
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <div className="w-full bg-white p-8 pb-12 border-t border-gray-100 flex flex-col pointer-events-auto">
+                        <button
+                          onClick={() => setShowVerification(true)}
+                          className="w-full bg-emerald-500 hover:bg-emerald-600 text-white shadow-xl shadow-emerald-500/30 rounded-3xl py-6 font-black text-[13px] tracking-[0.2em] transform transition-all active:scale-95 flex items-center justify-center gap-4"
+                        >
+                          <CheckCircle2 className="w-6 h-6" /> VERIFY & COMPLETE
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {showVerification && tripStatus !== 'COMPLETED' && (
+                  <DeliveryVerificationModal
+                    order={activeOrder}
+                    onComplete={async (otp, photoUrl) => {
+                      const res = await completeDelivery(otp, photoUrl);
+                      setShowVerification(false);
+                      return res;
+                    }}
+                    onClose={() => setShowVerification(false)}
+                  />
+                )}
+                {tripStatus === 'COMPLETED' && <OrderSummaryModal order={activeOrder} onDone={resetTrip} />}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
+
+      {/* Embedded Order Chat Modal */}
+      <AnimatePresence>
+        {showEmbeddedChatModal && activeOrder && (
+          <div className="fixed inset-0 z-[500] flex items-end justify-center pointer-events-auto">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+              onClick={() => setShowEmbeddedChatModal(false)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="w-full max-w-lg bg-white rounded-t-[2.5rem] shadow-2xl h-[88vh] flex flex-col overflow-hidden relative z-10"
+            >
+              <FoodOrderChatScreen
+                isEmbedded={true}
+                embeddedOrderId={activeOrder.order_id || activeOrder.orderId || activeOrder._id}
+                onClose={() => setShowEmbeddedChatModal(false)}
+              />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Gig Early Login Alert Modal */}
+      <AnimatePresence>
+        {gigEarlyLoginInfo.isOpen && (
+          <div className="fixed inset-0 z-[550] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setGigEarlyLoginInfo((prev) => ({ ...prev, isOpen: false }))}
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl z-10 text-center space-y-4 border border-orange-100"
+            >
+              <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto text-orange-600 shadow-inner">
+                <Clock className="w-8 h-8 animate-pulse" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-50 px-3 py-1 rounded-full border border-orange-200">
+                  Shift Timing Alert
+                </span>
+                <h3 className="text-xl font-black text-gray-900 mt-2.5 tracking-tight">Shift Starts at {gigEarlyLoginInfo.startTime}</h3>
+                <p className="text-xs font-semibold text-gray-600 leading-relaxed mt-2">
+                  Aapki booked gig shift <span className="font-bold text-gray-900">{gigEarlyLoginInfo.startTime}</span> baje start hogi. Aap shift start hone ke <span className="font-bold text-orange-600">30 minute pehle</span> hi online ja sakte hain.
+                </p>
+              </div>
+
+              <div className="bg-orange-50/80 border border-orange-200 rounded-2xl p-3.5 text-xs text-orange-950 font-bold flex items-center justify-center gap-2">
+                <Clock className="w-4 h-4 text-orange-600 shrink-0" />
+                <span>Shift shuru hone ke 30 min pehle Online button dabayein</span>
+              </div>
+
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    setGigEarlyLoginInfo((prev) => ({ ...prev, isOpen: false }));
+                    setShowBookGigModal(true);
+                  }}
+                  className="w-full py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all"
+                >
+                  View Booked Gigs
+                </button>
+                <button
+                  onClick={() => setGigEarlyLoginInfo((prev) => ({ ...prev, isOpen: false }))}
+                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-2xl active:scale-95 transition-all"
+                >
+                  Got it, Thanks
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Gig Booking Modal */}
+      <BookGigModal
+        isOpen={showBookGigModal}
+        onClose={() => setShowBookGigModal(false)}
+        onGigBooked={() => {
+          setShowBookGigModal(false);
+          setShowSelfieVerificationModal(true);
+        }}
+      />
+
+      {/* Selfie Verification Modal */}
+      <SelfieVerificationModal
+        isOpen={showSelfieVerificationModal}
+        onClose={() => setShowSelfieVerificationModal(false)}
+        onSuccess={async (result) => {
+          setShowSelfieVerificationModal(false);
+          setOnlineSelfie({
+            imageUrl: result?.imageUrl || '',
+            capturedAt: new Date().toISOString(),
+            forDate: getTodaySelfieKey(),
+          });
+          await goOnline();
+        }}
+      />
+
+      {/* OVERLAYS & POPUPS */}
+      <BottomPopup isOpen={showEmergencyPopup} title="Emergency Help" onClose={() => setShowEmergencyPopup(false)}>
+        <div className="grid gap-4 py-2">
+          {emergencyOptions.map((opt, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                const num = opt.phone?.replace(/\D/g, '');
+                if (num) window.location.href = `tel:${num}`;
+                else toast.error('Number not configured');
+              }}
+              className="flex items-center gap-5 p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 active:scale-95 transition-all text-left"
+            >
+              <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm text-xl">{opt.icon}</div>
+              <div>
+                <h4 className="font-bold text-gray-900">{opt.title}</h4>
+                <p className="text-xs text-gray-500 font-medium">{opt.subtitle}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </BottomPopup>
+
+      {/* Emergency Offline Request Modal */}
+      <AnimatePresence>
+        {showEmergencyOfflineModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-gray-100"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-600 font-bold">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">Emergency Offline Request</h3>
+                  <p className="text-xs text-gray-500 font-medium">Active Gig Shift In Progress</p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-600 leading-relaxed mb-4">
+                You are currently working an active gig shift. Riders can only go offline during an active shift for an emergency situation with Admin approval.
+              </p>
+              <textarea
+                value={emergencyOfflineReason}
+                onChange={(e) => setEmergencyOfflineReason(e.target.value)}
+                placeholder="State your emergency reason (e.g. vehicle breakdown, family/medical emergency)..."
+                className="w-full h-24 p-3 bg-gray-50 border border-gray-200 rounded-2xl text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 mb-4 resize-none"
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEmergencyOfflineModal(false)}
+                  disabled={isSubmittingEmergencyOffline}
+                  className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 rounded-2xl text-xs font-bold text-gray-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmitEmergencyOffline}
+                  disabled={isSubmittingEmergencyOffline || !emergencyOfflineReason.trim()}
+                  className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSubmittingEmergencyOffline ? 'Submitting...' : 'Submit to Admin'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showOnlineSelfiePrompt && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[650] bg-black/60 backdrop-blur-sm"
+              onClick={() => !selfieUploading && setShowOnlineSelfiePrompt(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.96 }}
+              className="fixed left-1/2 top-1/2 z-[660] w-[calc(100%-2.5rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[28px] border border-white/70 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.22)]"
+            >
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Daily check-in</p>
+              <h3 className="mt-2 text-[20px] font-black tracking-tight text-slate-950">Upload today&apos;s selfie</h3>
+              <p className="mt-2 text-[13px] font-semibold leading-relaxed text-slate-500">
+                Before going online, submit a fresh selfie for today.
+              </p>
+
+              {selfieError ? (
+                <p className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-600">
+                  {selfieError}
+                </p>
+              ) : null}
+
+              {showSelfieCameraCapture ? (
+                <div className="mt-4 overflow-hidden rounded-[20px] border border-slate-200 bg-slate-950">
+                  <video
+                    ref={selfieVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="h-64 w-full object-cover"
+                  />
+                </div>
+              ) : null}
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  disabled={selfieUploading}
+                  onClick={() => {
+                    stopSelfieCameraStream();
+                    setShowSelfieCameraCapture(false);
+                    setShowOnlineSelfiePrompt(false);
+                  }}
+                  className="h-12 rounded-[16px] border border-slate-200 bg-slate-50 text-[11px] font-black uppercase tracking-[0.08em] text-slate-500 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                {showSelfieCameraCapture ? (
+                  <button
+                    type="button"
+                    disabled={selfieUploading}
+                    onClick={captureSelfieFromCamera}
+                    className="h-12 rounded-[16px] bg-emerald-500 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[0_14px_28px_rgba(16,185,129,0.28)] disabled:opacity-60"
+                  >
+                    {selfieUploading ? 'Uploading...' : 'Capture'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={selfieUploading}
+                    onClick={openSelfieCamera}
+                    className="relative h-12 rounded-[16px] bg-emerald-500 text-[10px] font-black uppercase tracking-[0.08em] text-white shadow-[0_14px_28px_rgba(16,185,129,0.28)] disabled:opacity-60 overflow-hidden"
+                  >
+                    <span className="flex items-center justify-center gap-1.5 w-full">
+                      <Camera size={14} className="shrink-0" />
+                      <span className="truncate">Take New Selfie</span>
+                    </span>
+                    <input
+                      ref={selfieCameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="user"
+                      disabled={selfieUploading}
+                      className="absolute inset-0 h-full w-full opacity-0 pointer-events-none"
+                      onChange={handleSelfieSelected}
+                    />
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* 📍 GPS Location OFF Warning Modal */}
+      <AnimatePresence>
+        {showGpsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[850] bg-black/75 backdrop-blur-md flex items-center justify-center p-4 font-sans"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-[28px] p-6 max-w-sm w-full shadow-2xl border border-rose-100 text-center relative overflow-hidden"
+            >
+              <div className="w-16 h-16 rounded-full bg-rose-100 border-4 border-rose-50 flex items-center justify-center text-rose-600 mx-auto mb-4 shadow-lg animate-bounce">
+                <Compass className="w-8 h-8 stroke-[2.5]" />
+              </div>
+
+              <h3 className="text-lg font-black text-slate-900 tracking-tight mb-1">
+                📍 Mobile GPS Location is OFF
+              </h3>
+              <p className="text-xs font-bold text-rose-600 mb-3 bg-rose-50 border border-rose-200/60 p-2.5 rounded-xl leading-relaxed">
+                {gpsErrorMessage || 'Your mobile GPS / Location is turned OFF. Please turn ON location services to go online.'}
+              </p>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 mb-5 text-left text-[11px] font-semibold text-slate-700 space-y-1.5 shadow-xs">
+                <div className="font-bold flex items-center gap-1.5 text-slate-900">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+                  <span>How to enable GPS on your mobile:</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-slate-600 font-medium pl-0.5">
+                  <li>Swipe down phone Notification / Quick Settings bar.</li>
+                  <li>Tap to turn <strong>ON Location / GPS</strong>.</li>
+                  <li>Grant location permission to Eqosy app if prompted.</li>
+                </ol>
+              </div>
+
+              <div className="flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setShowGpsModal(false);
+                    await goOnline();
+                  }}
+                  className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white rounded-2xl text-xs font-black tracking-wide uppercase shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
+                >
+                  <RefreshCw className="w-4 h-4 animate-spin-reverse" />
+                  <span>Check GPS & Retry Going Online</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowGpsModal(false)}
+                  className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-xs font-bold transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Minimize/Restore Toggle - Above navbar */}
+      {isModalMinimized && (activeOrder || incomingOrder || showVerification) && (
+        <motion.div
+          initial={{ y: 100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="fixed bottom-[100px] inset-x-0 z-[300] px-6"
+        >
+          <button
+            onClick={() => setIsModalMinimized(false)}
+            className="w-full bg-gray-900/90 text-white rounded-2xl py-4 flex items-center justify-between px-6 shadow-2xl backdrop-blur-md border border-white/10"
+          >
+            <div className="flex flex-col items-start gap-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Order Action Pending</span>
+              <span className="text-xs font-bold uppercase tracking-wider">Tap to open delivery panel</span>
+            </div>
+            <div className="bg-orange-500 p-2 rounded-xl text-white">
+              <Plus className="w-5 h-5" />
+            </div>
+          </button>
+        </motion.div>
+      )}
+
+      {/* â”€â”€â”€ 3. BOTTOM NAV (Fixed - Compact Pro) â”€â”€â”€ */}
+      <div className="bg-white border-t border-gray-100 px-8 py-3 pb-6 flex justify-between items-center z-[200] shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
+        <button onClick={() => navigate('/food/delivery/feed')} className={`flex flex-col items-center gap-1 transition-all ${currentTab === 'feed' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
+          <LayoutGrid className="w-6 h-6" /><span className="text-[11px] font-medium font-sans">Feed</span>
+        </button>
+        <button onClick={() => navigate('/food/delivery/pocket')} className={`flex flex-col items-center gap-1 transition-all ${currentTab === 'pocket' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
+          <Wallet className="w-6 h-6" /><span className="text-[11px] font-medium font-sans">Pocket</span>
+        </button>
+        <button onClick={() => navigate('/food/delivery/history')} className={`flex flex-col items-center gap-1 transition-all ${currentTab === 'history' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
+          <History className="w-6 h-6" /><span className="text-[11px] font-medium font-sans">Trip History</span>
+        </button>
+        <button onClick={() => navigate('/food/delivery/profile')} className={`flex flex-col items-center gap-1 transition-all ${currentTab === 'profile' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
+          <UserIcon className="w-6 h-6" /><span className="text-[11px] font-medium font-sans">Profile</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
