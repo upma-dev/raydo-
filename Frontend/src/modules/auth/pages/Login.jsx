@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import apiClient, { authAPI } from "@food/api"
 import { setUnifiedAuthData, isUnifiedAuthenticated } from "@food/utils/auth"
 import { resolvePostLoginRoute } from "@/shared/utils/activeModule.js"
+import { getCachedSettings } from "@food/utils/businessSettings"
 
 export default function UnifiedOTPFastLogin() {
   const RESEND_COOLDOWN_SECONDS = 60
