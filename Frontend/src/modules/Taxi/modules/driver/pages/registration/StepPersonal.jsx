@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { User, Mail, Phone, ChevronRight, ArrowLeft } from 'lucide-react';
+import { User, Mail, Phone, ChevronRight, ArrowLeft, ChevronDown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -44,9 +44,41 @@ const StepPersonal = () => {
     useEffect(() => {
         const fetchZones = async () => {
             try {
-                const response = await getDriverServiceLocations();
-                const list = response?.data?.results || response?.data?.data?.results || response?.data || response?.results || [];
-                setZones(Array.isArray(list) ? list : []);
+                const [foodRes, taxiRes] = await Promise.allSettled([
+                    fetch("/api/v1/food/zones/public").then(r => r.json()),
+                    getDriverServiceLocations()
+                ]);
+
+                const combinedMap = new Map();
+
+                if (foodRes.status === "fulfilled" && foodRes.value) {
+                    const foodList = foodRes.value?.data?.zones || foodRes.value?.zones || foodRes.value?.data || [];
+                    if (Array.isArray(foodList)) {
+                        foodList.forEach(item => {
+                            const id = String(item._id || item.id || "");
+                            const name = item.name || item.zoneName || item.serviceLocation || "";
+                            if (id && name) {
+                                combinedMap.set(id, { _id: id, name, zoneName: name, type: "food" });
+                            }
+                        });
+                    }
+                }
+
+                if (taxiRes.status === "fulfilled" && taxiRes.value) {
+                    const taxiData = taxiRes.value;
+                    const taxiList = taxiData?.data?.results || taxiData?.results || taxiData?.data || taxiData || [];
+                    if (Array.isArray(taxiList)) {
+                        taxiList.forEach(item => {
+                            const id = String(item._id || item.id || "");
+                            const name = item.name || item.service_location_name || "";
+                            if (id && name && !combinedMap.has(id)) {
+                                combinedMap.set(id, { _id: id, name, service_location_name: name, type: "taxi" });
+                            }
+                        });
+                    }
+                }
+
+                setZones(Array.from(combinedMap.values()));
             } catch (err) {
                 console.error('Failed to fetch service locations:', err);
             }
@@ -205,26 +237,31 @@ const StepPersonal = () => {
 
                         <div className="space-y-3 pt-2">
                             <label className="block text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 opacity-70 px-2">Select Operating Zone / City</label>
-                            <select
-                                value={formData.serviceLocationId}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    const selected = zones.find((z) => String(z._id || z.id) === String(val));
-                                    setFormData((p) => ({
-                                        ...p,
-                                        serviceLocationId: val,
-                                        zoneName: selected?.name || selected?.service_location_name || '',
-                                    }));
-                                }}
-                                className="w-full rounded-2xl border-2 border-slate-50 bg-slate-50 p-4 text-[13px] font-black text-slate-900 outline-none focus:border-slate-900/10 focus:bg-white"
-                            >
-                                <option value="">-- Select Existing Zone (Optional) --</option>
-                                {zones.map((z) => (
-                                    <option key={z._id || z.id} value={z._id || z.id}>
-                                        {z.name || z.service_location_name}
-                                    </option>
-                                ))}
-                            </select>
+                            <div className="relative w-full max-w-full overflow-hidden">
+                                <select
+                                    value={formData.serviceLocationId}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const selected = zones.find((z) => String(z._id || z.id) === String(val));
+                                        setFormData((p) => ({
+                                            ...p,
+                                            serviceLocationId: val,
+                                            zoneName: selected?.name || selected?.zoneName || selected?.service_location_name || '',
+                                        }));
+                                    }}
+                                    className="w-full appearance-none rounded-2xl border-2 border-slate-50 bg-slate-50 p-4 pr-10 text-[13px] font-black text-slate-900 outline-none focus:border-slate-900/10 focus:bg-white cursor-pointer truncate max-w-full"
+                                >
+                                    <option value="" className="bg-white text-slate-800">-- Select Existing Zone (Optional) --</option>
+                                    {zones.map((z) => (
+                                        <option key={z._id || z.id} value={z._id || z.id} className="bg-white text-slate-800 py-1">
+                                            {z.name || z.zoneName || z.service_location_name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                                    <ChevronDown size={18} strokeWidth={2.5} />
+                                </div>
+                            </div>
                         </div>
 
                         <div className="space-y-3 pt-2">

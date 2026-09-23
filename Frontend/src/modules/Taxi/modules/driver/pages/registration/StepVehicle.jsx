@@ -137,19 +137,19 @@ const StepVehicle = () => {
     const [formData, setFormData] = useState({
         registerFor: getPrimaryRegisterFor(session.serviceCategories || session.vehicleSession?.vehicle?.serviceCategories || [], session.registerFor || 'taxi'),
         serviceCategories: normalizeServiceCategories(session.serviceCategories || session.vehicleSession?.vehicle?.serviceCategories || [], session.registerFor || 'taxi'),
-        locationId: session.locationId || '',
-        vehicleTypeId: session.vehicleTypeId || '',
-        make: session.make || '',
-        model: session.model || '',
-        year: session.year || '',
-        number: session.number || '',
-        color: session.color || '',
+        locationId: session.locationId || session.serviceLocationId || session.service_location_id || session.vehicleSession?.vehicle?.locationId || '',
+        vehicleTypeId: session.vehicleTypeId || session.vehicleSession?.vehicle?.vehicleTypeId || '',
+        make: session.make || session.vehicleSession?.vehicle?.make || '',
+        model: session.model || session.vehicleSession?.vehicle?.model || '',
+        year: session.year || session.vehicleSession?.vehicle?.year || '',
+        number: session.number || session.vehicleSession?.vehicle?.number || '',
+        color: session.color || session.vehicleSession?.vehicle?.color || '',
         // Company info for owners
-        companyName: session.companyName || '',
-        companyAddress: session.companyAddress || '',
-        city: session.city || '',
-        postalCode: session.postalCode || '',
-        taxNumber: session.taxNumber || '',
+        companyName: session.companyName || session.vehicleSession?.vehicle?.companyName || '',
+        companyAddress: session.companyAddress || session.vehicleSession?.vehicle?.companyAddress || '',
+        city: session.city || session.vehicleSession?.vehicle?.city || '',
+        postalCode: session.postalCode || session.vehicleSession?.vehicle?.postalCode || '',
+        taxNumber: session.taxNumber || session.vehicleSession?.vehicle?.taxNumber || '',
         customFields: session.customFields || session.vehicleSession?.vehicle?.customFields || {},
     });
     const [loading, setLoading] = useState(false);
@@ -374,7 +374,23 @@ const StepVehicle = () => {
                 setLoading(false);
             }
         } else {
-            setError(isOwner ? 'Please fill all required company information fields' : 'Please fill all required vehicle information fields');
+            const missingKey = required.find((key) => !isFilled(formData[key]));
+            const fieldNames = {
+                locationId: 'Operating City / Zone',
+                vehicleTypeId: 'Vehicle Type',
+                make: 'Brand / Make',
+                model: 'Model',
+                year: 'Year',
+                number: 'Plate Number',
+                color: 'Exterior Color',
+                companyName: 'Company Name',
+                companyAddress: 'Company Address',
+                city: 'City',
+                postalCode: 'Postal Code',
+                taxNumber: 'Tax Number',
+            };
+            const fieldLabel = fieldNames[missingKey] || missingKey || 'required fields';
+            setError(`Please fill ${fieldLabel}`);
         }
     };
 
@@ -829,10 +845,8 @@ const StepVehicle = () => {
                             whileTap={{ scale: 0.98 }}
                             onClick={handleContinue}
                             disabled={loading}
-                            className={`group flex h-16 w-full items-center justify-center gap-3 rounded-[1.8rem] text-[15px] font-black tracking-tight transition-all relative overflow-hidden ${
-                                canContinue && hasRequiredCustomFields
-                                ? 'bg-slate-900 text-white shadow-[0_20px_40px_rgba(0,0,0,0.2)] active:bg-black' 
-                                : 'pointer-events-none bg-slate-200 text-slate-400 shadow-none'
+                            className={`group flex h-16 w-full items-center justify-center gap-3 rounded-[1.8rem] text-[15px] font-black tracking-tight transition-all relative overflow-hidden bg-slate-900 text-white shadow-[0_20px_40px_rgba(0,0,0,0.2)] active:bg-black cursor-pointer ${
+                                loading ? 'opacity-60 cursor-not-allowed' : ''
                             }`}
                         >
                             {loading ? (

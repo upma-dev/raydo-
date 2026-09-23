@@ -60,7 +60,7 @@ export default function UnifiedOTPFastLogin() {
     if (typeof window !== 'undefined' && window.flutter_inappwebview) {
       try {
         window.flutter_inappwebview.callHandler('hideKeyboard')
-      } catch (_) {}
+      } catch (_) { }
     }
 
     if (step > 1) {
@@ -70,8 +70,8 @@ export default function UnifiedOTPFastLogin() {
 
     const fromPath = location.state?.from
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
-    const fallbackPath = (currentPath.includes('taxi') || localStorage.getItem('raydo_active_module') === 'taxi') 
-      ? '/taxi/user' 
+    const fallbackPath = (currentPath.includes('taxi') || localStorage.getItem('raydo_active_module') === 'taxi')
+      ? '/taxi/user'
       : '/food/user'
 
     // If fromPath points back to a login page itself or is missing, use module home

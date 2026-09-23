@@ -83,7 +83,8 @@ export async function updateBusinessSettings(req, res, next) {
         await settings.save();
         return sendResponse(res, 200, 'Business settings updated successfully', settings);
     } catch (error) {
-        next(error);
+        console.error("Error updating business settings:", error);
+        return res.status(500).json({ success: false, message: error?.message || 'Failed to update business settings' });
     }
 }
 

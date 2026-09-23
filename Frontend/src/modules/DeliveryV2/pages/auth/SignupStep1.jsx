@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import useDeliveryBackNavigation from "../../hooks/useDeliveryBackNavigation"
 const debugLog = (...args) => {}
@@ -49,10 +49,42 @@ export default function SignupStep1() {
     const fetchZones = async () => {
       setZonesLoading(true)
       try {
-        const res = await fetch("/api/v1/taxi/user/service-locations")
-        const data = await res.json()
-        const list = data?.data?.results || data?.results || []
-        setZones(list)
+        const [foodRes, taxiRes] = await Promise.allSettled([
+          fetch("/api/v1/food/zones/public"),
+          fetch("/api/v1/taxi/user/service-locations")
+        ])
+
+        const combinedMap = new Map()
+
+        if (foodRes.status === "fulfilled" && foodRes.value?.ok) {
+          const foodData = await foodRes.value.json().catch(() => null)
+          const foodList = foodData?.data?.zones || foodData?.zones || foodData?.data || []
+          if (Array.isArray(foodList)) {
+            foodList.forEach((item) => {
+              const id = String(item._id || item.id || "")
+              const name = item.name || item.zoneName || item.serviceLocation || ""
+              if (id && name) {
+                combinedMap.set(id, { _id: id, name, zoneName: name, type: "food" })
+              }
+            })
+          }
+        }
+
+        if (taxiRes.status === "fulfilled" && taxiRes.value?.ok) {
+          const taxiData = await taxiRes.value.json().catch(() => null)
+          const taxiList = taxiData?.data?.results || taxiData?.results || []
+          if (Array.isArray(taxiList)) {
+            taxiList.forEach((item) => {
+              const id = String(item._id || item.id || "")
+              const name = item.name || item.service_location_name || ""
+              if (id && name && !combinedMap.has(id)) {
+                combinedMap.set(id, { _id: id, name, service_location_name: name, type: "taxi" })
+              }
+            })
+          }
+        }
+
+        setZones(Array.from(combinedMap.values()))
       } catch (e) {
         debugError("Error loading service locations:", e)
       } finally {
@@ -138,7 +170,7 @@ export default function SignupStep1() {
       setFormData(prev => ({
         ...prev,
         zoneId: value,
-        zoneName: selected?.name || selected?.service_location_name || ""
+        zoneName: selected?.name || selected?.zoneName || selected?.service_location_name || ""
       }))
       if (errors.zoneId) setErrors(prev => ({ ...prev, zoneId: "" }))
       return
@@ -379,19 +411,27 @@ export default function SignupStep1() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Select Operating Zone / Service Area
             </label>
-            <select
-              name="zoneId"
-              value={formData.zoneId || ""}
-              onChange={handleChange}
-              className="w-full px-4 py-3 border rounded-xl bg-[#F8F9FA] border-gray-200 focus:outline-none focus:border-[#F38F24] focus:ring-1 focus:ring-[#F38F24] transition-all font-semibold text-[#1A1A1A]"
-            >
-              <option value="">-- Select Existing Zone (Optional) --</option>
-              {zones.map((zone) => (
-                <option key={zone._id || zone.id} value={zone._id || zone.id}>
-                  {zone.name || zone.service_location_name}
+            <div className="relative w-full max-w-full overflow-hidden">
+              <select
+                name="zoneId"
+                value={formData.zoneId || ""}
+                onChange={handleChange}
+                disabled={zonesLoading}
+                className="w-full appearance-none px-4 py-3 pr-10 border rounded-xl bg-[#F8F9FA] border-gray-200 focus:outline-none focus:border-[#F38F24] focus:ring-1 focus:ring-[#F38F24] transition-all font-semibold text-[#1A1A1A] cursor-pointer truncate max-w-full disabled:opacity-60"
+              >
+                <option value="" className="bg-white text-gray-800">
+                  {zonesLoading ? "Loading available zones..." : "-- Select Existing Zone (Optional) --"}
                 </option>
-              ))}
-            </select>
+                {zones.map((zone) => (
+                  <option key={zone._id || zone.id} value={zone._id || zone.id} className="bg-white text-gray-800 py-1">
+                    {zone.name || zone.zoneName || zone.service_location_name}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                <ChevronDown className="w-5 h-5" />
+              </div>
+            </div>
           </div>
 
           {/* Vehicle Type */}
@@ -399,17 +439,22 @@ export default function SignupStep1() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Vehicle Type <span className="text-red-500">*</span>
             </label>
-            <select
-              name="vehicleType"
-              value={formData.vehicleType}
-              onChange={handleChange}
-              className="w-full px-4 py-3 border rounded-xl bg-[#F8F9FA] border-gray-200 focus:outline-none focus:border-[#F38F24] focus:ring-1 focus:ring-[#F38F24] transition-all font-semibold text-[#1A1A1A]"
-            >
-              <option value="bike">Bike</option>
-              <option value="scooter">Scooter</option>
-              <option value="bicycle">Bicycle</option>
-              <option value="car">Car</option>
-            </select>
+            <div className="relative w-full max-w-full overflow-hidden">
+              <select
+                name="vehicleType"
+                value={formData.vehicleType}
+                onChange={handleChange}
+                className="w-full appearance-none px-4 py-3 pr-10 border rounded-xl bg-[#F8F9FA] border-gray-200 focus:outline-none focus:border-[#F38F24] focus:ring-1 focus:ring-[#F38F24] transition-all font-semibold text-[#1A1A1A] cursor-pointer truncate max-w-full"
+              >
+                <option value="bike" className="bg-white text-gray-800 py-1">Bike</option>
+                <option value="scooter" className="bg-white text-gray-800 py-1">Scooter</option>
+                <option value="bicycle" className="bg-white text-gray-800 py-1">Bicycle</option>
+                <option value="car" className="bg-white text-gray-800 py-1">Car</option>
+              </select>
+              <div className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                <ChevronDown className="w-5 h-5" />
+              </div>
+            </div>
           </div>
 
           {/* Vehicle Name */}
