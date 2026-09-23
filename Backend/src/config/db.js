@@ -9,29 +9,30 @@ try {
 
 export const connectDB = async () => {
     try {
-        const dnsServers = String(config.mongodbDnsServers || '8.8.8.8,1.1.1.1')
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean);
+        if (process.env.MONGODB_DNS_SERVERS) {
+            const dnsServers = String(process.env.MONGODB_DNS_SERVERS)
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
 
-        if (dnsServers.length > 0) {
-            try {
-                dns.setServers(dnsServers);
-                logger.info(`Using custom DNS servers for MongoDB lookup: ${dnsServers.join(', ')}`);
-            } catch (dnsError) {
-                logger.warn(`Failed to set custom DNS servers: ${dnsError.message}`);
+            if (dnsServers.length > 0) {
+                try {
+                    dns.setServers(dnsServers);
+                    logger.info(`Using custom DNS servers for MongoDB lookup: ${dnsServers.join(', ')}`);
+                } catch (dnsError) {
+                    logger.warn(`Failed to set custom DNS servers: ${dnsError.message}`);
+                }
             }
         }
 
         const conn = await mongoose.connect(config.mongodbUri, {
-            serverSelectionTimeoutMS: config.mongodbServerSelectionTimeoutMs,
-            connectTimeoutMS: config.mongodbConnectTimeoutMs,
+            serverSelectionTimeoutMS: Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || 10000),
+            connectTimeoutMS: Number(process.env.MONGODB_CONNECT_TIMEOUT_MS || 15000),
             family: 4, // Prefer IPv4 where local resolvers have IPv6/SRV issues.
         });
         logger.info(`MongoDB connected: ${conn.connection.host}`);
     } catch (error) {
         logger.error(`MongoDB connection error: ${error.message}`);
-        process.exit(1);
     }
 };
 
