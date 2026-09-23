@@ -352,7 +352,7 @@ export const useDeliveryNotifications = () => {
           audioRef.current.pause();
           audioRef.current.src = newSrc;
           audioRef.current.load();
-          debugLog('?? Audio source updated to:', selectedSound === 'original' ? 'Original' : 'Eqosy Tone');
+          debugLog('?? Audio source updated to:', selectedSound === 'original' ? 'Original' : 'Raydo Tone');
         }
       } else {
         // Initialize audio if not exists
@@ -361,7 +361,7 @@ export const useDeliveryNotifications = () => {
         audioRef.current.preload = 'auto';
         audioRef.current.volume = 0.9;
         audioRef.current.load();
-        debugLog('?? Audio initialized with:', selectedSound === 'original' ? 'Original' : 'Eqosy Tone', 'Source:', soundFile);
+        debugLog('?? Audio initialized with:', selectedSound === 'original' ? 'Original' : 'Raydo Tone', 'Source:', soundFile);
       }
 
       if (audioRef.current) {
@@ -405,7 +405,7 @@ export const useDeliveryNotifications = () => {
             requireInteraction: true,
             silent: false,
             vibrate: [200, 100, 200, 100, 300],
-            icon: '/eqosy-logo.png',
+            icon: '/raydo-logo.png',
             data: notificationOptions.data,
           });
           return;
@@ -417,7 +417,7 @@ export const useDeliveryNotifications = () => {
         tag: notificationOptions.tag,
         requireInteraction: true,
         silent: false,
-        icon: '/eqosy-logo.png',
+        icon: '/raydo-logo.png',
         data: notificationOptions.data,
       });
     } catch (error) {
@@ -712,7 +712,7 @@ export const useDeliveryNotifications = () => {
       audioRef.current = new Audio(soundFile);
       audioRef.current.preload = 'auto';
       audioRef.current.volume = 0.7;
-      debugLog('?? Audio initialized with:', selectedSound === 'original' ? 'Original' : 'Eqosy Tone');
+      debugLog('?? Audio initialized with:', selectedSound === 'original' ? 'Original' : 'Raydo Tone');
     } else {
       // Update audio source if preference changed
       const currentSrc = audioRef.current.src;
@@ -721,7 +721,7 @@ export const useDeliveryNotifications = () => {
         audioRef.current.pause();
         audioRef.current.src = newSrc;
         audioRef.current.load();
-        debugLog('?? Audio updated to:', selectedSound === 'original' ? 'Original' : 'Eqosy Tone');
+        debugLog('?? Audio updated to:', selectedSound === 'original' ? 'Original' : 'Raydo Tone');
       }
     }
 

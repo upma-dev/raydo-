@@ -1,5 +1,5 @@
 ﻿export const APP_CONFIG = {
-  NAME: 'Eqosy',
+  NAME: 'Raydo',
   VERSION: '1.0.0',
 };
 

@@ -1973,7 +1973,7 @@ const SelectVehicle = () => {
 
     const token = getLocalUserToken();
     if (!token) {
-      localStorage.setItem('eqosy_active_module', 'taxi');
+      localStorage.setItem('raydo_active_module', 'taxi');
       navigate('/taxi/user/login', { state: { from: location.pathname } });
       return;
     }

@@ -976,8 +976,10 @@ export const adminAPI = {
     // Add JSON data
     formData.append("data", JSON.stringify(data));
     // Add files
-    if (files.logo) formData.append("logo", files.logo);
-    if (files.favicon) formData.append("favicon", files.favicon);
+    const logoKeys = ["logo", "userLogo", "deliveryLogo", "driverLogo", "restaurantLogo", "adminLogo", "favicon"];
+    logoKeys.forEach((key) => {
+      if (files[key]) formData.append(key, files[key]);
+    });
 
     return apiClient.patch(API_ENDPOINTS.ADMIN.BUSINESS_SETTINGS, formData, {
       headers: { "Content-Type": "multipart/form-data" },

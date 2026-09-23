@@ -19,24 +19,32 @@ const getServiceAccountFromEnv = () => {
         if (existsSync(filePath)) {
             try {
                 cachedServiceAccount = JSON.parse(readFileSync(filePath, 'utf8'));
-                return cachedServiceAccount;
             } catch (err) {
                 logger.error(`Error reading or parsing firebase service account file at ${filePath}:`, err.message);
             }
         }
     }
 
-    const rawJson = sanitizeString(config.firebaseServiceAccount);
-    if (rawJson) {
-        try {
-            cachedServiceAccount = JSON.parse(rawJson);
-            return cachedServiceAccount;
-        } catch (err) {
-            logger.error('Error parsing FIREBASE_SERVICE_ACCOUNT JSON:', err.message);
+    if (!cachedServiceAccount) {
+        const rawJson = sanitizeString(config.firebaseServiceAccount);
+        if (rawJson) {
+            try {
+                cachedServiceAccount = JSON.parse(rawJson);
+            } catch (err) {
+                logger.error('Error parsing FIREBASE_SERVICE_ACCOUNT JSON:', err.message);
+            }
         }
     }
 
-    return null;
+    if (cachedServiceAccount && typeof cachedServiceAccount.private_key === 'string') {
+        let key = cachedServiceAccount.private_key.trim();
+        if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+            key = key.slice(1, -1);
+        }
+        key = key.replace(/\\n/g, '\n');
+        cachedServiceAccount.private_key = key;
+    }
+    return cachedServiceAccount;
 };
 
 /**
@@ -54,15 +62,20 @@ export const initializeFirebaseRealtime = () => {
         const serviceAccount = getServiceAccountFromEnv();
         const databaseURL = config.firebaseDatabaseUrl;
 
-        if (!serviceAccount) {
-            logger.warn('⚠️ Firebase service account not configured. Firebase features may not work.');
+        if (!serviceAccount || !serviceAccount.private_key || !serviceAccount.client_email) {
+            logger.warn('⚠️ Firebase service account not fully configured. Firebase features may not work.');
             return null;
         }
 
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            databaseURL: databaseURL || undefined
-        });
+        try {
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                databaseURL: databaseURL || undefined
+            });
+        } catch (certErr) {
+            logger.warn(`⚠️ Firebase credential certification error: ${certErr.message}. Firebase features disabled.`);
+            return null;
+        }
 
         db = admin.database();
         messaging = admin.messaging();

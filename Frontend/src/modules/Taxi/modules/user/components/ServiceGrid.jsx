@@ -1,132 +1,124 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { ArrowRight } from 'lucide-react';
 import { userService } from '../services/userService';
 import { POOLING_ENABLED, RENTAL_ENABLED } from '../../../shared/featureFlags';
-import toast from 'react-hot-toast';
-import { ArrowRight, Compass, Car, Package, Users, Bus } from 'lucide-react';
 import { getSavedLocationCoords } from '../services/locationStore';
 
-// Asset Imports
+// Vehicle Asset Imports
 import busImg from '../../../assets/3d images/AutoCab/bus.png';
 import poolingImg from '../../../assets/3d images/AutoCab/taxi.png';
 import outstationImg from '../../../assets/3d images/AutoCab/one way.png';
 import rideImg from '../../../assets/3d images/AutoCab/taxi.png';
 import deliveryImg from '../../../assets/icons/Delivery.png';
+import bikeImg from '../../../assets/icons/bike.png';
+import autoImg from '../../../assets/icons/auto.png';
 
-const ServiceCard = ({ icon, fallbackIcon, label, description, path, iconGradient, borderColor, delay }) => {
-  const navigate = useNavigate();
-  const [coords, setCoords] = useState({ x: 0, y: 0 });
-  const [isHovered, setIsHovered] = useState(false);
-  const [imgSrc, setImgSrc] = useState(icon);
+function getSavedStops() {
+  const stops = [];
+  try {
+    const homeSaved = window.localStorage.getItem('raydo:homeAddress') || window.localStorage.getItem('homeLocation');
+    if (homeSaved) {
+      stops.push({ id: 'home', label: 'Home', emoji: '🏠', path: '/taxi/user/ride/select-location?type=home' });
+    } else {
+      stops.push({ id: 'home', label: 'Home', emoji: '🏠', path: '/taxi/user/ride/select-location?type=home' });
+    }
 
-  useEffect(() => {
-    setImgSrc(icon);
-  }, [icon]);
+    const officeSaved = window.localStorage.getItem('raydo:officeAddress') || window.localStorage.getItem('officeLocation');
+    if (officeSaved) {
+      stops.push({ id: 'office', label: 'Office', emoji: '🏢', path: '/taxi/user/ride/select-location?type=office' });
+    } else {
+      stops.push({ id: 'office', label: 'Office', emoji: '🏢', path: '/taxi/user/ride/select-location?type=office' });
+    }
 
-  const handleMouseMove = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left - rect.width / 2;
-    const y = e.clientY - rect.top - rect.height / 2;
-    // Magnetic physics pull (4px limit for square cards)
-    setCoords({ x: (x / rect.width) * 5, y: (y / rect.height) * 5 });
-  };
+    const lastLoc = JSON.parse(window.localStorage.getItem('raydo:lastLocation') || '{}');
+    if (lastLoc?.address) {
+      const shortAddr = lastLoc.address.split(',')[0].trim();
+      stops.push({ id: 'recent', label: shortAddr.length > 12 ? `${shortAddr.slice(0, 10)}...` : shortAddr, emoji: '📍', path: '/taxi/user/ride/select-location' });
+    } else {
+      stops.push({ id: 'airport', label: 'Airport', emoji: '✈️', path: '/taxi/user/ride/select-location?destination=Airport' });
+    }
+  } catch (err) {
+    stops.push({ id: 'airport', label: 'Airport', emoji: '✈️', path: '/taxi/user/ride/select-location?destination=Airport' });
+  }
 
-  const handleMouseLeave = () => {
-    setCoords({ x: 0, y: 0 });
-    setIsHovered(false);
-  };
+  stops.push({ id: 'add', label: 'Add Stop', emoji: '➕', path: '/taxi/user/ride/select-location' });
+  return stops;
+}
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20, filter: 'blur(6px)' }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      transition={{ delay, duration: 0.4, ease: 'easeOut' }}
-      className="relative w-full"
-    >
-      {/* Glowing background on hover (outside color glow) */}
-      <motion.div
-        animate={isHovered ? { opacity: 0.9, scale: 1.05 } : { opacity: 0, scale: 1 }}
-        transition={{ duration: 0.3 }}
-        className={`absolute -inset-0.5 rounded-[14px] bg-gradient-to-br ${iconGradient} blur-md opacity-0 pointer-events-none z-0`}
-      />
-
-      <motion.button
-        type="button"
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        onMouseEnter={() => setIsHovered(true)}
-        onClick={() => path && navigate(path)}
-        animate={{ x: coords.x, y: coords.y }}
-        whileHover={{ y: -6, scale: 1.03 }}
-        whileTap={{ scale: 0.97 }}
-        className="relative z-10 w-full min-h-[112px] flex flex-col items-center justify-between p-3 rounded-[16px] bg-white/90 border border-slate-200/60 backdrop-blur-xl shadow-md shadow-slate-200/20 hover:shadow-xl hover:shadow-slate-300/40 transition-all duration-300 text-center overflow-hidden select-none group"
-      >
-        {/* Shine Sweep Effect */}
-        <motion.div
-          animate={isHovered ? { x: ['-100%', '200%'] } : { x: '-100%' }}
-          transition={{ duration: 0.8, ease: 'easeInOut' }}
-          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none z-20"
-        />
-
-        {/* Center: Icon container with continuous floating animation */}
-        <div className="flex flex-col items-center justify-center flex-1 w-full pt-1 pb-0.5">
-          <motion.div
-            animate={{ y: [0, -3, 0] }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-            className="flex items-center justify-center"
-          >
-            <motion.img
-              animate={isHovered ? { rotate: [0, 4, 0], scale: 1.1 } : { scale: 1 }}
-              transition={{ duration: 0.3 }}
-              src={imgSrc || icon}
-              onError={() => fallbackIcon && setImgSrc(fallbackIcon)}
-              alt={label || ''}
-              className="h-12 w-12 object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.12)]"
-            />
-          </motion.div>
-        </div>
-
-        {/* Bottom: Text area */}
-        <div className="w-full flex flex-col items-center justify-center mt-1">
-          <h3 className="text-[11px] font-extrabold text-slate-800 tracking-tight leading-snug line-clamp-1 w-full px-0.5">
-            {label}
-          </h3>
-          {description && (
-            <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide leading-tight mt-0.5 line-clamp-1 w-full px-0.5">
-              {description}
-            </p>
-          )}
-        </div>
-      </motion.button>
-    </motion.div>
-  );
-};
-
-const DEFAULT_SERVICES = [
-  { id: 'cab', icon: rideImg, label: 'Cab', description: 'Ride', iconGradient: 'from-[#FF6B00] to-[#FF8C42]', path: '/taxi/user/ride/select-location' },
-  { id: 'parcel', icon: deliveryImg, label: 'Parcel', description: 'Send Pack', iconGradient: 'from-[#FF8A65] to-[#E53935]', path: '/taxi/user/parcel/type' },
-  { id: 'outstation', icon: outstationImg, label: 'Book Outstation', description: 'Intercity', iconGradient: 'from-[#1E3A8A] to-[#2563EB]', path: '/taxi/user/intercity' },
-  { id: 'bus', icon: busImg, label: 'Bus', description: 'Reserve', iconGradient: 'from-[#7C3AED] to-[#A855F7]', path: '/taxi/user/bus' },
-  { id: 'pooling', icon: poolingImg, label: 'Pooling', description: 'Share Cab', iconGradient: 'from-[#10B981] to-[#34D399]', path: '/taxi/user/pooling' },
+const DEFAULT_SERVICE_CARDS = [
+  {
+    id: 'cab',
+    name: 'Cab',
+    desc: 'Fast Cab',
+    icon: rideImg,
+    fallbackIcon: rideImg,
+    eta: '3 min',
+    fare: null,
+    fareStatus: 'dynamic',
+    status: 'available',
+    path: '/taxi/user/ride/select-location',
+  },
+  {
+    id: 'bike',
+    name: 'Bike',
+    desc: 'Quick Ride',
+    icon: bikeImg,
+    fallbackIcon: bikeImg,
+    eta: '2 min',
+    fare: null,
+    fareStatus: 'dynamic',
+    status: 'available',
+    path: '/taxi/user/ride/select-location',
+  },
+  {
+    id: 'parcel',
+    name: 'Parcel',
+    desc: 'Send package',
+    icon: deliveryImg,
+    fallbackIcon: deliveryImg,
+    eta: '5 min',
+    fare: null,
+    fareStatus: 'dynamic',
+    status: 'available',
+    path: '/taxi/user/parcel/type',
+  },
+  {
+    id: 'bus',
+    name: 'Bus',
+    desc: 'City transit',
+    icon: busImg,
+    fallbackIcon: busImg,
+    eta: '6 min',
+    fare: null,
+    fareStatus: 'dynamic',
+    status: 'available',
+    path: '/taxi/user/bus',
+  },
+  {
+    id: 'outstation',
+    name: 'Outstation',
+    desc: 'Intercity',
+    icon: outstationImg,
+    fallbackIcon: outstationImg,
+    eta: '10 min',
+    fare: null,
+    fareStatus: 'dynamic',
+    status: 'available',
+    path: '/taxi/user/intercity',
+  },
 ];
 
 const ServiceGrid = ({ plain = false }) => {
-  const [services, setServices] = useState(DEFAULT_SERVICES);
+  const navigate = useNavigate();
+  const [serviceCards, setServiceCards] = useState(DEFAULT_SERVICE_CARDS);
+  const [savedStops, setSavedStops] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const getPath = (module) => {
-    if (module.transport_type === 'delivery') return '/taxi/user/parcel/type';
-    if (RENTAL_ENABLED && module.service_type === 'rental') return '/taxi/user/rental';
-    if (module.service_type === 'outstation') return '/taxi/user/intercity';
-    if (POOLING_ENABLED && (module.service_type === 'pooling' || module.name.toLowerCase().includes('pooling'))) {
-      return '/taxi/user/pooling';
-    }
-    if (module.service_type === 'bus' || module.name.toLowerCase().includes('bus')) {
-      return '/taxi/user/bus';
-    }
-    return '/taxi/user/ride/select-location';
-  };
+  useEffect(() => {
+    setSavedStops(getSavedStops());
+  }, []);
 
   useEffect(() => {
     const fetchServices = async () => {
@@ -141,7 +133,6 @@ const ServiceGrid = ({ plain = false }) => {
         const res = await userService.getAppModules(params);
         const results = res?.results || res?.data?.results || [];
 
-        // Filter active app modules
         const activeModules = results.filter((m) => {
           if (!m.active) return false;
           if (!RENTAL_ENABLED && m.service_type === 'rental') return false;
@@ -151,70 +142,79 @@ const ServiceGrid = ({ plain = false }) => {
           return true;
         });
 
-        // Config mappings matching premium designs & admin settings
-        const mapped = activeModules.map((m, idx) => {
-          const nameLower = String(m.name || '').toLowerCase();
-          const isBus = m.service_type === 'bus' || nameLower.includes('bus');
-          const isPooling = m.service_type === 'pooling' || nameLower.includes('pooling');
-          const isOutstation = m.service_type === 'outstation' || nameLower.includes('outstation');
-          const isParcel = m.transport_type === 'delivery' || nameLower.includes('parcel') || nameLower.includes('delivery');
+        if (activeModules.length > 0) {
+          const mapped = activeModules.map((m, idx) => {
+            const nameLower = String(m.name || '').toLowerCase();
+            const isParcel = m.transport_type === 'delivery' || nameLower.includes('parcel') || nameLower.includes('delivery');
+            const isOutstation = m.service_type === 'outstation' || nameLower.includes('outstation');
+            const isPooling = m.service_type === 'pooling' || nameLower.includes('pooling');
+            const isBus = m.service_type === 'bus' || nameLower.includes('bus');
+            const isBike = nameLower.includes('bike');
+            const isAuto = nameLower.includes('auto');
 
-          const adminIcon = (
-            m.mobile_menu_icon ||
-            m.mobile_menu_cover_image ||
-            m.icon ||
-            m.image ||
-            m.thumbnail ||
-            m.icon_url
-          );
+            const adminIcon = (
+              m.mobile_menu_icon ||
+              m.mobile_menu_cover_image ||
+              m.icon ||
+              m.image ||
+              m.thumbnail ||
+              m.icon_url
+            );
 
-          let fallbackIcon = rideImg;
-          let iconGradient = 'from-[#FF6B00] to-[#FF8C42]';
-          let label = m.name || 'Cab';
-          let description = m.short_description || 'Ride';
+            let fallbackIcon = rideImg;
+            let eta = '3 min';
+            let desc = 'Fast Cab';
+            let path = '/taxi/user/ride/select-location';
 
-          if (isParcel) {
-            fallbackIcon = deliveryImg;
-            iconGradient = 'from-[#FF8A65] to-[#E53935]';
-            if (!m.short_description) description = 'Send Pack';
-          } else if (isOutstation) {
-            fallbackIcon = outstationImg;
-            iconGradient = 'from-[#1E3A8A] to-[#2563EB]';
-            if (!m.short_description) description = 'Intercity';
-          } else if (isBus) {
-            fallbackIcon = busImg;
-            iconGradient = 'from-[#7C3AED] to-[#A855F7]';
-            if (!m.short_description) description = 'Reserve';
-          } else if (isPooling) {
-            fallbackIcon = poolingImg;
-            iconGradient = 'from-[#10B981] to-[#34D399]';
-            if (!m.short_description) description = 'Share Cab';
-          }
+            if (isBike) {
+              fallbackIcon = bikeImg;
+              eta = '2 min';
+              desc = 'Quick Ride';
+            } else if (isAuto) {
+              fallbackIcon = autoImg;
+              eta = '3 min';
+              desc = 'City Auto';
+            } else if (isParcel) {
+              fallbackIcon = deliveryImg;
+              eta = '5 min';
+              desc = 'Send package';
+              path = '/taxi/user/parcel/type';
+            } else if (isBus) {
+              fallbackIcon = busImg;
+              eta = '6 min';
+              desc = 'City transit';
+              path = '/taxi/user/bus';
+            } else if (isOutstation) {
+              fallbackIcon = outstationImg;
+              eta = '10 min';
+              desc = 'Intercity';
+              path = '/taxi/user/intercity';
+            } else if (isPooling) {
+              fallbackIcon = poolingImg;
+              eta = '4 min';
+              desc = 'Share Cab';
+              path = '/taxi/user/pooling';
+            }
 
-          const hasBikeIcon = adminIcon && (String(adminIcon).includes('1_Bike') || String(adminIcon).includes('bike.png'));
-          const resolvedIcon = isParcel
-            ? (adminIcon && !hasBikeIcon ? adminIcon : deliveryImg)
-            : (adminIcon && String(adminIcon).trim() !== '' ? adminIcon : fallbackIcon);
+            const resolvedIcon = (adminIcon && String(adminIcon).trim() !== '') ? adminIcon : fallbackIcon;
 
-          return {
-            id: m._id || idx,
-            icon: resolvedIcon,
-            fallbackIcon,
-            label,
-            description,
-            iconGradient,
-            path: getPath(m)
-          };
-        }).filter((item) => Boolean(item.path));
-
-        if (mapped.length > 0) {
-          setServices(mapped);
-        } else {
-          setServices(DEFAULT_SERVICES);
+            return {
+              id: m._id || idx,
+              name: m.name || 'Cab',
+              desc: m.short_description || desc,
+              icon: resolvedIcon,
+              fallbackIcon,
+              eta: m.estimated_time || eta,
+              fare: m.base_fare ? Number(m.base_fare) : null,
+              fareStatus: 'dynamic',
+              status: 'available',
+              path,
+            };
+          });
+          setServiceCards(mapped);
         }
       } catch (err) {
-        console.warn('Failed to load services from API, falling back to defaults:', err);
-        setServices(DEFAULT_SERVICES);
+        console.warn('Using default service cards:', err);
       } finally {
         setLoading(false);
       }
@@ -223,124 +223,144 @@ const ServiceGrid = ({ plain = false }) => {
     fetchServices();
   }, []);
 
-  const optionCount = loading ? '...' : services.length;
-  const optionLabel = services.length === 1 ? 'Service' : 'Services';
-
-  // Dynamic subtitle listing loaded services
-  const serviceListText = services.map(s => s.label).join(', ');
-  const dynamicSubtitle = loading
-    ? 'Everything you need in one app.'
-    : `${serviceListText} and more in one app.`;
-
-  const containerClass = plain
-    ? 'relative z-10 px-5 mt-1'
-    : 'w-full rounded-b-[32px] rounded-t-none bg-gradient-to-br from-[#EBF1FA] via-[#F3F7FC] to-[#F8FAFC] border-b border-x border-blue-100/20 shadow-[0_24px_50px_rgba(30,41,59,0.04)] relative overflow-hidden px-5 pb-6 pt-3';
-
   return (
-    <div className={containerClass}>
-      {/* 1. Background Animated Blobs (only if NOT plain) */}
-      {!plain && (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <motion.div
-            animate={{
-              x: [0, 20, 0],
-              y: [0, -15, 0],
-            }}
-            transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute top-5 left-5 w-52 h-52 rounded-full bg-[#3B82F6]/5 blur-[60px]"
-          />
-          <motion.div
-            animate={{
-              x: [0, -15, 0],
-              y: [0, 20, 0],
-            }}
-            transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute bottom-10 right-5 w-60 h-60 rounded-full bg-[#6366F1]/5 blur-[80px]"
-          />
-        </div>
-      )}
-
-      {/* 2. Tiny Floating Particles (only if NOT plain) */}
-      {!plain && (
-        <div className="absolute inset-0 pointer-events-none opacity-20">
-          {[...Array(4)].map((_, i) => (
-            <motion.div
-              key={i}
-              initial={{ y: 200, x: Math.random() * 320, opacity: 0.05 }}
-              animate={{
-                y: -30,
-                opacity: [0.05, 0.3, 0.05],
-              }}
-              transition={{
-                duration: 7 + Math.random() * 3,
-                repeat: Infinity,
-                delay: i * 2,
-                ease: 'linear'
-              }}
-              className="absolute w-1.5 h-1.5 rounded-full bg-blue-300"
-            />
-          ))}
-        </div>
-      )}
-
-      {/* 3. Header Section */}
-      <div className="relative z-10 flex items-start justify-between gap-4 mb-4">
-        <div>
-          <motion.p
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-600"
-          >
-            SERVICES
-          </motion.p>
-          <motion.h2
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="mt-0.5 text-[20px] font-black tracking-tight text-slate-800 leading-tight"
-          >
-            Choose your next ride
-          </motion.h2>
-          <motion.p
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="mt-1 text-[11px] font-bold text-slate-500 leading-tight"
-          >
-            {dynamicSubtitle}
-          </motion.p>
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.15 }}
-          whileHover={{ scale: 1.05, boxShadow: '0 0 15px rgba(59,130,246,0.15)' }}
-          className="flex items-center gap-1 rounded-full border border-blue-200/30 bg-blue-50/50 backdrop-blur-md px-3 py-1 text-[9px] font-black text-blue-600 transition-all cursor-pointer group flex-shrink-0"
-        >
-          <span>{optionCount} {optionLabel}</span>
-          <ArrowRight size={9} className="transform group-hover:translate-x-1 transition-transform" />
-        </motion.div>
+    <div className="relative w-full bg-[#F0F5FD] text-[#111827]">
+      {/* 1. VISUAL HERO TRANSITION CURVE */}
+      <div className="relative w-full pointer-events-none z-20 overflow-hidden leading-none">
+        <svg viewBox="0 0 1440 32" fill="none" className="w-full h-4 sm:h-6 preserve-3d" preserveAspectRatio="none">
+          <path d="M0,0 C480,32 960,32 1440,0 L1440,32 L0,32 Z" fill="#F0F5FD" />
+        </svg>
       </div>
 
-      {/* 4. Grid of Square Cards (Left aligned) */}
-      <div className="relative z-10 grid grid-cols-3 gap-3.5">
-        {loading ? (
-          [...Array(5)].map((_, i) => (
-            <div key={i} className="w-full h-[112px] animate-pulse rounded-[16px] border border-white/80 bg-white/40" />
-          ))
-        ) : (
-          services.map((service, index) => (
-            <ServiceCard
-              key={service.id}
-              delay={0.2 + index * 0.06}
-              {...service}
-            />
-          ))
-        )}
+      {/* Main Content Area (390px mobile target, 18px horizontal padding) */}
+      <div className="relative z-10 px-[18px] pt-1.5 pb-4">
+        {/* ========================================================================= */}
+        {/* 1. QUICK STOPS (Saved / Remembered Locations) */}
+        {/* ========================================================================= */}
+        <div className="mb-4 mt-0">
+          <h3 className="text-[14px] font-extrabold text-[#111827] mb-2 tracking-tight flex items-center gap-1.5">
+            <span>Quick stops</span>
+            <span className="text-[10px] font-semibold text-[#667085] bg-white px-2 py-0.5 rounded-full border border-indigo-100">Saved</span>
+          </h3>
+
+          <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1 px-[18px] -mx-[18px]">
+            {savedStops.map((stop, idx) => (
+              <motion.button
+                key={stop.id || idx}
+                type="button"
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: idx * 0.05 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => navigate(stop.path)}
+                className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full bg-white border border-indigo-100/90 shadow-[0_4px_14px_rgba(30,41,59,0.03)] hover:border-[#FFC400] transition-all cursor-pointer text-[#111827]"
+              >
+                <span className="text-[15px] leading-none">{stop.emoji}</span>
+                <span className="text-[13px] font-extrabold text-[#111827]">{stop.label}</span>
+              </motion.button>
+            ))}
+          </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* 4. CHOOSE YOUR RIDE (Compact Light Cards with Admin Vehicle Icons) */}
+        {/* ========================================================================= */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[20px] font-black text-[#111827] tracking-tight">
+              Choose your ride
+            </h3>
+            <div className="flex items-center gap-1.5 bg-white/90 border border-indigo-100 px-2.5 py-1 rounded-full shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-[#FFC400] animate-pulse" />
+              <span className="text-[11px] font-extrabold text-[#667085]">Live availability</span>
+            </div>
+          </div>
+
+          {/* Horizontally scrollable compact light cards */}
+          <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-1 px-[18px] -mx-[18px]">
+            {loading ? (
+              [...Array(4)].map((_, i) => (
+                <div
+                  key={i}
+                  className="shrink-0 w-[142px] h-[115px] animate-pulse rounded-[16px] bg-white border border-slate-200"
+                />
+              ))
+            ) : (
+              serviceCards.map((card, idx) => {
+                const renderFareText = () => {
+                  if (card.status === 'loading') return 'Finding rides...';
+                  if (card.status === 'unavailable') return 'Unavailable';
+                  if (card.status === 'error') return 'Try again';
+                  if (card.fare !== null && card.fare !== undefined && !Number.isNaN(Number(card.fare))) {
+                    return `₹${card.fare}`;
+                  }
+                  return 'Live fare';
+                };
+
+                const renderEtaText = () => {
+                  if (card.eta) return card.eta;
+                  return 'Live';
+                };
+
+                return (
+                  <motion.div
+                    key={card.id}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.4, delay: idx * 0.07 }}
+                    whileHover={{ y: -2, scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => navigate(card.path)}
+                    className="shrink-0 w-[142px] p-3 rounded-[16px] bg-white border border-slate-200/80 shadow-[0_6px_20px_rgba(30,41,59,0.04)] flex flex-col justify-between cursor-pointer group transition-all"
+                  >
+                    {/* Top Row: Vehicle Icon + ETA */}
+                    <div className="flex items-start justify-between w-full mb-1">
+                      <div className="h-9 w-9 flex items-center justify-center">
+                        <img
+                          src={card.icon}
+                          onError={(e) => {
+                            if (card.fallbackIcon && e.target.src !== card.fallbackIcon) {
+                              e.target.src = card.fallbackIcon;
+                            }
+                          }}
+                          alt={card.name}
+                          className="h-full w-full object-contain drop-shadow-xs group-hover:scale-110 transition-transform"
+                        />
+                      </div>
+                      <span className="text-[9.5px] font-bold text-[#667085] bg-[#F0F5FD] px-2 py-0.5 rounded-full border border-indigo-100">
+                        {renderEtaText()}
+                      </span>
+                    </div>
+
+                    {/* Title */}
+                    <div>
+                      <h4 className="text-[14px] font-black text-[#111827] tracking-tight leading-tight">
+                        {card.name}
+                      </h4>
+                      <p className="text-[10px] font-medium text-[#667085] mt-0.5 line-clamp-1">
+                        {card.desc}
+                      </p>
+                    </div>
+
+                    {/* Footer: Live Fare + Arrow CTA */}
+                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between w-full">
+                      <span className="text-[12px] font-black text-[#111827] truncate">
+                        {renderFareText()}
+                      </span>
+                      <div className="h-6.5 w-6.5 rounded-full bg-[#FFC400] text-[#111827] flex items-center justify-center shadow-xs shrink-0 group-hover:scale-110 transition-transform">
+                        <ArrowRight size={12} strokeWidth={3} />
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 };
 
 export default ServiceGrid;
+

@@ -134,7 +134,6 @@ export default function UserRouter() {
             }
           />
           <Route path="under-250" element={<Under250 />} />
-          <Route path="grocery" element={<Navigate to="/food/user?vertical=grocery" replace />} />
           <Route path="categories" element={<Categories />} />
           <Route path="category/:category" element={<CategoryPage />} />
           <Route path="restaurants" element={<Restaurants />} />

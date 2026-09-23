@@ -189,7 +189,7 @@ const DriverWallet = () => {
     const navigate = useNavigate();
     const { settings: appSettings } = useSettings();
     const isOwnerPortal = location.pathname.startsWith('/taxi/owner');
-    const appName = appSettings.general?.app_name || 'Eqosy';
+    const appName = appSettings.general?.app_name || 'Raydo';
     const activePaymentGateway = appSettings.paymentGateway || null;
     const [wallet, setWallet] = useState(emptyWallet);
     const [transactions, setTransactions] = useState([]);

@@ -58,7 +58,7 @@ const RegistrationStatus = () => {
   const requestInFlightRef = useRef(false);
   const mountedRef = useRef(false);
 
-  const appName = settings.general?.app_name || "Eqosy";
+  const appName = settings.general?.app_name || "Raydo";
   const appLogo = settings.general?.logo || settings.customization?.logo;
   const isVehicleReapproval = location.state?.statusReason === "vehicle-update" || driver?.approve === false;
   const routePrefix = location.pathname.startsWith('/taxi/owner') ? '/taxi/owner' : '/taxi/driver';

@@ -10,22 +10,22 @@ dotenv.config();
 
 const DEFAULTS = {
   admin: {
-    email: "Eqosyindia@gmail.com",
-    password: "sahin.eqosy@2004#",
-    name: "Eqosy Admin",
+    email: "Raydoindia@gmail.com",
+    password: "om.raydo@2004#",
+    name: "Raydo Admin",
     servicesAccess: ["food", "quickCommerce", "taxi"],
   },
   user: {
     phone: "9407046608",
     countryCode: "+91",
-    name: "Eqosy User",
+    name: "Raydo User",
   },
   restaurant: {
     phone: "9009925021",
     countryCode: "+91",
-    restaurantName: "Eqosy Demo Restaurant",
-    ownerName: "Eqosy Restaurant Owner",
-    ownerEmail: "restaurant@eqosy.com",
+    restaurantName: "Raydo Demo Restaurant",
+    ownerName: "Raydo Restaurant Owner",
+    ownerEmail: "restaurant@raydo.com",
     city: "Bhopal",
     state: "Madhya Pradesh",
     status: "approved",
@@ -33,7 +33,7 @@ const DEFAULTS = {
   delivery: {
     phone: "7610416911",
     countryCode: "+91",
-    name: "Eqosy Delivery Partner",
+    name: "Raydo Delivery Partner",
     city: "Bhopal",
     state: "Madhya Pradesh",
     vehicleType: "bike",

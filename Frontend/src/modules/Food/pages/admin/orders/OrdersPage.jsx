@@ -220,7 +220,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         requireInteraction: true,
         silent: false,
         vibrate: [200, 100, 200, 100, 300],
-        icon: "/eqosy-logo.png",
+        icon: "/raydo-logo.png",
         data: { targetUrl: "/admin/orders/all" },
       }
 

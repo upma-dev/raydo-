@@ -212,7 +212,7 @@ export const adminSidebarMenu = [
     type: "section",
     label: "BANNER SETTINGS",
     items: [
-      { type: "link", label: "Eqosy Landing Settings", path: "/admin/food/eqosy-landing-settings", icon: "Settings" },
+      { type: "link", label: "Raydo Landing Settings", path: "/admin/food/raydo-landing-settings", icon: "Settings" },
       { type: "link", label: "Landing Page Management", path: "/admin/food/hero-banner-management", icon: "Image" },
       { type: "link", label: "Promotional Banners", path: "/admin/food/promotional-banner", icon: "Megaphone" },
       { type: "link", label: "General Banners", path: "/admin/food/banners", icon: "Image" },
@@ -231,7 +231,7 @@ export const adminSidebarMenu = [
     label: "SYSTEM SETTINGS",
     items: [
       { type: "link", label: "Broadcast Notification", path: "/admin/food/broadcast-notification", icon: "Bell" },
-      { type: "link", label: "Business Setup", path: "/admin/food/business-setup", icon: "Settings" },
+      { type: "link", label: "Global Branding & Setup", path: "/admin/food/business-setup", icon: "Settings" },
     ],
   },
   {

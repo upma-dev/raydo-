@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import eqosyLogo from '@food/assets/eqosy-logo.png';
+import defaultRaydoLogo from '@food/assets/raydo-logo.png';
+import { getCachedSettings, loadBusinessSettings } from '@food/utils/businessSettings';
 
 /**
  * AppOpeningAnimation - Premium 1:1 Super App Launch & Opening Animation
@@ -8,14 +9,54 @@ import eqosyLogo from '@food/assets/eqosy-logo.png';
  * and high-end split door opening reveal.
  */
 export default function AppOpeningAnimation() {
+  const [logoUrl, setLogoUrl] = useState(() => {
+    const cached = getCachedSettings();
+    return cached?.userLogo?.url || cached?.logo?.url || defaultRaydoLogo;
+  });
+
+  const [companyName, setCompanyName] = useState(() => {
+    return getCachedSettings()?.companyName || 'RAYDO';
+  });
+
   const [showAnimation, setShowAnimation] = useState(() => {
     if (typeof window === 'undefined') return false;
     // Show opening animation once per session or on app launch
-    const hasSeenSession = sessionStorage.getItem('eqosy_opened_animation');
+    const hasSeenSession = sessionStorage.getItem('raydo_opened_animation');
     return !hasSeenSession;
   });
 
   const [isOpening, setIsOpening] = useState(false);
+
+  useEffect(() => {
+    const fetchFreshBranding = async () => {
+      try {
+        const s = await loadBusinessSettings();
+        if (s) {
+          if (s.userLogo?.url || s.logo?.url) {
+            setLogoUrl(s.userLogo?.url || s.logo?.url);
+          }
+          if (s.companyName) {
+            setCompanyName(s.companyName);
+          }
+        }
+      } catch (err) {}
+    };
+    fetchFreshBranding();
+
+    const handleSettingsUpdate = () => {
+      const cached = getCachedSettings();
+      if (cached) {
+        if (cached.userLogo?.url || cached.logo?.url) {
+          setLogoUrl(cached.userLogo?.url || cached.logo?.url);
+        }
+        if (cached.companyName) {
+          setCompanyName(cached.companyName);
+        }
+      }
+    };
+    window.addEventListener('businessSettingsUpdated', handleSettingsUpdate);
+    return () => window.removeEventListener('businessSettingsUpdated', handleSettingsUpdate);
+  }, []);
 
   useEffect(() => {
     if (!showAnimation) return;
@@ -30,7 +71,7 @@ export default function AppOpeningAnimation() {
     const dismissTimer = setTimeout(() => {
       setShowAnimation(false);
       try {
-        sessionStorage.setItem('eqosy_opened_animation', 'true');
+        sessionStorage.setItem('raydo_opened_animation', 'true');
       } catch {
         // ignore
       }
@@ -58,10 +99,10 @@ export default function AppOpeningAnimation() {
           initial={{ x: '0%' }}
           animate={{ x: isOpening ? '-100%' : '0%' }}
           transition={{ duration: 0.85, ease: [0.77, 0, 0.175, 1] }}
-          className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-br from-[#0B172A] via-[#0F172A] to-[#1E293B] border-r border-amber-500/20 shadow-2xl flex items-center justify-end pr-6 z-20"
+          className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-br from-[#111625] via-[#1A1F30] to-[#0F172A] border-r border-amber-400/30 shadow-2xl flex items-center justify-end pr-6 z-20"
         >
           {/* Subtle Background Radial Glow */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(251,191,36,0.15)_0%,transparent_60%)] pointer-events-none" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,199,0,0.2)_0%,transparent_60%)] pointer-events-none" />
         </motion.div>
 
         {/* Right Curtain / Door */}
@@ -69,10 +110,10 @@ export default function AppOpeningAnimation() {
           initial={{ x: '0%' }}
           animate={{ x: isOpening ? '100%' : '0%' }}
           transition={{ duration: 0.85, ease: [0.77, 0, 0.175, 1] }}
-          className="absolute inset-y-0 right-0 w-1/2 bg-gradient-to-bl from-[#0B172A] via-[#0F172A] to-[#1E293B] border-l border-amber-500/20 shadow-2xl flex items-center justify-start pl-6 z-20"
+          className="absolute inset-y-0 right-0 w-1/2 bg-gradient-to-bl from-[#111625] via-[#1A1F30] to-[#0F172A] border-l border-amber-400/30 shadow-2xl flex items-center justify-start pl-6 z-20"
         >
           {/* Subtle Background Radial Glow */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.15)_0%,transparent_60%)] pointer-events-none" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,58,237,0.2)_0%,transparent_60%)] pointer-events-none" />
         </motion.div>
 
         {/* Center Animated Logo & Branding Content */}
@@ -90,10 +131,10 @@ export default function AppOpeningAnimation() {
             <motion.div 
               animate={{ 
                 scale: [1, 1.25, 1],
-                opacity: [0.4, 0.7, 0.4] 
+                opacity: [0.4, 0.8, 0.4] 
               }}
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute -inset-8 rounded-full bg-gradient-to-r from-amber-500/30 via-yellow-400/20 to-orange-500/30 blur-2xl"
+              className="absolute -inset-8 rounded-full bg-gradient-to-r from-amber-500/40 via-yellow-400/30 to-amber-600/40 blur-2xl"
             />
 
             {/* Main Brand Logo */}
@@ -103,17 +144,22 @@ export default function AppOpeningAnimation() {
               transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
               className="relative z-10 flex flex-col items-center"
             >
-              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-white/10 backdrop-blur-xl p-3 border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center justify-center mb-4">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-white/10 backdrop-blur-xl p-3 border border-amber-400/30 shadow-[0_20px_50px_rgba(0,0,0,0.6)] flex items-center justify-center mb-4">
                 <img 
-                  src={eqosyLogo} 
-                  alt="Eqosy Super App Logo" 
+                  src={logoUrl || defaultRaydoLogo} 
+                  alt={`${companyName} Logo`}
+                  onError={(e) => {
+                    if (e.target.src !== defaultRaydoLogo) {
+                      e.target.src = defaultRaydoLogo;
+                    }
+                  }}
                   className="w-full h-full object-contain filter drop-shadow-md"
                 />
               </div>
 
               {/* Brand Title */}
               <h1 className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 tracking-tight uppercase drop-shadow-lg leading-none">
-                EQOSY
+                {companyName || 'RAYDO'}
               </h1>
 
               {/* Super App Tagline */}
@@ -121,11 +167,11 @@ export default function AppOpeningAnimation() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.5 }}
-                className="mt-3 flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/15 backdrop-blur-md"
+                className="mt-3 flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-amber-400/30 backdrop-blur-md"
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
                 <span className="text-[11px] sm:text-xs font-black uppercase tracking-[0.25em] text-amber-200">
-                  Super App • Food • Taxi • Delivery
+                  Ride • Deliver • Explore
                 </span>
               </motion.div>
             </motion.div>
@@ -146,8 +192,8 @@ export default function AppOpeningAnimation() {
                 className="w-full h-full bg-gradient-to-r from-amber-400 to-yellow-300 rounded-full"
               />
             </div>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-              Starting Eqosy...
+            <span className="text-[9px] font-bold text-amber-200/70 uppercase tracking-widest">
+              Starting Raydo...
             </span>
           </motion.div>
         </motion.div>

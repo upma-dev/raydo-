@@ -31,7 +31,7 @@ export default function Orders() {
   const [showPlatformFeeModal, setShowPlatformFeeModal] = useState(false)
   const [showDeliveryFeeModal, setShowDeliveryFeeModal] = useState(false)
   const [selectedOrderForDeliveryFee, setSelectedOrderForDeliveryFee] = useState(null)
-  const [companyName, setCompanyName] = useState("Eqosy")
+  const [companyName, setCompanyName] = useState("Raydo")
 
   useEffect(() => {
     getCompanyNameAsync().then((name) => {
@@ -1113,7 +1113,7 @@ Order again from this restaurant in the ${companyName} app.`
 
       {/* Footer Branding */}
       <div className="flex justify-center mt-8 mb-4">
-        <h1 className="text-4xl font-black text-gray-200 dark:text-zinc-900 tracking-tighter italic capitalize">Eqosy</h1>
+        <h1 className="text-4xl font-black text-gray-200 dark:text-zinc-900 tracking-tighter italic capitalize">Raydo</h1>
       </div>
 
       {/* Rating & Feedback Modal */}
@@ -1365,7 +1365,7 @@ Order again from this restaurant in the ${companyName} app.`
               </button>
             </div>
             <p className="text-base text-gray-600 dark:text-gray-300 leading-relaxed font-medium py-2">
-              This small fee helps us pay the bills so that we can keep {companyName || "Eqosy"} running
+              This small fee helps us pay the bills so that we can keep {companyName || "Raydo"} running
             </p>
             <div>
               <button

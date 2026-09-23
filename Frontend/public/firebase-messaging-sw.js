@@ -142,7 +142,7 @@ async function loadFirebaseWebConfig() {
 
       self.registration.showNotification(title, {
         body,
-        icon: "/eqosy-logo.png",
+        icon: "/raydo-logo.png",
         image,
         tag: notificationKey,
         renotify: false,
@@ -167,12 +167,12 @@ self.addEventListener("push", (event) => {
       try {
         payload = event.data.json();
       } catch {
-        payload = { data: { title: "Eqosy Notification", body: event.data.text() } };
+        payload = { data: { title: "Raydo Notification", body: event.data.text() } };
       }
 
       pushDebugLog(PUSH_DEBUG_PREFIX, "Received push event in service worker", { payload });
 
-      const title = payload?.notification?.title || payload?.data?.title || "Eqosy Notification";
+      const title = payload?.notification?.title || payload?.data?.title || "Raydo Notification";
       const body = payload?.notification?.body || payload?.data?.body || "";
       const image =
         payload?.notification?.image ||
@@ -188,8 +188,8 @@ self.addEventListener("push", (event) => {
       if (!visibleClient) {
         await self.registration.showNotification(title, {
           body,
-          icon: "/eqosy-logo.png",
-          badge: "/eqosy-logo.png",
+          icon: "/raydo-logo.png",
+          badge: "/raydo-logo.png",
           image,
           tag: notificationKey || `push_${Date.now()}`,
           renotify: true,

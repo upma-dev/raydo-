@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useSettings } from '../../../shared/context/SettingsContext';
 import { clearDriverAuthState } from '../services/registrationService';
-import eqosyLogo from '@food/assets/eqosy-logo.png';
+import raydoLogo from '@food/assets/raydo-logo.png';
 
 const OwnerHeaderNav = () => {
   const location = useLocation();
@@ -25,7 +25,7 @@ const OwnerHeaderNav = () => {
   const { settings } = useSettings();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const busEnabled = String(settings.transportRide?.enable_bus_service ?? '1') !== '0';
-  const appName = settings.general?.app_name || 'Eqosy';
+  const appName = settings.general?.app_name || 'Raydo';
 
   const navItems = [
     { label: 'Dashboard', path: '/taxi/owner/dashboard', icon: Home },
@@ -52,12 +52,12 @@ const OwnerHeaderNav = () => {
         {/* Brand & Badge */}
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/taxi/owner/dashboard')}>
           <img
-            src={settings.general?.logo || settings.customization?.logo || eqosyLogo}
+            src={settings.general?.logo || settings.customization?.logo || raydoLogo}
             alt={appName}
             className="h-10 w-10 object-contain rounded-xl shrink-0"
             onError={(e) => {
               e.target.onerror = null;
-              e.target.src = eqosyLogo;
+              e.target.src = raydoLogo;
             }}
           />
           <div>

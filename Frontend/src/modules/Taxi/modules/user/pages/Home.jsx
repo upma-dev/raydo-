@@ -2,14 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CalendarClock, ChevronRight, Clock3, MapPin, ShieldCheck, User } from 'lucide-react';
-import HomeHeader from '@food/components/user/home/HomeHeader';
-import SuperAppHero from '../components/SuperAppHero';
+import CinematicTaxiHero from '../components/CinematicTaxiHero';
 import ServiceGrid from '../components/ServiceGrid';
 import LocationMapSection from '../components/LocationMapSection';
-import ActionsSection from '../components/ActionsSection';
-import PromoBanners from '../components/PromoBanners';
 import ExplorerSection from '../components/ExplorerSection';
-import EcosystemStorytelling from '../components/EcosystemStorytelling';
+
 import BottomNavbar from '../components/BottomNavbar';
 import carIcon from '../../../assets/icons/car.png';
 import bikeIcon from '../../../assets/icons/bike.png';
@@ -290,15 +287,15 @@ const Home = ({ embedded = false }) => {
     let cancelled = false;
     const scheduleDeferredSections = window.requestIdleCallback
       ? window.requestIdleCallback(() => {
-          if (!cancelled) {
-            setShowDeferredSections(true);
-          }
-        }, { timeout: DEFERRED_SECTION_DELAY_MS })
+        if (!cancelled) {
+          setShowDeferredSections(true);
+        }
+      }, { timeout: DEFERRED_SECTION_DELAY_MS })
       : window.setTimeout(() => {
-          if (!cancelled) {
-            setShowDeferredSections(true);
-          }
-        }, DEFERRED_SECTION_DELAY_MS);
+        if (!cancelled) {
+          setShowDeferredSections(true);
+        }
+      }, DEFERRED_SECTION_DELAY_MS);
 
     return () => {
       cancelled = true;
@@ -395,48 +392,48 @@ const Home = ({ embedded = false }) => {
           return;
         }
 
-      try {
-        if (!RENTAL_ENABLED) {
-          if (cancelled) return;
-          persistCurrentRide(null);
-          currentRideRef.current = null;
-          return;
-        }
-
-        const rentalResponse = await userService.getActiveRentalBooking();
-        const rentalRide = rentalResponse?.id ? rentalResponse : (rentalResponse?.data || null);
-
-        if (rentalRide?.id) {
-          const status = String(rentalRide.status || '').toLowerCase();
-          const isTerminal = ['completed', 'cancelled', 'delivered'].includes(status);
-
-          if (isTerminal) {
+        try {
+          if (!RENTAL_ENABLED) {
             if (cancelled) return;
-            clearCurrentRide();
+            persistCurrentRide(null);
             currentRideRef.current = null;
             return;
           }
 
-          if (cancelled) return;
-          const previousRentalRide = currentRideRef.current && String(currentRideRef.current.serviceType || '').toLowerCase() === 'rental'
-            ? currentRideRef.current
-            : {};
-          const nextRentalRide = normalizeRentalCurrentRideSnapshot({
-            ...rentalRide,
-            pickup: rentalRide.serviceLocation?.name || rentalRide.serviceLocation?.address || 'Rental pickup',
-            drop: rentalRide.assignedVehicle?.name || rentalRide.vehicleName || 'Assigned vehicle',
-          }, previousRentalRide);
-          persistCurrentRide(nextRentalRide);
-          currentRideRef.current = nextRentalRide;
-          return;
+          const rentalResponse = await userService.getActiveRentalBooking();
+          const rentalRide = rentalResponse?.id ? rentalResponse : (rentalResponse?.data || null);
+
+          if (rentalRide?.id) {
+            const status = String(rentalRide.status || '').toLowerCase();
+            const isTerminal = ['completed', 'cancelled', 'delivered'].includes(status);
+
+            if (isTerminal) {
+              if (cancelled) return;
+              clearCurrentRide();
+              currentRideRef.current = null;
+              return;
+            }
+
+            if (cancelled) return;
+            const previousRentalRide = currentRideRef.current && String(currentRideRef.current.serviceType || '').toLowerCase() === 'rental'
+              ? currentRideRef.current
+              : {};
+            const nextRentalRide = normalizeRentalCurrentRideSnapshot({
+              ...rentalRide,
+              pickup: rentalRide.serviceLocation?.name || rentalRide.serviceLocation?.address || 'Rental pickup',
+              drop: rentalRide.assignedVehicle?.name || rentalRide.vehicleName || 'Assigned vehicle',
+            }, previousRentalRide);
+            persistCurrentRide(nextRentalRide);
+            currentRideRef.current = nextRentalRide;
+            return;
+          }
+        } catch (error) {
+          const status = Number(error?.response?.status || 0);
+          if (status !== 404) {
+            // Keep the previous card on transient failures, but don't block normal cleanup on 404/not found.
+            return;
+          }
         }
-      } catch (error) {
-        const status = Number(error?.response?.status || 0);
-        if (status !== 404) {
-          // Keep the previous card on transient failures, but don't block normal cleanup on 404/not found.
-          return;
-        }
-      }
 
         if (cancelled) return;
         persistCurrentRide(null);
@@ -495,12 +492,12 @@ const Home = ({ embedded = false }) => {
       : rideStage === 'started'
         ? serviceType === 'parcel' ? 'Parcel in transit' : 'Ride in progress'
         : rideStage === 'arrived'
-        ? serviceType === 'parcel' ? 'Parcel reached destination' : `${driverName} reached destination`
-        : rideStage === 'arriving'
-        ? serviceType === 'parcel' ? `${driverName} reached sender` : `${driverName} has arrived`
-        : serviceType === 'parcel'
-          ? 'Parcel booked'
-          : 'Ride booked';
+          ? serviceType === 'parcel' ? 'Parcel reached destination' : `${driverName} reached destination`
+          : rideStage === 'arriving'
+            ? serviceType === 'parcel' ? `${driverName} reached sender` : `${driverName} has arrived`
+            : serviceType === 'parcel'
+              ? 'Parcel booked'
+              : 'Ride booked';
   const rideStageContextLabel = isScheduledAcceptedRide
     ? 'Driver assigned for your scheduled trip'
     : rideStageLabel;
@@ -580,21 +577,18 @@ const Home = ({ embedded = false }) => {
     maskSize: '100% 100%',
   };
 
-  const pageBgClass = 'bg-[#EFF5FD]';
+  const pageBgClass = 'bg-[#F0F5FD]';
 
   return (
     <div className={`${embedded ? 'relative' : 'min-h-screen'} ${pageBgClass} ${embedded ? 'pb-6' : 'pb-24'} w-full relative font-sans no-scrollbar`}>
-      {/* Light blue draped vanished shade background elements */}
-      <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-full max-w-lg h-[450px] bg-[radial-gradient(ellipse_at_top,_rgba(147,197,253,0.55)_0%,_rgba(219,234,254,0.3)_45%,_rgba(255,255,255,0)_80%)] blur-2xl pointer-events-none" />
-      <div className="absolute top-44 -left-20 h-80 w-80 rounded-full bg-blue-300/30 blur-3xl pointer-events-none" />
-      <div className="absolute top-[32rem] -right-20 h-96 w-96 rounded-full bg-sky-200/40 blur-3xl pointer-events-none" />
+      {/* Light mix blue draped ambient background elements */}
+      <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-full max-w-lg h-[450px] bg-[radial-gradient(ellipse_at_top,_rgba(147,197,253,0.35)_0%,_rgba(240,245,253,0.6)_50%,_rgba(240,245,253,0)_80%)] blur-2xl pointer-events-none" />
+      <div className="absolute top-44 -left-20 h-80 w-80 rounded-full bg-indigo-200/25 blur-3xl pointer-events-none" />
+      <div className="absolute top-[32rem] -right-20 h-96 w-96 rounded-full bg-blue-200/20 blur-3xl pointer-events-none" />
 
-      <div className="relative z-10 space-y-3 pb-6">
+      <div className="relative z-10 space-y-0 pb-6">
         {!embedded && (
-          <div className="flex flex-col bg-[#0B172A] rounded-b-[28px] shadow-[0_14px_36px_rgba(11,23,42,0.18)] overflow-hidden">
-            <HomeHeader activeVertical="taxi" hideSearchRow={true} />
-            <SuperAppHero onSearchFocus={() => navigate(`${routePrefix}/ride/select-location`)} />
-          </div>
+          <CinematicTaxiHero onSearchFocus={() => navigate(`${routePrefix}/ride/select-location`)} />
         )}
 
         {isScheduledAcceptedRide && (
@@ -665,7 +659,7 @@ const Home = ({ embedded = false }) => {
             </div>
           </motion.button>
         )}
-        
+
         {/* Active Rental Dashboard - Only visible during active rentals */}
         {RENTAL_ENABLED && serviceType === 'rental' && (
           <motion.div
@@ -693,7 +687,7 @@ const Home = ({ embedded = false }) => {
                   </div>
                 </div>
               </div>
-              
+
               <div className="text-right space-y-2.5">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Current Fare</p>
@@ -712,7 +706,7 @@ const Home = ({ embedded = false }) => {
                 </button>
               </div>
             </div>
-            
+
             <div className="absolute -right-6 -bottom-6 h-24 w-24 rounded-full bg-orange-100/40 blur-3xl pointer-events-none" />
             <div className="absolute -left-6 -top-6 h-24 w-24 rounded-full bg-emerald-100/40 blur-3xl pointer-events-none" />
           </motion.div>
@@ -720,11 +714,9 @@ const Home = ({ embedded = false }) => {
 
         {embedded && <ServiceGrid />}
         {showDeferredSections ? (
-          <div className="relative z-10 flex flex-col gap-5 pt-1 pb-6">
+          <div className="relative z-10 flex flex-col gap-4 pb-6">
             <ServiceGrid plain={true} />
             <LocationMapSection plain={true} />
-            <ActionsSection plain={true} />
-            <PromoBanners plain={true} />
             <ExplorerSection plain={true} />
           </div>
         ) : (
@@ -734,7 +726,7 @@ const Home = ({ embedded = false }) => {
             <div className="h-[160px] animate-pulse rounded-[24px] border border-white/80 bg-white/70 shadow-[0_10px_22px_rgba(15,23,42,0.05)]" />
           </div>
         )}
-        <EcosystemStorytelling />
+
       </div>
 
       <AnimatePresence>

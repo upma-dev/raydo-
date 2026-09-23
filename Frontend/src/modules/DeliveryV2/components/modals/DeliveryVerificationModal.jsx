@@ -475,7 +475,7 @@ const HandoverPhotoModal = ({ order, verifiedOtp, onComplete, onClose }) => {
       // Compress image for fast mobile upload
       const compressedFile = await compressImageFile(file);
 
-      const res = await uploadAPI.uploadMedia(compressedFile, { folder: 'eqosy/delivery/handovers' });
+      const res = await uploadAPI.uploadMedia(compressedFile, { folder: 'raydo/delivery/handovers' });
       const serverUrl = res?.data?.data?.url || res?.data?.url || res?.data?.data?.imageUrl || res?.url || res?.data?.data?.secure_url;
       if (serverUrl) {
         setPhotoUrl(serverUrl);

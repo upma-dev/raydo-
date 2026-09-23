@@ -1,4 +1,4 @@
-export const SHARED_ORDER_KEY = 'eqosy:sharedOrder';
+export const SHARED_ORDER_KEY = 'raydo:sharedOrder';
 
 export function sanitizeSharerName(raw) {
   if (raw == null) return '';

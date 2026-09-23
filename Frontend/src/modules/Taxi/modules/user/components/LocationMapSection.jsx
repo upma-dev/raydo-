@@ -226,8 +226,8 @@ const LocationMapSection = ({ plain = false }) => {
   })();
 
   const containerClass = plain
-    ? 'relative z-10 px-5 mt-1'
-    : 'mx-5 my-4 rounded-[32px] bg-gradient-to-br from-[#EBF1FA] via-[#F3F7FC] to-[#F8FAFC] border border-blue-100/30 shadow-[0_24px_50px_rgba(30,41,59,0.04)] relative overflow-visible px-5 py-5.5';
+    ? 'relative z-10 px-[18px] mt-1'
+    : 'mx-[18px] my-4 rounded-[28px] bg-white border border-indigo-100/90 shadow-[0_10px_30px_rgba(30,41,59,0.04)] relative overflow-visible px-4.5 py-5';
 
   return (
     <motion.section

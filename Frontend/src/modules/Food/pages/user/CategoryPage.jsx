@@ -45,7 +45,7 @@ export default function CategoryPage() {
   const { category } = useParams()
   const navigate = useNavigate()
   const { vegMode, getDefaultAddress } = useProfile()
-  const { triggerEqosyCartLoader } = useCart()
+  const { triggerRaydoCartLoader } = useCart()
   const { location } = useLocation()
   const [deliveryAddressMode, setDeliveryAddressMode] = useState(() => {
     try {
@@ -1576,8 +1576,8 @@ export default function CategoryPage() {
                       key={restaurant.id}
                       to={`/food/user/restaurants/${restaurant.slug || restaurant.name.toLowerCase().replace(/\s+/g, '-')}`}
                       onClick={() => {
-                        if (triggerEqosyCartLoader) {
-                          triggerEqosyCartLoader("Loading Restaurant...", "Fetching fresh menu & food categories...", 900);
+                        if (triggerRaydoCartLoader) {
+                          triggerRaydoCartLoader("Loading Restaurant...", "Fetching fresh menu & food categories...", 900);
                         }
                       }}
                       className="block"
@@ -1689,8 +1689,8 @@ export default function CategoryPage() {
                     isFavorite={isFavorite}
                     onFavoriteClick={toggleFavorite}
                     onCardClick={() => {
-                      if (triggerEqosyCartLoader) {
-                        triggerEqosyCartLoader("Loading Restaurant...", "Fetching fresh menu & food categories...", 900);
+                      if (triggerRaydoCartLoader) {
+                        triggerRaydoCartLoader("Loading Restaurant...", "Fetching fresh menu & food categories...", 900);
                       }
                     }}
                   />

@@ -397,7 +397,7 @@ export async function createOrder(userId, dto) {
           : isScheduledFutureOrder
           ? `Your order #${order.order_id || order._id} is scheduled for ${formattedScheduledTime}. It will be sent to the restaurant 30 minutes before your scheduled time.`
           : `Your order #${order.order_id || order._id} from ${restaurant.restaurantName || "the restaurant"} has been placed successfully.`,
-        image: "https://i.ibb.co/5GzXz7r/Eqosy-Brand-Image.png",
+        image: "https://i.ibb.co/5GzXz7r/Raydo-Brand-Image.png",
         data: {
           type: isAwaitingOnlinePayment ? "order_created_pending_payment" : "order_created",
           orderId: String(order._id),
@@ -518,7 +518,7 @@ export async function verifyPayment(userId, dto) {
   await notifyOwnersSafely([{ ownerType: "USER", ownerId: userId }], {
     title: "Payment Successful! ✅",
     body: `We have received your payment of ₹${order.payment.amountDue} for Order #${order._id.toString()}.`,
-    image: "https://i.ibb.co/5GzXz7r/Eqosy-Brand-Image.png",
+    image: "https://i.ibb.co/5GzXz7r/Raydo-Brand-Image.png",
     data: {
       type: "payment_success",
       orderId: String(order._id.toString()),
@@ -944,7 +944,7 @@ export async function cancelOrder(orderId, userId, payload = {}) {
     {
       title: "Order Cancelled ❌",
       body: `Order #${order.order_id || order._id} has been cancelled by customer.${refundDetail}`,
-      image: "https://i.ibb.co/5GzXz7r/Eqosy-Brand-Image.png",
+      image: "https://i.ibb.co/5GzXz7r/Raydo-Brand-Image.png",
       data: {
         type: "order_cancelled",
         orderId: String(order.order_id || order._id),
@@ -1343,7 +1343,7 @@ export async function updateOrderStatusRestaurant(
         {
           title: isFoodReady ? riderTitle : title,
           body: isFoodReady ? riderBody : body,
-          image: "https://i.ibb.co/5GzXz7r/Eqosy-Brand-Image.png",
+          image: "https://i.ibb.co/5GzXz7r/Raydo-Brand-Image.png",
           data: {
             type: "order_status_update",
             orderId: order._id.toString(),

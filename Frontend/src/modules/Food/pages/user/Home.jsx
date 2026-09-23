@@ -92,7 +92,7 @@ import {
 } from "@food/components/ui/dropdown-menu";
 import { useLocation } from "@food/hooks/useLocation";
 import { useZone } from "@food/hooks/useZone";
-import quickSpicyLogo from "@food/assets/eqosy-logo.png";
+import quickSpicyLogo from "@food/assets/raydo-logo.png";
 import offerImage from "@food/assets/offerimage.png";
 import api, { publicGetOnce, restaurantAPI, adminAPI, orderAPI } from "@food/api";
 import { API_BASE_URL } from "@food/api/config";
@@ -101,7 +101,6 @@ import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailabil
 import HomeHeader from "@food/components/user/home/HomeHeader";
 import { getVerticalTheme } from "@/shared/constants/superAppVerticalTheme";
 import { syncThemeForPath } from "@/shared/utils/theme.js";
-import GrocerySection from "@food/components/user/home/QuickSection";
 import PromoRow from "@food/components/user/home/PromoRow";
 import PromotionBannerCarousel from "@food/components/user/home/PromotionBannerCarousel";
 import OutOfServiceView from "@food/components/user/OutOfServiceView";
@@ -673,7 +672,7 @@ export default function Home() {
   const [heroSearch, setHeroSearch] = useState("");
   const { openSearch, closeSearch, searchValue, setSearchValue } =
     useSearchOverlay();
-  const { triggerEqosyCartLoader } = useCart();
+  const { triggerRaydoCartLoader } = useCart();
   const { openLocationSelector } = useLocationSelector();
   const { vegMode, setVegMode: setVegModeContext } = useProfile();
   const [prevVegMode, setPrevVegMode] = useState(vegMode);
@@ -3088,7 +3087,7 @@ export default function Home() {
               className="flex-shrink-0 flex flex-col items-center gap-2 group transition-all duration-300 hover:-translate-y-1"
               style={{ animation: `fade-in-up 0.5s ease-out forwards ${index * 0.05}s`, opacity: 0 }}
             >
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 group-hover:border-[#EB590E] transition-colors">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden shadow-md border-2 border-orange-100/80 group-hover:border-orange-500 transition-all">
                 <OptimizedImage
                   src={category.image}
                   alt={category.name}
@@ -3096,7 +3095,7 @@ export default function Home() {
                   sizes="80px"
                 />
               </div>
-              <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 text-center truncate max-w-[72px]">
+              <span className="text-xs font-bold text-gray-800 dark:text-gray-200 text-center truncate max-w-[76px]">
                 {category.name}
               </span>
             </Link>
@@ -3265,7 +3264,7 @@ export default function Home() {
 
   return (
 
-    <div className="relative min-h-screen bg-white dark:bg-[#0a0a0a] pb-16 md:pb-6 overflow-x-clip">
+    <div className="relative min-h-screen bg-white dark:bg-[#0a0a0a] pb-28 md:pb-6 overflow-x-clip">
       <HomeHeader
         activeVertical={superAppVertical}
         onVerticalChange={handleVerticalChange}
@@ -3810,8 +3809,8 @@ export default function Home() {
                               <Link
                                 to={`/food/user/restaurants/${restaurantSlug}`}
                                 onClick={() => {
-                                  if (triggerEqosyCartLoader) {
-                                    triggerEqosyCartLoader("Opening Restaurant...", "Loading fresh menu & food categories...", 900);
+                                  if (triggerRaydoCartLoader) {
+                                    triggerRaydoCartLoader("Opening Restaurant...", "Loading fresh menu & food categories...", 900);
                                   }
                                 }}
                                 className="h-full flex">
@@ -5094,18 +5093,6 @@ export default function Home() {
             <StickyCartCard />
             {/* Live order strip: only on homepage (not in UserLayout) */}
             <OrderTrackingCard hasBottomNav />
-          </motion.div>
-        )}
-
-        {!zoneLoading && !isOutOfService && superAppVertical === "grocery" && (
-          <motion.div
-            key="grocery-panel"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.22, ease: "easeOut" }}
-          >
-            <GrocerySection />
           </motion.div>
         )}
       </AnimatePresence>

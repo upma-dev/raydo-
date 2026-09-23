@@ -1,9 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import discountPromoIcon from "@food/assets/category-icons/discount_promo.png";
-import gourmetPromoIcon from "@food/assets/explore more icons/gourmet.png";
-import pricePromoIcon from "@food/assets/category-icons/price_promo.png";
-import collectionPromoIcon from "@food/assets/explore more icons/collection.png";
+import { Percent, Crown, Zap, Star } from 'lucide-react';
 
 export default function PromoRow({ handleVegModeChange, navigate, isVegMode, toggleRef }) {
   const promoCardsData = [
@@ -11,40 +8,56 @@ export default function PromoRow({ handleVegModeChange, navigate, isVegMode, tog
       id: 'offers',
       title: "Hot Deals",
       value: "Offers",
-      icon: discountPromoIcon,
+      bgColor: "bg-gradient-to-br from-[#FFFBF2] to-[#FFF1DC]",
+      textColor: "text-gray-900 font-black",
+      subTextColor: "text-orange-600 font-bold",
+      iconBg: "bg-orange-500 text-white shadow-md",
+      icon: <Percent className="w-4 h-4 stroke-[3]" />,
     },
     {
       id: 'gourmet',
       title: "Premium",
       value: "Gourmet",
-      icon: gourmetPromoIcon,
+      bgColor: "bg-gradient-to-br from-[#FFFBF2] to-[#FFF1DC]",
+      textColor: "text-gray-900 font-extrabold",
+      subTextColor: "text-amber-700 font-semibold",
+      iconBg: "bg-amber-500 text-white shadow-md",
+      icon: <Crown className="w-4 h-4 stroke-[2.5]" />,
     },
     {
       id: 'under-250',
       title: "Under ₹99",
       value: "Switch 99",
-      icon: pricePromoIcon,
+      bgColor: "bg-gradient-to-br from-[#FFFBF2] to-[#FFF1DC]",
+      textColor: "text-gray-900 font-extrabold",
+      subTextColor: "text-emerald-700 font-semibold",
+      iconBg: "bg-emerald-500 text-white shadow-md",
+      icon: <Zap className="w-4 h-4 fill-white stroke-[2]" />,
     },
     {
       id: 'collections',
       title: "Favorites",
       value: "Collections",
-      icon: collectionPromoIcon,
+      bgColor: "bg-gradient-to-br from-[#FFFBF2] to-[#FFF1DC]",
+      textColor: "text-gray-900 font-extrabold",
+      subTextColor: "text-yellow-700 font-semibold",
+      iconBg: "bg-yellow-400 text-black shadow-md",
+      icon: <Star className="w-4 h-4 fill-black stroke-[2]" />,
     },
   ];
 
   return (
-    <div className="grid grid-cols-4 gap-2 px-3 pt-2 pb-5 bg-transparent justify-items-center w-full max-w-[500px] mx-auto">
+    <div className="grid grid-cols-4 gap-2.5 px-3 pt-3.5 pb-4 bg-transparent w-full max-w-[500px] mx-auto">
       {promoCardsData.map((promo, idx) => (
         <motion.div
           key={idx}
           ref={promo.id === 'gourmet' ? toggleRef : null}
-          initial={{ opacity: 0, y: 15 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: idx * 0.05, duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
-          whileHover={{ y: -4 }}
+          transition={{ delay: idx * 0.04, duration: 0.35, ease: "easeOut" }}
+          whileHover={{ y: -3, scale: 1.03 }}
           whileTap={{ scale: 0.95 }}
-          className="flex flex-col items-center gap-1.5 group cursor-pointer w-full"
+          className={`flex flex-col items-center justify-center p-2.5 rounded-[22px] ${promo.bgColor} border border-orange-200/60 shadow-sm hover:shadow-lg cursor-pointer transition-all h-[98px] relative overflow-hidden`}
           onClick={() => {
             if (promo.id === 'gourmet') navigate('/food/user/gourmet');
             else if (promo.id === 'offers') navigate('/food/user/offers');
@@ -52,24 +65,18 @@ export default function PromoRow({ handleVegModeChange, navigate, isVegMode, tog
             else if (promo.id === 'collections') navigate('/food/user/profile/favorites');
           }}
         >
-          {/* Floating Minimalist Image */}
-          <div className="relative w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center p-0.5">
-            <img
-              src={promo.icon}
-              alt={promo.value}
-              className="w-full h-full object-contain relative z-20 transition-transform duration-500 group-hover:scale-110 drop-shadow-sm"
-            />
+          {/* Badge Icon */}
+          <div className={`w-8.5 h-8.5 rounded-full ${promo.iconBg} flex items-center justify-center mb-1.5 transition-transform group-hover:scale-110`}>
+            {promo.icon}
           </div>
 
-          {/* Clean Typography */}
-          <div className="flex flex-col items-center text-center w-full">
-            <span className="text-[12px] font-black text-gray-900 dark:text-gray-100 tracking-tight leading-tight mb-0.5">
-              {promo.value}
-            </span>
-            <span className="text-[9px] font-bold text-gray-500 dark:text-gray-400 capitalize whitespace-nowrap">
-              {promo.title}
-            </span>
-          </div>
+          {/* Title & Subtitle */}
+          <span className={`text-[12px] ${promo.textColor} tracking-tight leading-tight text-center drop-shadow-xs`}>
+            {promo.value}
+          </span>
+          <span className={`text-[9.5px] ${promo.subTextColor} text-center leading-tight truncate max-w-full mt-0.5`}>
+            {promo.title}
+          </span>
         </motion.div>
       ))}
     </div>

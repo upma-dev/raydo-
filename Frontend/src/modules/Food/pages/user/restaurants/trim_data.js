@@ -3,7 +3,7 @@ const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
 const fs = require('fs');
-const path = 'e:\\eqosy\\eqosy\\frontend\\src\\module\\user\\pages\\restaurants\\RestaurantDetails.jsx';
+const path = 'e:\\raydo\\raydo\\frontend\\src\\module\\user\\pages\\restaurants\\RestaurantDetails.jsx';
 const content = fs.readFileSync(path, 'utf8');
 const lines = content.split(/\r?\n/);
 debugLog('Total lines:', lines.length);

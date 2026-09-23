@@ -102,8 +102,8 @@ const SEARCH_HISTORY_KEY = "professional_search_history_v1"
 export default function ProfessionalSearch() {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialQuery = searchParams.get("q") || ""
-  const isGrocerySearch = searchParams.get("vertical") === "grocery"
-  const isRestaurantParam = isGrocerySearch ? "false" : "true"
+  const isGrocerySearch = false
+  const isRestaurantParam = "true"
   const navigate = useNavigate()
   const { getDefaultAddress } = useProfile()
   const { location: userCoords, requestLocation } = useGeoLocation()
@@ -227,10 +227,8 @@ export default function ProfessionalSearch() {
   }
 
   const buildSearchParams = useCallback((overrides = {}) => {
-    const next = { ...overrides }
-    if (isGrocerySearch) next.vertical = "grocery"
-    return next
-  }, [isGrocerySearch])
+    return { ...overrides }
+  }, [])
 
   const addToHistory = (term) => {
     const newHistory = [term, ...history.filter(h => h !== term)].slice(0, 5)
@@ -342,7 +340,7 @@ export default function ProfessionalSearch() {
       } catch (_) {}
     }
 
-    const fallbackPath = isGrocerySearch ? '/food/user?vertical=grocery' : '/food/user'
+    const fallbackPath = '/food/user'
 
     setTimeout(() => {
       if (typeof window !== 'undefined' && window.history.state && window.history.state.idx > 0) {
@@ -373,7 +371,7 @@ export default function ProfessionalSearch() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input 
               autoFocus
-              placeholder={isGrocerySearch ? 'Search for stores or products...' : 'Search for restaurants or dishes...'} 
+              placeholder="Search for restaurants or dishes..." 
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-10 pr-10 h-11 bg-slate-100 dark:bg-zinc-800 border-none focus:ring-2 focus:ring-rose-500 rounded-xl"

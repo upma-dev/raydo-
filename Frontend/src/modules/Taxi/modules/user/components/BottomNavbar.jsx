@@ -53,7 +53,7 @@ const BottomNavbar = () => {
 
                 {/* Icon Container with Transition */}
                 <motion.div
-                  animate={{ 
+                  animate={{
                     scale: isActive ? 1.15 : 1,
                     y: isActive ? -1 : 0
                   }}
@@ -72,8 +72,8 @@ const BottomNavbar = () => {
                 </motion.div>
 
                 {/* Label with Transition */}
-                <motion.span 
-                  animate={{ 
+                <motion.span
+                  animate={{
                     opacity: isActive ? 1 : 0.5,
                     y: isActive ? 2 : 1,
                     scale: isActive ? 1 : 0.95
@@ -81,13 +81,12 @@ const BottomNavbar = () => {
                   transition={{
                     duration: 0.2
                   }}
-                  className={`relative z-20 text-[10px] font-black uppercase tracking-[0.18em] font-['Outfit'] mt-1 transition-colors duration-300 ${
-                    isActive ? 'text-white' : 'text-slate-500'
-                  }`}
+                  className={`relative z-20 text-[10px] font-black uppercase tracking-[0.18em] font-['Outfit'] mt-1 transition-colors duration-300 ${isActive ? 'text-white' : 'text-slate-500'
+                    }`}
                 >
                   {label}
                 </motion.span>
-                
+
                 {/* Subtle Bottom Glow for Active Tab */}
                 {isActive && (
                   <motion.div

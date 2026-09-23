@@ -161,10 +161,13 @@ export default function AddZone() {
 
       autocomplete.addListener("place_changed", () => {
         const place = autocomplete.getPlace()
-        if (place.geometry && place.geometry.location && mapInstanceRef.current) {
-          const location = place.geometry.location
-          mapInstanceRef.current.setCenter(location)
-          mapInstanceRef.current.setZoom(15)
+        if (place.geometry && mapInstanceRef.current) {
+          if (place.geometry.viewport) {
+            mapInstanceRef.current.fitBounds(place.geometry.viewport)
+          } else if (place.geometry.location) {
+            mapInstanceRef.current.setCenter(place.geometry.location)
+            mapInstanceRef.current.setZoom(14)
+          }
           setLocationSearch(place.formatted_address || place.name || "")
           setShowSuggestions(false)
           setSearchSuggestions([])
@@ -198,6 +201,33 @@ export default function AddZone() {
     }
   }, [mapLoading, ensurePlacesSdkLoaded])
 
+  const zoomToQueryLocation = useCallback((query) => {
+    const q = String(query || "").trim()
+    if (!q || !mapInstanceRef.current || !window.google?.maps) return
+
+    const geocoder = new window.google.maps.Geocoder()
+    geocoder.geocode({ address: q, componentRestrictions: { country: "IN" } }, (results, status) => {
+      if (status === "OK" && results && results[0] && mapInstanceRef.current) {
+        const result = results[0]
+        if (result.geometry?.viewport) {
+          mapInstanceRef.current.fitBounds(result.geometry.viewport)
+        } else if (result.geometry?.location) {
+          mapInstanceRef.current.setCenter(result.geometry.location)
+          mapInstanceRef.current.setZoom(13)
+        }
+      }
+    })
+  }, [])
+
+  // Auto zoom map to typed zone name
+  useEffect(() => {
+    if (!formData.zoneName || formData.zoneName.trim().length < 3 || isEditMode || coordinates.length > 0) return
+    const timer = setTimeout(() => {
+      zoomToQueryLocation(formData.zoneName)
+    }, 450)
+    return () => clearTimeout(timer)
+  }, [formData.zoneName, isEditMode, coordinates.length, zoomToQueryLocation])
+
   const fetchSearchSuggestions = useCallback((query) => {
     const q = String(query || "").trim()
     if (!q || !autocompleteServiceRef.current || !window.google?.maps?.places?.PlacesServiceStatus) {
@@ -226,7 +256,8 @@ export default function AddZone() {
     }
     suggestionsDebounceRef.current = setTimeout(() => {
       fetchSearchSuggestions(value)
-    }, 180)
+      zoomToQueryLocation(value)
+    }, 350)
   }
 
   const handleSuggestionSelect = (suggestion) => {
@@ -239,12 +270,15 @@ export default function AddZone() {
       (place, status) => {
         if (
           status === window.google?.maps?.places?.PlacesServiceStatus?.OK &&
-          place?.geometry?.location &&
+          place?.geometry &&
           mapInstanceRef.current
         ) {
-          const location = place.geometry.location
-          mapInstanceRef.current.setCenter(location)
-          mapInstanceRef.current.setZoom(15)
+          if (place.geometry.viewport) {
+            mapInstanceRef.current.fitBounds(place.geometry.viewport)
+          } else if (place.geometry.location) {
+            mapInstanceRef.current.setCenter(place.geometry.location)
+            mapInstanceRef.current.setZoom(14)
+          }
           setLocationSearch(place.formatted_address || place.name || "")
           setShowSuggestions(false)
           setSearchSuggestions([])

@@ -38,9 +38,9 @@ import {
   Navigation,
 } from "lucide-react";
 
-import phonesImg from "@/assets/eqosy-3d-phones.jpg";
-import mapImg from "@/assets/eqosy-3d-map.jpg";
-import cityImg from "@/assets/eqosy-3d-city.jpg";
+import phonesImg from "@/assets/raydo-3d-phones.jpg";
+import mapImg from "@/assets/raydo-3d-map.jpg";
+import cityImg from "@/assets/raydo-3d-city.jpg";
 import realBurgerImg from "@/assets/real-burger.png";
 import taxi3dImg from "@/assets/3d images/AutoCab/taxi.png";
 import grocery3dImg from "@/assets/3d images/grocery.png";
@@ -93,7 +93,7 @@ function RevealSection({ children, delay = 0, className = "" }) {
 }
 
 /* ==========================================================================
-   1. HOW EQOSY WORKS SECTION (Replaces old duplicate cards & removes rating bar)
+   1. HOW RAYDO WORKS SECTION (Replaces old duplicate cards & removes rating bar)
       bg: #FAF8F4 (Soft Warm Cream)
    ========================================================================== */
 export function Stats() {
@@ -163,7 +163,7 @@ export function Stats() {
         {/* Section Header */}
         <RevealSection className="text-center max-w-2xl mx-auto mb-14">
           <span className="text-xs font-extrabold uppercase tracking-widest text-[#FF6B1A] bg-[#FFF5EF] px-3.5 py-1.5 rounded-full border border-[#FFE0CC] mb-3 inline-block shadow-xs">
-            HOW EQOSY WORKS
+            HOW RAYDO WORKS
           </span>
           <h2 className="text-3xl sm:text-4xl font-black text-[#172033] tracking-tight leading-tight">
             3 Simple Steps to Anything You Need
@@ -383,13 +383,13 @@ export function Showcase() {
   const verticals = [
     {
       id: "food",
-      title: "EqosyFood",
+      title: "RaydoFood",
       subtitle: "Fresh meals, delivered fast.",
       desc: "From top local restaurants to cloud kitchens — hot meals delivered in 15 minutes.",
       badge: "🍔 15-MIN DELIVERY",
-      color: "#FF6B1A",
-      bgTint: "#FFF5EF",
-      borderTint: "#FFE0CC",
+      color: "#FF385C",
+      bgTint: "#FFF1F2",
+      borderTint: "#FFE4E6",
       route: "/food",
       cta: "Order Food",
       image: realBurgerImg,
@@ -397,41 +397,27 @@ export function Showcase() {
     },
     {
       id: "taxi",
-      title: "EqosyTaxi",
+      title: "RaydoTaxi",
       subtitle: "Instant city rides & pooling.",
       desc: "Sub-2 minute driver arrival, ride-pooling to save up to 40%, and fixed outstation quotes.",
       badge: "🚕 SUB-2 MIN PICKUP",
-      color: "#3977FF",
-      bgTint: "#F0F5FF",
-      borderTint: "#CCE0FF",
+      color: "#7C3AED",
+      bgTint: "#EEF2FF",
+      borderTint: "#E0E7FF",
       route: "/taxi/user",
       cta: "Book Ride",
       image: taxi3dImg,
       benefits: ["Sub-2 min driver arrival", "Save up to 40% pooling", "24/7 SOS safety shield"],
     },
     {
-      id: "grocery",
-      title: "EqosyGrocery",
-      subtitle: "Farm-fresh daily essentials.",
-      desc: "Organic fruits, vegetables, dairy milk, and daily snacks delivered in 15 minutes.",
-      badge: "🛒 15M EXPRESS",
-      color: "#18B981",
-      bgTint: "#F0FDF8",
-      borderTint: "#CCF5E5",
-      route: "/food",
-      cta: "Shop Grocery",
-      image: grocery3dImg,
-      benefits: ["Express 15m delivery", "Farm fresh guarantee", "Zero minimum order"],
-    },
-    {
       id: "parcel",
-      title: "EqosyParcel",
+      title: "RaydoParcel",
       subtitle: "Citywide package handover.",
       desc: "Send documents, keys, gifts, and packages securely with 4-digit OTP verification.",
       badge: "📦 SECURE OTP",
-      color: "#7657E8",
-      bgTint: "#F6F3FF",
-      borderTint: "#E0D6FF",
+      color: "#6366F1",
+      bgTint: "#EEF2FF",
+      borderTint: "#E0E7FF",
       route: "/taxi/user",
       cta: "Send Parcel",
       image: gifts3dImg,
@@ -629,7 +615,7 @@ export function CityScene() {
                 One account for your entire daily routine.
               </h2>
               <p className="mt-3 text-base text-[#94A3B8] font-medium leading-relaxed">
-                No need to switch between four separate apps. Eqosy keeps your experience connected in one place.
+                No need to switch between four separate apps. Raydo keeps your experience connected in one place.
               </p>
 
               <div className="mt-8 grid sm:grid-cols-2 gap-4">
@@ -710,10 +696,10 @@ export function Partners() {
 
         <RevealSection className="text-center max-w-2xl mx-auto mb-12">
           <span className="text-xs font-bold uppercase tracking-wider px-3.5 py-1 rounded-full bg-white text-[#667085] border border-[#E5E7EB] inline-block mb-3 shadow-xs">
-            JOIN EQOSY
+            JOIN RAYDO
           </span>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-[#172033] tracking-tight">
-            Be part of Eqosy's city network
+            Be part of Raydo's city network
           </h2>
           <p className="mt-2 text-sm text-[#667085] font-medium">
             Choose your path — whether you deliver, drive, cook, or sell.
@@ -734,7 +720,7 @@ export function Partners() {
                   Earn on your schedule
                 </h3>
                 <p className="text-sm text-[#667085] font-medium mt-2 leading-relaxed">
-                  Two ways to earn with Eqosy — city cab rides or package & food deliveries. Pick what suits you.
+                  Two ways to earn with Raydo — city cab rides or package & food deliveries. Pick what suits you.
                 </p>
               </div>
 
@@ -815,7 +801,7 @@ export function Partners() {
                   🏪 Merchants & Stores
                 </span>
                 <h3 className="text-2xl sm:text-3xl font-extrabold text-[#172033] mt-4">
-                  Grow your business with Eqosy
+                  Grow your business with Raydo
                 </h3>
                 <p className="text-sm text-[#667085] font-medium mt-2 leading-relaxed">
                   List your restaurant or grocery store and reach thousands of customers across Madhya Pradesh.
@@ -906,16 +892,16 @@ export function Faq() {
 
   const faqs = [
     {
-      q: "How does the single Eqosy unified wallet work?",
-      a: "With Eqosy, you only create one account. Your single wallet balance, saved addresses, and payment methods apply across food orders, taxi rides, grocery shopping, and parcel deliveries.",
+      q: "How does the single Raydo unified wallet work?",
+      a: "With Raydo, you only create one account. Your single wallet balance, saved addresses, and payment methods apply across food orders, taxi rides, grocery shopping, and parcel deliveries.",
     },
     {
-      q: "How fast is Eqosy Food delivery and grocery dispatch?",
+      q: "How fast is Raydo Food delivery and grocery dispatch?",
       a: "Hyperlocal dark stores and restaurant partners ensure most food deliveries arrive in 15 to 25 minutes, and express groceries in 15 minutes flat.",
     },
     {
       q: "Can I book outstation cabs and schedule intercity trips?",
-      a: "Yes! Eqosy provides fixed-quote outstation rides, pilgrimage routes (such as Ujjain Mahakal & Omkareshwar circuits), and ride-pooling across cities.",
+      a: "Yes! Raydo provides fixed-quote outstation rides, pilgrimage routes (such as Ujjain Mahakal & Omkareshwar circuits), and ride-pooling across cities.",
     },
     {
       q: "What safety features are available during taxi rides?",
@@ -990,7 +976,7 @@ export function Newsletter() {
 
           <div className="relative z-10">
             <span className="text-xs font-black uppercase tracking-widest px-3 py-1 rounded-full bg-white/20 text-white border border-white/30">
-              DOWNLOAD EQOSY SUPER APP
+              DOWNLOAD RAYDO SUPER APP
             </span>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold mt-4 leading-tight">
               Your city, one tap away.
@@ -1027,7 +1013,7 @@ export function Newsletter() {
           <div className="p-6 rounded-2xl bg-white text-[#172033] text-center shrink-0 shadow-lg relative z-10">
             <QrCode size={120} className="mx-auto text-[#172033]" />
             <p className="text-xs font-bold text-[#172033] mt-3">Scan to Download</p>
-            <span className="text-[10px] font-bold text-[#FF6B1A]">eqosy.app</span>
+            <span className="text-[10px] font-bold text-[#FF6B1A]">raydo.app</span>
           </div>
         </div>
       </RevealSection>
@@ -1048,8 +1034,8 @@ export function SiteFooter() {
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center gap-3">
               <img
-                src="/eqosy-logo.png"
-                alt="Eqosy Logo"
+                src="/raydo-logo.png"
+                alt="Raydo Logo"
                 className="h-8 sm:h-9 w-auto object-contain"
               />
               <span className="font-display text-2xl sm:text-3xl font-black tracking-tight inline-flex items-center">
@@ -1073,10 +1059,10 @@ export function SiteFooter() {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-white">Services</h4>
             <ul className="mt-4 space-y-2.5 text-xs sm:text-sm text-[#98A2B3] font-medium">
-              <li><Link to="/food" className="hover:text-white transition-colors">EqosyFood Delivery</Link></li>
-              <li><Link to="/taxi/user" className="hover:text-white transition-colors">EqosyTaxi & Cabs</Link></li>
-              <li><Link to="/food" className="hover:text-white transition-colors">EqosyGrocery 15m</Link></li>
-              <li><Link to="/taxi/user" className="hover:text-white transition-colors">EqosyParcel Courier</Link></li>
+              <li><Link to="/food" className="hover:text-white transition-colors">RaydoFood Delivery</Link></li>
+              <li><Link to="/taxi/user" className="hover:text-white transition-colors">RaydoTaxi & Cabs</Link></li>
+              <li><Link to="/food" className="hover:text-white transition-colors">RaydoGrocery 15m</Link></li>
+              <li><Link to="/taxi/user" className="hover:text-white transition-colors">RaydoParcel Courier</Link></li>
               <li><Link to="/taxi/user" className="hover:text-white transition-colors">Ride Pooling</Link></li>
               <li><Link to="/taxi/user" className="hover:text-white transition-colors">Outstation Cabs</Link></li>
             </ul>
@@ -1108,7 +1094,7 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#98A2B3] font-medium">
-          <p>© {new Date().getFullYear()} Eqosy Technologies Inc. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Raydo Technologies Inc. All rights reserved.</p>
           <div className="flex items-center gap-6">
             <Link to="/taxi/privacy" className="hover:text-white transition-colors">Privacy</Link>
             <Link to="/taxi/terms" className="hover:text-white transition-colors">Terms</Link>

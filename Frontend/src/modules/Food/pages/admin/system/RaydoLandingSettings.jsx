@@ -127,14 +127,14 @@ const LogoUploadBox = ({ label, size, preview, onUpload, onClear }) => {
 };
 
 /* ─── MAIN PAGE ─────────────────────────────────────────────────────────── */
-const SETTINGS_KEY = "eqosy_landing_page_settings";
+const SETTINGS_KEY = "raydo_landing_page_settings";
 
 const defaultSettings = {
   // Branding
-  navbar_logo: "/eqosy-logo.png",
-  footer_logo: "/eqosy-logo.png",
-  hero_video: "/eqosy_promotional_video.mp4",
-  app_name: "Eqosy",
+  navbar_logo: "/raydo-logo.png",
+  footer_logo: "/raydo-logo.png",
+  hero_video: "/raydo_promotional_video.mp4",
+  app_name: "Raydo",
   tagline: "Everything your city needs. One powerful app.",
   hero_description: "Food, rides, groceries and parcel delivery — connected in one super app.",
 
@@ -154,11 +154,11 @@ const defaultSettings = {
   cancellation_policy: "",
 
   // Footer
-  footer_text: "© 2025 Eqosy. All rights reserved.",
+  footer_text: "© 2025 Raydo. All rights reserved.",
   footer_tagline: "Made with ❤️ in India",
 };
 
-export default function EqosyLandingSettings() {
+export default function RaydoLandingSettings() {
   const [settings, setSettings] = useState(defaultSettings);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -288,14 +288,14 @@ export default function EqosyLandingSettings() {
                   <LogoUploadBox
                     label="Navbar Logo (Light)"
                     size="200×60px recommended"
-                    preview={settings.navbar_logo || "/eqosy-logo.png"}
+                    preview={settings.navbar_logo || "/raydo-logo.png"}
                     onUpload={(file) => handleLogoUpload("navbar_logo", file)}
                     onClear={() => handleChange("navbar_logo", "")}
                   />
                   <LogoUploadBox
                     label="Footer Logo"
                     size="200×60px recommended"
-                    preview={settings.footer_logo || "/eqosy-logo.png"}
+                    preview={settings.footer_logo || "/raydo-logo.png"}
                     onUpload={(file) => handleLogoUpload("footer_logo", file)}
                     onClear={() => handleChange("footer_logo", "")}
                   />
@@ -307,14 +307,14 @@ export default function EqosyLandingSettings() {
                   <Field
                     label="Hero Video URL or Path"
                     name="hero_video"
-                    value={settings.hero_video || "/eqosy_promotional_video.mp4"}
+                    value={settings.hero_video || "/raydo_promotional_video.mp4"}
                     onChange={handleChange}
-                    placeholder="/eqosy_promotional_video.mp4"
+                    placeholder="/raydo_promotional_video.mp4"
                   />
                   <div className="rounded-2xl border border-gray-200 bg-gray-900 p-4 max-w-lg">
                     <p className="text-xs text-gray-400 font-bold uppercase mb-2">Live Video Preview</p>
                     <video
-                      src={settings.hero_video || "/eqosy_promotional_video.mp4"}
+                      src={settings.hero_video || "/raydo_promotional_video.mp4"}
                       autoPlay
                       muted
                       loop
@@ -332,7 +332,7 @@ export default function EqosyLandingSettings() {
                     name="app_name"
                     value={settings.app_name}
                     onChange={handleChange}
-                    placeholder="Eqosy"
+                    placeholder="Raydo"
                   />
                   <Field
                     label="Short Tagline"
@@ -377,7 +377,7 @@ export default function EqosyLandingSettings() {
             <>
               <SectionCard title="Support Contact" icon={Info} iconColor="#10b981">
                 <div className="grid md:grid-cols-2 gap-5">
-                  <Field label="Support Email" name="support_email" value={settings.support_email} onChange={handleChange} placeholder="support@eqosy.app" type="email" />
+                  <Field label="Support Email" name="support_email" value={settings.support_email} onChange={handleChange} placeholder="support@raydo.app" type="email" />
                   <Field label="Support Phone" name="support_phone" value={settings.support_phone} onChange={handleChange} placeholder="+91 XXXXXXXXXX" />
                 </div>
               </SectionCard>
@@ -391,8 +391,8 @@ export default function EqosyLandingSettings() {
 
               <SectionCard title="Social Media" icon={Info} iconColor="#8b5cf6">
                 <div className="grid md:grid-cols-2 gap-5">
-                  <Field label="Instagram URL" name="instagram_url" value={settings.instagram_url} onChange={handleChange} placeholder="https://instagram.com/eqosy" />
-                  <Field label="Twitter / X URL" name="twitter_url" value={settings.twitter_url} onChange={handleChange} placeholder="https://twitter.com/eqosy" />
+                  <Field label="Instagram URL" name="instagram_url" value={settings.instagram_url} onChange={handleChange} placeholder="https://instagram.com/raydo" />
+                  <Field label="Twitter / X URL" name="twitter_url" value={settings.twitter_url} onChange={handleChange} placeholder="https://twitter.com/raydo" />
                 </div>
               </SectionCard>
             </>
@@ -460,7 +460,7 @@ export default function EqosyLandingSettings() {
                   name="about_us"
                   value={settings.about_us}
                   onChange={handleChange}
-                  placeholder="Tell users about Eqosy — the vision, the team, the mission..."
+                  placeholder="Tell users about Raydo — the vision, the team, the mission..."
                   type="textarea"
                   rows={8}
                 />
@@ -477,7 +477,7 @@ export default function EqosyLandingSettings() {
                   name="footer_text"
                   value={settings.footer_text}
                   onChange={handleChange}
-                  placeholder="© 2025 Eqosy. All rights reserved."
+                  placeholder="© 2025 Raydo. All rights reserved."
                 />
                 <Field
                   label="Footer Tagline"
@@ -491,7 +491,7 @@ export default function EqosyLandingSettings() {
               {/* Preview */}
               <div className="mt-6 rounded-2xl border border-gray-100 bg-[#172033] p-6">
                 <p className="text-xs text-gray-400 mb-3 uppercase tracking-wider font-bold">Footer Preview</p>
-                <p className="text-sm text-gray-300">{settings.footer_text || "© 2025 Eqosy"}</p>
+                <p className="text-sm text-gray-300">{settings.footer_text || "© 2025 Raydo"}</p>
                 <p className="text-xs text-gray-500 mt-1">{settings.footer_tagline || "Made with ❤️ in India"}</p>
               </div>
             </SectionCard>

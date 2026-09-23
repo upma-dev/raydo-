@@ -26,9 +26,9 @@ const SERVICE_CONFIG = {
     badge: "15m Prep",
     tagline: "Gourmet Meals & Street Food",
     cta: "Order Food",
-    color: "#FF641F",
-    bgTint: "#FFF5EF",
-    glowSpotlight: "rgba(255, 100, 31, 0.12)",
+    color: "#FF385C",
+    bgTint: "#FFF1F2",
+    glowSpotlight: "rgba(255, 56, 92, 0.12)",
     route: "/food",
     placeholders: [
       "Search 5,000+ dishes, biryani, pizzas...",
@@ -42,7 +42,7 @@ const SERVICE_CONFIG = {
       eta: "14 min",
       status: "Live Kitchen GPS",
       icon: "🍔",
-      color: "#FF641F",
+      color: "#FF385C",
     },
   },
   taxi: {
@@ -52,9 +52,9 @@ const SERVICE_CONFIG = {
     badge: "Zero Surge",
     tagline: "City Cabs & Ride Pooling",
     cta: "Book Ride",
-    color: "#377CF6",
-    bgTint: "#F0F5FF",
-    glowSpotlight: "rgba(55, 124, 246, 0.12)",
+    color: "#7C3AED",
+    bgTint: "#EEF2FF",
+    glowSpotlight: "rgba(124, 58, 237, 0.12)",
     route: "/taxi/user",
     placeholders: [
       "Where do you want to go today?",
@@ -68,33 +68,7 @@ const SERVICE_CONFIG = {
       eta: "2 min",
       status: "Live Fleet GPS",
       icon: "🚕",
-      color: "#377CF6",
-    },
-  },
-  grocery: {
-    id: "grocery",
-    name: "Grocery",
-    emoji: "🛒",
-    badge: "Instant 15m",
-    tagline: "Daily Essentials & Fresh Farm",
-    cta: "Shop Now",
-    color: "#16B981",
-    bgTint: "#F0FDF8",
-    glowSpotlight: "rgba(22, 185, 129, 0.12)",
-    route: "/food",
-    placeholders: [
-      "Search groceries, dairy & organic fruits...",
-      "Fresh milk, butter, bread & snacks...",
-      "Delivered direct from local dark stores...",
-    ],
-    quickChips: ["🥛 Fresh Milk", "🥦 Organic Veggies", "🍞 Daily Bread", "🥑 Avocados"],
-    statusCard: {
-      title: "Grocery Dispatched",
-      subtitle: "Express Dark Store",
-      eta: "11 min",
-      status: "15-Min Delivery",
-      icon: "🛍️",
-      color: "#16B981",
+      color: "#7C3AED",
     },
   },
   parcel: {
@@ -104,9 +78,9 @@ const SERVICE_CONFIG = {
     badge: "Secure OTP",
     tagline: "Express Citywide Couriers",
     cta: "Send Parcel",
-    color: "#7657E8",
-    bgTint: "#F6F3FF",
-    glowSpotlight: "rgba(118, 87, 232, 0.12)",
+    color: "#6366F1",
+    bgTint: "#EEF2FF",
+    glowSpotlight: "rgba(99, 102, 241, 0.12)",
     route: "/taxi/user",
     placeholders: [
       "Enter pickup & delivery address...",
@@ -120,12 +94,12 @@ const SERVICE_CONFIG = {
       eta: "18 min",
       status: "OTP Verified",
       icon: "📦",
-      color: "#7657E8",
+      color: "#6366F1",
     },
   },
 };
 
-const SERVICE_KEYS = ["food", "taxi", "grocery", "parcel"];
+const SERVICE_KEYS = ["food", "taxi", "parcel"];
 
 export default function Hero() {
   const navigate = useNavigate();
@@ -197,7 +171,7 @@ export default function Hero() {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("eqosy_landing_page_settings");
+      const stored = localStorage.getItem("raydo_landing_page_settings");
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed.hero_video) setHeroVideoSrc(parsed.hero_video);

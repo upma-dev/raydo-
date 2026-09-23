@@ -1,95 +1,96 @@
 import { Link, useLocation } from "react-router-dom"
-import { Tag, User, Truck, UtensilsCrossed } from "lucide-react"
+import { Home, FileText, Crown, ShoppingCart, User } from "lucide-react"
+import { useCart } from "@food/context/CartContext"
 
 export default function BottomNavigation() {
   const location = useLocation()
   const pathname = location.pathname
+  const { itemCount } = useCart()
 
-  // Check active routes - support both /user/* and /* paths
-  const isDining = pathname === "/food/dining" || pathname.startsWith("/food/user/dining")
-  const isUnder250 = pathname === "/food/under-250" || pathname.startsWith("/food/user/under-250")
-  const isProfile = pathname.startsWith("/food/profile") || pathname.startsWith("/food/user/profile")
-  const isDelivery =
-    !isDining &&
-    !isUnder250 &&
-    !isProfile &&
-    (pathname === "/food" ||
-      pathname === "/food/" ||
-      pathname === "/food/user" ||
-      (pathname.startsWith("/food/user") &&
-        !pathname.includes("/dining") &&
-        !pathname.includes("/under-250") &&
-        !pathname.includes("/profile")))
+  // Active state routes
+  const isHome = pathname === "/food" || pathname === "/food/" || pathname === "/food/user" || pathname === "/food/user/"
+  const isOrders = pathname.includes("/orders")
+  const isPass = pathname.includes("/gourmet") || pathname.includes("/pass")
+  const isCart = pathname.includes("/cart")
+  const isProfile = pathname.includes("/profile")
+
+  const navItems = [
+    {
+      id: "home",
+      label: "HOME",
+      to: "/food/user",
+      icon: Home,
+      isActive: isHome,
+    },
+    {
+      id: "orders",
+      label: "ORDERS",
+      to: "/food/user/orders",
+      icon: FileText,
+      isActive: isOrders,
+    },
+    {
+      id: "pass",
+      label: "PASS",
+      to: "/food/user/gourmet",
+      icon: Crown,
+      isActive: isPass,
+    },
+    {
+      id: "cart",
+      label: "CART",
+      to: "/food/user/cart",
+      icon: ShoppingCart,
+      isActive: isCart,
+      badge: itemCount,
+    },
+    {
+      id: "profile",
+      label: "PROFILE",
+      to: "/food/user/profile",
+      icon: User,
+      isActive: isProfile,
+    },
+  ]
 
   return (
-    <div
-      className="md:hidden fixed bottom-6 left-5 right-5 z-50 pointer-events-none"
-    >
-      <div className="flex items-center justify-around h-auto px-2 py-1.5 bg-white/85 dark:bg-[#1a1a1a]/85 backdrop-blur-[20px] border border-white/50 dark:border-white/10 rounded-full shadow-[0_20px_40px_rgba(0,0,0,0.15)] pointer-events-auto">
-        
-        {/* Delivery Tab */}
-        <Link
-          to="/food/user"
-          className={`flex flex-1 flex-col items-center justify-center gap-1 px-1 py-1.5 transition-all duration-300 relative rounded-full ${isDelivery
-              ? "text-[#F97316] bg-[#F97316]/10"
-              : "text-gray-500 dark:text-gray-400 hover:bg-gray-100/50 dark:hover:bg-gray-800/50"
-            }`}
-        >
-          <div className="relative">
-            <Truck className={`h-5 w-5 transition-transform duration-300 ${isDelivery ? "text-[#F97316] fill-[#F97316]/20 scale-110" : "text-gray-500 dark:text-gray-400"}`} strokeWidth={isDelivery ? 2.5 : 2} />
-          </div>
-          <span className={`text-[10px] sm:text-xs font-semibold tracking-wide transition-all ${isDelivery ? "text-[#F97316]" : "text-gray-500 dark:text-gray-400 opacity-80"}`}>
-            Delivery
-          </span>
-        </Link>
-
-        {/* Dining Tab */}
-        <Link
-          to="/food/user/dining"
-          className={`flex flex-1 flex-col items-center justify-center gap-1 px-1 py-1.5 transition-all duration-300 relative rounded-full ${isDining
-              ? "text-[#F97316] bg-[#F97316]/10"
-              : "text-gray-500 dark:text-gray-400 hover:bg-gray-100/50 dark:hover:bg-gray-800/50"
-            }`}
-        >
-          <div className="relative">
-            <UtensilsCrossed className={`h-5 w-5 transition-transform duration-300 ${isDining ? "text-[#F97316] scale-110" : "text-gray-500 dark:text-gray-400"}`} strokeWidth={isDining ? 2.5 : 2} />
-          </div>
-          <span className={`text-[10px] sm:text-xs font-semibold tracking-wide transition-all ${isDining ? "text-[#F97316]" : "text-gray-500 dark:text-gray-400 opacity-80"}`}>
-            Dining
-          </span>
-        </Link>
-
-        {/* Under 250 Tab */}
-        <Link
-          to="/food/user/under-250"
-          className={`flex flex-1 flex-col items-center justify-center gap-1 px-1 py-1.5 transition-all duration-300 relative rounded-full ${isUnder250
-              ? "text-[#F97316] bg-[#F97316]/10"
-              : "text-gray-500 dark:text-gray-400 hover:bg-gray-100/50 dark:hover:bg-gray-800/50"
-            }`}
-        >
-          <div className="relative">
-            <Tag className={`h-5 w-5 transition-transform duration-300 ${isUnder250 ? "text-[#F97316] fill-[#F97316]/20 scale-110" : "text-gray-500 dark:text-gray-400"}`} strokeWidth={isUnder250 ? 2.5 : 2} />
-          </div>
-          <span className={`text-[10px] sm:text-xs font-semibold tracking-wide transition-all ${isUnder250 ? "text-[#F97316]" : "text-gray-500 dark:text-gray-400 opacity-80"}`}>
-            Switch 99
-          </span>
-        </Link>
-
-        {/* Profile Tab */}
-        <Link
-          to="/food/user/profile"
-          className={`flex flex-1 flex-col items-center justify-center gap-1 px-1 py-1.5 transition-all duration-300 relative rounded-full ${isProfile
-              ? "text-[#F97316] bg-[#F97316]/10"
-              : "text-gray-500 dark:text-gray-400 hover:bg-gray-100/50 dark:hover:bg-gray-800/50"
-            }`}
-        >
-          <div className="relative">
-            <User className={`h-5 w-5 transition-transform duration-300 ${isProfile ? "text-[#F97316] fill-[#F97316]/20 scale-110" : "text-gray-500 dark:text-gray-400"}`} strokeWidth={isProfile ? 2.5 : 2} />
-          </div>
-          <span className={`text-[10px] sm:text-xs font-semibold tracking-wide transition-all ${isProfile ? "text-[#F97316]" : "text-gray-500 dark:text-gray-400 opacity-80"}`}>
-            Profile
-          </span>
-        </Link>
+    <div className="md:hidden fixed bottom-4 left-3 right-3 sm:left-6 sm:right-6 z-50 flex justify-center pointer-events-none">
+      <div className="flex items-center justify-between p-1.5 bg-white/95 dark:bg-[#121824]/95 backdrop-blur-xl border border-gray-100 dark:border-white/10 rounded-[28px] shadow-[0_12px_40px_rgba(0,0,0,0.14)] pointer-events-auto w-full max-w-sm sm:max-w-md mx-auto">
+        {navItems.map((item) => {
+          const Icon = item.icon
+          return (
+            <Link
+              key={item.id}
+              to={item.to}
+              className={`flex flex-col items-center justify-center flex-1 transition-all duration-300 relative ${
+                item.isActive
+                  ? "bg-[#0F172A] text-white rounded-[22px] px-3.5 py-2.5 shadow-xl shadow-slate-900/25 scale-[1.03]"
+                  : "px-2 py-2 text-[#8FA0B8] hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              <div className="relative">
+                <Icon
+                  className={`h-5 w-5 mb-0.5 ${
+                    item.isActive ? "text-white" : "text-[#8FA0B8]"
+                  }`}
+                  strokeWidth={item.isActive ? 2.3 : 1.8}
+                />
+                {item.badge > 0 && (
+                  <span className="absolute -top-1.5 -right-2.5 bg-red-500 text-white text-[8.5px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-900 shadow-xs">
+                    {item.badge > 9 ? "9+" : item.badge}
+                  </span>
+                )}
+              </div>
+              <span
+                className={`text-[9px] tracking-[0.16em] uppercase leading-none font-bold font-serif ${
+                  item.isActive ? "text-white font-extrabold" : "text-[#8FA0B8]"
+                }`}
+              >
+                {item.label}
+              </span>
+            </Link>
+          )
+        })}
       </div>
     </div>
   )

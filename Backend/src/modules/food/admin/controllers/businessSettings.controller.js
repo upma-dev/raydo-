@@ -8,15 +8,15 @@ export async function getBusinessSettings(req, res, next) {
         if (!settings) {
             // Create default settings if none exist
             settings = await FoodBusinessSettings.create({
-                companyName: 'Eqosy',
-                email: 'admin@eqosy.com'
+                companyName: 'Raydo',
+                email: 'admin@raydo.com'
             });
         }
         return sendResponse(res, 200, 'Business settings fetched successfully', settings);
     } catch (error) {
         return sendResponse(res, 200, 'Business settings fetched successfully', {
-            companyName: 'Eqosy',
-            email: 'admin@eqosy.com',
+            companyName: 'Raydo',
+            email: 'admin@raydo.com',
             phone: { countryCode: '+91', number: '' }
         });
     }
@@ -28,13 +28,13 @@ export async function updateBusinessSettings(req, res, next) {
         const { companyName, email, phoneCountryCode, phoneNumber, address, state, pincode, region } = data;
 
         // Validation
-        if (!companyName || companyName.trim().length < 2 || companyName.trim().length > 50) {
+        if (companyName && (companyName.trim().length < 2 || companyName.trim().length > 50)) {
             return res.status(400).json({ success: false, message: 'Company name must be between 2 and 50 characters' });
         }
-        if (!email || email.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
             return res.status(400).json({ success: false, message: 'Invalid email address (max 100 characters)' });
         }
-        if (!phoneNumber || !/^\d{7,15}$/.test(phoneNumber.trim())) {
+        if (phoneNumber && phoneNumber.trim() && !/^\d{7,15}$/.test(phoneNumber.trim())) {
             return res.status(400).json({ success: false, message: 'Invalid phone number (7-15 digits required)' });
         }
         if (address && address.length > 250) {
@@ -67,19 +67,16 @@ export async function updateBusinessSettings(req, res, next) {
 
         // Handle file uploads
         if (req.files) {
-            if (req.files.logo) {
-                const logoResult = await uploadImageBufferDetailed(req.files.logo[0].buffer, 'business/logos');
-                settings.logo = {
-                    url: logoResult.secure_url,
-                    publicId: logoResult.public_id
-                };
-            }
-            if (req.files.favicon) {
-                const faviconResult = await uploadImageBufferDetailed(req.files.favicon[0].buffer, 'business/favicons');
-                settings.favicon = {
-                    url: faviconResult.secure_url,
-                    publicId: faviconResult.public_id
-                };
+            const logoFields = ['logo', 'userLogo', 'deliveryLogo', 'driverLogo', 'restaurantLogo', 'adminLogo', 'favicon'];
+            for (const field of logoFields) {
+                if (req.files[field] && req.files[field][0]) {
+                    const folder = field === 'favicon' ? 'business/favicons' : 'business/logos';
+                    const uploadResult = await uploadImageBufferDetailed(req.files[field][0].buffer, folder);
+                    settings[field] = {
+                        url: uploadResult.secure_url,
+                        publicId: uploadResult.public_id
+                    };
+                }
             }
         }
 

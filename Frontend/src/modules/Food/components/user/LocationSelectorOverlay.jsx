@@ -202,14 +202,14 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
       localStorage.setItem("userLocation", JSON.stringify(locationData))
       localStorage.setItem("deliveryAddressMode", "current")
       try {
-        localStorage.setItem("eqosy:lastLocation", JSON.stringify({
+        localStorage.setItem("raydo:lastLocation", JSON.stringify({
           address: displayAddress,
           lat: Number(latitude),
           lon: Number(longitude),
           updatedAt: Date.now()
         }))
         window.dispatchEvent(new Event("storage"))
-        window.dispatchEvent(new Event("eqosy:location-updated"))
+        window.dispatchEvent(new Event("raydo:location-updated"))
         window.dispatchEvent(new CustomEvent("userLocationUpdated", { detail: locationData }))
         window.dispatchEvent(new CustomEvent("locationChanged", { detail: locationData }))
       } catch {}
@@ -598,7 +598,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
     location?.accuracy || null,
   ])
 
-  // Initialize Google Maps with Loader (EQOSY-STYLE)
+  // Initialize Google Maps with Loader (RAYDO-STYLE)
   useEffect(() => {
     if (!MAPS_ENABLED) {
       // Maps disabled: ensure loading spinner is off and rely on coordinates-only UX
@@ -633,7 +633,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         const map = new google.maps.Map(mapContainerRef.current, {
           center: initialLocation,
           zoom: 15,
-          disableDefaultUI: true, // Eqosy-style clean look
+          disableDefaultUI: true, // Raydo-style clean look
           zoomControl: true,
           mapTypeControl: false,
           streetViewControl: false,
@@ -1107,7 +1107,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             const lon = currentLocData.longitude || currentLocData.lng || currentLocData.lon;
             const address = currentLocData.formattedAddress || currentLocData.address || currentLocData.city || '';
             if (lat && lon) {
-              localStorage.setItem("eqosy:lastLocation", JSON.stringify({
+              localStorage.setItem("raydo:lastLocation", JSON.stringify({
                 address,
                 lat: Number(lat),
                 lon: Number(lon),
@@ -1115,7 +1115,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
               }));
             }
             window.dispatchEvent(new Event("storage"));
-            window.dispatchEvent(new Event("eqosy:location-updated"));
+            window.dispatchEvent(new Event("raydo:location-updated"));
             window.dispatchEvent(new CustomEvent("userLocationUpdated", { detail: currentLocData }));
             window.dispatchEvent(new CustomEvent("locationChanged", { detail: currentLocData }));
           } catch {}
@@ -2176,7 +2176,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
             const lon = activeLocData.longitude || activeLocData.lng || activeLocData.lon;
             const address = activeLocData.formattedAddress || activeLocData.address || activeLocData.city || '';
             if (lat && lon) {
-              localStorage.setItem("eqosy:lastLocation", JSON.stringify({
+              localStorage.setItem("raydo:lastLocation", JSON.stringify({
                 address,
                 lat: Number(lat),
                 lon: Number(lon),
@@ -2184,7 +2184,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
               }));
             }
             window.dispatchEvent(new Event("storage"));
-            window.dispatchEvent(new Event("eqosy:location-updated"));
+            window.dispatchEvent(new Event("raydo:location-updated"));
             window.dispatchEvent(new CustomEvent("userLocationUpdated", { detail: activeLocData }));
             window.dispatchEvent(new CustomEvent("locationChanged", { detail: activeLocData }));
           } catch {}
@@ -2286,7 +2286,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
         const lon = locationData.longitude || locationData.lng || locationData.lon;
         const addressStr = locationData.formattedAddress || locationData.address || locationData.city || '';
         if (lat && lon) {
-          localStorage.setItem("eqosy:lastLocation", JSON.stringify({
+          localStorage.setItem("raydo:lastLocation", JSON.stringify({
             address: addressStr,
             lat: Number(lat),
             lon: Number(lon),
@@ -2294,7 +2294,7 @@ export default function LocationSelectorOverlay({ isOpen, onClose }) {
           }));
         }
         window.dispatchEvent(new Event("storage"));
-        window.dispatchEvent(new Event("eqosy:location-updated"));
+        window.dispatchEvent(new Event("raydo:location-updated"));
         window.dispatchEvent(new CustomEvent("userLocationUpdated", { detail: locationData }));
         window.dispatchEvent(new CustomEvent("locationChanged", { detail: locationData }));
       } catch {}

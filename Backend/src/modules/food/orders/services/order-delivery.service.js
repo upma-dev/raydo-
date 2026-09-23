@@ -107,7 +107,7 @@ function emitOrderUpdate(order, deliveryPartnerId) {
       const billAmount = order.pricing?.total || order.amounts?.totalCustomerPaid || order.total || 0;
       const otpCode = String(order.deliveryOtp || '').trim() || '----';
       userTitle = '🚚 Your Delivery Partner Has Arrived!';
-      userBody = `Your order has reached your location. Please come to the door to receive your order.\n\n💰 Total Bill: ₹${billAmount}\n🔐 Delivery OTP: ${otpCode}\n\nPlease share this OTP with the delivery partner to confirm and receive your order.\n\nThank you for choosing Eqosy! ❤️`;
+      userBody = `Your order has reached your location. Please come to the door to receive your order.\n\n💰 Total Bill: ₹${billAmount}\n🔐 Delivery OTP: ${otpCode}\n\nPlease share this OTP with the delivery partner to confirm and receive your order.\n\nThank you for choosing Raydo! ❤️`;
       restTitle = '';
       restBody = '';
       riderTitle = '';

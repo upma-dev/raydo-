@@ -1,6 +1,6 @@
-export const LOCATION_STORAGE_KEY = 'eqosy:lastLocation';
+export const LOCATION_STORAGE_KEY = 'raydo:lastLocation';
 export const USER_LOCATION_KEY = 'userLocation';
-export const LOCATION_UPDATED_EVENT = 'eqosy:location-updated';
+export const LOCATION_UPDATED_EVENT = 'raydo:location-updated';
 
 export const DEFAULT_LOCATION_LABEL = 'Choose your location';
 export const DEFAULT_LOCATION_COORDS = [78.4867, 17.385];
@@ -33,7 +33,7 @@ export const getSavedLocation = () => {
       }
     }
 
-    // 2. Fallback to Taxi key eqosy:lastLocation
+    // 2. Fallback to Taxi key raydo:lastLocation
     const saved = JSON.parse(window.localStorage.getItem(LOCATION_STORAGE_KEY) || '{}');
     let lat = Number(saved?.lat);
     let lon = Number(saved?.lon);

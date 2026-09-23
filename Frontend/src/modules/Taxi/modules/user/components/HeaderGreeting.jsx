@@ -11,13 +11,24 @@ const fallingCoins = [
 ];
 
 import { useSettings } from '../../../shared/context/SettingsContext';
+import defaultRaydoLogo from '@food/assets/raydo-logo.png';
+import { BACKEND_ORIGIN } from '../../../shared/api/runtimeConfig';
+
+const resolveAssetUrl = (value = '') => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^(https?:|data:image\/|blob:)/i.test(raw)) return raw;
+  if (raw.startsWith('/')) return raw;
+  return `${BACKEND_ORIGIN}/${raw.replace(/^\/+/, '')}`;
+};
 
 const HeaderGreeting = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { settings } = useSettings();
-  const appLogo = settings.general?.logo || settings.customization?.logo || settings.general?.favicon || '';
-  const appName = settings.general?.app_name || 'App';
+  const dynamicLogoRaw = settings?.general?.logo || settings?.customization?.logo || '';
+  const logoSrc = dynamicLogoRaw ? resolveAssetUrl(dynamicLogoRaw) : (defaultRaydoLogo || '/raydo-logo.png');
+  const appName = settings.general?.app_name || 'Raydo';
   const [locationLabel, setLocationLabel] = useState(getSavedLocationLabel);
   const routePrefix = location.pathname.startsWith('/taxi/user') ? '/taxi/user' : '';
   const selectLocationPath = `${routePrefix}/ride/select-location`;
@@ -36,7 +47,7 @@ const HeaderGreeting = () => {
 
     return () => {
       window.removeEventListener('storage', syncLocationLabel);
-      window.removeEventListener(LOCATION_UPDATED_EVENT, syncLocationLabel);
+      window.removeEventListener('locationUpdated', syncLocationLabel);
       window.removeEventListener('userLocationUpdated', syncLocationLabel);
       window.removeEventListener('locationChanged', syncLocationLabel);
     };
@@ -58,20 +69,19 @@ const HeaderGreeting = () => {
               animate={{ opacity: [0.3, 0.75, 0.3], scale: [0.92, 1.06, 0.92] }}
               transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
             />
-            {appLogo ? (
-              <motion.img
-                key={appLogo}
-                src={appLogo}
-                alt={appName}
-                className="relative z-10 h-10 object-contain drop-shadow-sm"
-                animate={{ y: [0, -2, 0], scale: [1, 1.02, 1] }}
-                transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-              />
-            ) : (
-              <div className="relative z-10 flex h-10 min-w-[40px] items-center justify-center rounded-full bg-slate-900 px-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">
-                {appName.slice(0, 2)}
-              </div>
-            )}
+            <motion.img
+              key={logoSrc}
+              src={logoSrc}
+              alt={appName}
+              onError={(e) => {
+                if (e.target.src !== defaultRaydoLogo && e.target.src !== '/raydo-logo.png') {
+                  e.target.src = defaultRaydoLogo || '/raydo-logo.png';
+                }
+              }}
+              className="relative z-10 h-8 sm:h-9 w-auto object-contain drop-shadow-sm max-w-[110px]"
+              animate={{ y: [0, -2, 0], scale: [1, 1.02, 1] }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+            />
           </motion.div>
 
           <motion.button

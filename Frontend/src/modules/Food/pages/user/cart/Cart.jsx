@@ -2237,7 +2237,7 @@ export default function Cart() {
           `2. Backend is accessible at ${backendUrl}\n` +
           `3. Check browser console (F12) for more details\n\n` +
           `If backend is not running, start it with:\n` +
-          `cd eqosy/backend && npm start`
+          `cd raydo/backend && npm start`
 
         debugError("?? Network Error Details:", {
           code: error.code,
@@ -3998,7 +3998,7 @@ export default function Cart() {
                 >
                   <div className="px-5 py-5 space-y-4">
                     <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed border-b border-gray-100 dark:border-gray-800 pb-4">
-                      {companyName || "Eqosy"} has no role to play in taxes levied by the govt.
+                      {companyName || "Raydo"} has no role to play in taxes levied by the govt.
                     </p>
 
                     <div className="space-y-3">
@@ -4210,7 +4210,7 @@ export default function Cart() {
                 >
                   <div className="px-5 py-5 space-y-4">
                     <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed border-b border-gray-100 dark:border-gray-800 pb-4">
-                      {companyName || "Eqosy"} has no role to play in taxes levied by the govt.
+                      {companyName || "Raydo"} has no role to play in taxes levied by the govt.
                     </p>
 
                     <div className="space-y-3">
@@ -4341,7 +4341,7 @@ export default function Cart() {
 
                   <div className="py-6 text-center">
                     <p className="text-base text-gray-600 dark:text-gray-300 leading-relaxed font-medium">
-                      This small fee helps us pay the bills so that we can keep {companyName || "Eqosy"} running
+                      This small fee helps us pay the bills so that we can keep {companyName || "Raydo"} running
                     </p>
                   </div>
 
@@ -4462,7 +4462,7 @@ export default function Cart() {
                 >
                   <div className="px-5 py-5 space-y-4">
                     <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed border-b border-gray-100 dark:border-gray-800 pb-4">
-                      {companyName || "Eqosy"} has no role to play in taxes levied by the govt.
+                      {companyName || "Raydo"} has no role to play in taxes levied by the govt.
                     </p>
 
                     <div className="space-y-3">
@@ -4593,7 +4593,7 @@ export default function Cart() {
 
                   <div className="py-6 text-center">
                     <p className="text-base text-gray-600 dark:text-gray-300 leading-relaxed font-medium">
-                      This small fee helps us pay the bills so that we can keep {companyName || "Eqosy"} running
+                      This small fee helps us pay the bills so that we can keep {companyName || "Raydo"} running
                     </p>
                   </div>
 

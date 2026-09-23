@@ -1,9 +1,9 @@
-﻿import mongoose from 'mongoose';
+import mongoose from 'mongoose';
 
 const businessSettingsSchema = new mongoose.Schema(
     {
-        companyName: { type: String, required: true, default: 'Eqosy' },
-        email: { type: String, required: true, default: 'admin@eqosy.com' },
+        companyName: { type: String, required: true, default: 'Raydo' },
+        email: { type: String, required: true, default: 'admin@raydo.com' },
         phone: {
             countryCode: { type: String, default: '+91' },
             number: { type: String, default: '' }
@@ -13,6 +13,26 @@ const businessSettingsSchema = new mongoose.Schema(
         pincode: { type: String, default: '' },
         region: { type: String, default: 'India' },
         logo: {
+            url: { type: String, default: '' },
+            publicId: { type: String, default: '' }
+        },
+        userLogo: {
+            url: { type: String, default: '' },
+            publicId: { type: String, default: '' }
+        },
+        deliveryLogo: {
+            url: { type: String, default: '' },
+            publicId: { type: String, default: '' }
+        },
+        driverLogo: {
+            url: { type: String, default: '' },
+            publicId: { type: String, default: '' }
+        },
+        restaurantLogo: {
+            url: { type: String, default: '' },
+            publicId: { type: String, default: '' }
+        },
+        adminLogo: {
             url: { type: String, default: '' },
             publicId: { type: String, default: '' }
         },

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, ChevronDown, Search, Mic, Bell, CheckCircle2, Tag, AlertCircle, BellOff, X, ShoppingBag, Loader2 } from 'lucide-react';
+import { MapPin, ChevronDown, Search, Mic, Bell, CheckCircle2, Tag, AlertCircle, BellOff, X, ShoppingBag, ShoppingCart, Loader2, SlidersHorizontal, Volume2, VolumeX, ShieldCheck, Copy, Check, Sparkles } from 'lucide-react';
 import { useLocation as useUserGeoLocation } from "@food/hooks/useLocation";
 import {
   Popover,
@@ -12,11 +12,15 @@ import { Badge } from "@food/components/ui/badge";
 import foodIcon from "@food/assets/category-icons/food.png";
 import quickIcon from "@food/assets/category-icons/quick.png";
 import hotelIcon from "@food/assets/category-icons/hotel.png";
+import quickSpicyLogo from "@food/assets/raydo-logo.png";
+import heroAppetizingFood from "@food/assets/hero_appetizing_food.png";
+import cinematicFoodPoster from "@food/assets/cinematic_food_poster.png";
 import { useCart } from "@food/context/CartContext";
 import useNotificationInbox from "@food/hooks/useNotificationInbox";
 import { getVerticalTheme } from "@/shared/constants/superAppVerticalTheme";
 import { syncThemeForPath } from "@/shared/utils/theme.js";
 import { calculateDistanceInKm, extractCoords } from "@food/utils/geoDistance";
+import { loadBusinessSettings } from "@food/utils/businessSettings";
 
 const ICON_MAP = {
   CheckCircle2,
@@ -24,8 +28,8 @@ const ICON_MAP = {
   AlertCircle
 };
 
-const LOCATION_STORAGE_KEY = 'eqosy:lastLocation';
-const LOCATION_UPDATED_EVENT = 'eqosy:location-updated';
+const LOCATION_STORAGE_KEY = 'raydo:lastLocation';
+const LOCATION_UPDATED_EVENT = 'raydo:location-updated';
 
 const FOOD_PLACEHOLDERS = [
   'Search "burger"',
@@ -43,14 +47,7 @@ const TAXI_PLACEHOLDERS = [
   'Search "outstation"',
 ];
 
-const GROCERY_PLACEHOLDERS = [
-  'Search "bread"',
-  'Search "milk"',
-  'Search "fruits"',
-  'Search "snacks"',
-];
-
-function readEqosyLocation() {
+function readRaydoLocation() {
   if (typeof window === 'undefined') return null;
   try {
     // 1. Priority: Read Food/Grocery location key userLocation FIRST for full accuracy
@@ -75,7 +72,7 @@ function readEqosyLocation() {
       }
     }
 
-    // 2. Fallback to Taxi location key eqosy:lastLocation
+    // 2. Fallback to Taxi location key raydo:lastLocation
     const saved = JSON.parse(window.localStorage.getItem(LOCATION_STORAGE_KEY) || '{}');
     const address = String(saved?.address || '').trim();
     if (!address) return null;
@@ -102,21 +99,21 @@ function BurgerIcon({ isActive }) {
   if (isActive) {
     return (
       <svg className="w-8 h-8 filter drop-shadow-sm" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 30C12 18 20 12 32 12C44 12 52 18 52 30H12Z" fill="#F4A261" stroke="#2D1B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M10 32C10 32 14 36 21 36C28 36 30 32 35 32C40 32 43 36 48 36C53 36 54 32 54 32" fill="#2A9D8F" stroke="#2D1B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M10 36L14 40L50 40L54 36" fill="#E9C46A" stroke="#2D1B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <rect x="14" y="40" width="36" height="6" rx="3" fill="#8B5E3C" stroke="#2D1B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M16 46C16 52 22 54 32 54C42 54 48 52 48 46H16Z" fill="#F4A261" stroke="#2D1B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M12 30C12 18 20 12 32 12C44 12 52 18 52 30H12Z" fill="#F4A261" stroke="#2D1B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M10 32C10 32 14 36 21 36C28 36 30 32 35 32C40 32 43 36 48 36C53 36 54 32 54 32" fill="#2A9D8F" stroke="#2D1B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M10 36L14 40L50 40L54 36" fill="#E9C46A" stroke="#2D1B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="14" y="40" width="36" height="6" rx="3" fill="#8B5E3C" stroke="#2D1B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M16 46C16 52 22 54 32 54C42 54 48 52 48 46H16Z" fill="#F4A261" stroke="#2D1B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
   return (
     <svg className="w-8 h-8 opacity-65 text-white" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 30C12 18 20 12 32 12C44 12 52 18 52 30H12Z" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M10 32C10 32 14 36 21 36C28 36 30 32 35 32C40 32 43 36 48 36C53 36 54 32 54 32" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M10 36L14 40L50 40L54 36" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-      <rect x="14" y="40" width="36" height="6" rx="3" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M16 46C16 52 22 54 32 54C42 54 48 52 48 46H16Z" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M12 30C12 18 20 12 32 12C44 12 52 18 52 30H12Z" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 32C10 32 14 36 21 36C28 36 30 32 35 32C40 32 43 36 48 36C53 36 54 32 54 32" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 36L14 40L50 40L54 36" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="14" y="40" width="36" height="6" rx="3" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16 46C16 52 22 54 32 54C42 54 48 52 48 46H16Z" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -151,47 +148,19 @@ function TaxiIcon({ isActive }) {
   );
 }
 
-function GroceryIcon({ isActive }) {
-  if (isActive) {
-    return (
-      <svg className="w-8 h-8 filter drop-shadow-sm" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M10 18H14L18 44H48L52 18H58" stroke="#14532D" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M18 44H48L46 50C45.4 52.2 43.5 54 41 54H25C22.5 54 20.6 52.2 20 50L18 44Z" fill="#86EFAC" stroke="#14532D" strokeWidth="2.5" strokeLinejoin="round" />
-        <circle cx="24" cy="58" r="3" fill="#14532D" />
-        <circle cx="42" cy="58" r="3" fill="#14532D" />
-        <path d="M22 26H42C43.1 26 44 26.9 44 28V34C44 35.1 43.1 36 42 36H22C20.9 36 20 35.1 20 34V28C20 26.9 20.9 26 22 26Z" fill="#FEF9C3" stroke="#14532D" strokeWidth="2" />
-        <path d="M28 22C28 19 30 16 33 16C36 16 38 19 38 22" fill="#EF4444" stroke="#14532D" strokeWidth="2" />
-        <path d="M33 16V22" stroke="#14532D" strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M46 30C48 28 50 28 52 30C54 32 54 34 52 36" stroke="#22C55E" strokeWidth="2.5" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  return (
-    <svg className="w-8 h-8 opacity-70 text-white" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M10 18H14L18 44H48L52 18H58" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M18 44H48L46 50C45.4 52.2 43.5 54 41 54H25C22.5 54 20.6 52.2 20 50L18 44Z" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round" />
-      <circle cx="24" cy="58" r="3" fill="currentColor" />
-      <circle cx="42" cy="58" r="3" fill="currentColor" />
-      <path d="M28 22C28 19 30 16 33 16C36 16 38 19 38 22" stroke="currentColor" strokeWidth="2.5" />
-    </svg>
-  );
-}
-
 const renderVerticalIcon = (id, isActive) => {
   if (id === 'food') return <BurgerIcon isActive={isActive} />;
   if (id === 'taxi') return <TaxiIcon isActive={isActive} />;
-  if (id === 'grocery') return <GroceryIcon isActive={isActive} />;
   return null;
 };
 
 const foodTheme = getVerticalTheme('food');
 const taxiTheme = getVerticalTheme('taxi');
-const groceryTheme = getVerticalTheme('grocery');
 
 const VERTICALS = [
   {
     id: 'food',
-    name: 'EqosyFood',
+    name: 'RaydoFood',
     path: '/food/user',
     icon: foodIcon,
     themeBg: foodTheme.themeBg,
@@ -200,21 +169,12 @@ const VERTICALS = [
   },
   {
     id: 'taxi',
-    name: 'EqosyTaxi',
+    name: 'RaydoTaxi',
     path: '/taxi/user',
     icon: quickIcon,
     themeBg: taxiTheme.themeBg,
     activeTabBg: taxiTheme.activeTabBg,
     inactiveTabBg: taxiTheme.inactiveTabBg,
-  },
-  {
-    id: 'grocery',
-    name: 'EqosyGrocery',
-    path: '/food/user?vertical=grocery',
-    icon: hotelIcon,
-    themeBg: groceryTheme.themeBg,
-    activeTabBg: groceryTheme.activeTabBg,
-    inactiveTabBg: groceryTheme.inactiveTabBg,
   },
 ];
 
@@ -247,20 +207,15 @@ export default function HomeHeader({
   let routeVertical = 'food';
   if (locationPath.startsWith('/taxi/')) {
     routeVertical = 'taxi';
-  } else if (locationPath.includes('/food/user/grocery') || locationPath.includes('/grocery')) {
-    routeVertical = 'grocery';
-  } else if (new URLSearchParams(reactLocation.search).get('vertical') === 'grocery') {
-    routeVertical = 'grocery';
-  } else if (['food', 'taxi', 'grocery'].includes(activeVerticalProp)) {
+  } else if (['food', 'taxi'].includes(activeVerticalProp)) {
     routeVertical = activeVerticalProp;
   }
 
   const activeVertical = isControlled
-    ? (['food', 'taxi', 'grocery'].includes(activeVerticalProp) ? activeVerticalProp : 'food')
+    ? (['food', 'taxi'].includes(activeVerticalProp) ? activeVerticalProp : 'food')
     : (activeVerticalProp ?? routeVertical);
   const isFood = activeVertical === 'food';
   const isTaxi = activeVertical === 'taxi';
-  const isGrocery = activeVertical === 'grocery';
 
   const handleVerticalTabClick = useCallback((verticalId) => {
     if (isControlled) {
@@ -285,11 +240,26 @@ export default function HomeHeader({
 
   const { location: geoLoc, loading: isGeoLoading } = useUserGeoLocation();
 
-  const [storedLocation, setStoredLocation] = useState(() => readEqosyLocation());
+  const [storedLocation, setStoredLocation] = useState(() => readRaydoLocation());
   const [internalPlaceholderIndex, setInternalPlaceholderIndex] = useState(0);
 
+  const [businessSettings, setBusinessSettings] = useState(null);
+
   useEffect(() => {
-    const syncLocation = () => setStoredLocation(readEqosyLocation());
+    let mounted = true;
+    loadBusinessSettings().then((settings) => {
+      if (mounted && settings) {
+        setBusinessSettings(settings);
+      }
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  const dynamicLogoUrl = businessSettings?.userLogo?.url || businessSettings?.logo?.url || quickSpicyLogo;
+  const companyName = businessSettings?.companyName || "RAYDO";
+
+  useEffect(() => {
+    const syncLocation = () => setStoredLocation(readRaydoLocation());
     syncLocation();
     window.addEventListener('storage', syncLocation);
     window.addEventListener(LOCATION_UPDATED_EVENT, syncLocation);
@@ -305,82 +275,6 @@ export default function HomeHeader({
 
   const location = locationProp ?? storedLocation ?? geoLoc;
   const isLocating = isGeoLoading && !location?.formattedAddress && !location?.address;
-
-  const selectedAddressDistanceKm = useMemo(() => {
-    const deliveryAddressMode = localStorage.getItem("deliveryAddressMode") || "saved";
-    if (deliveryAddressMode === "current") return 0;
-
-    let liveCoords = null;
-    try {
-      const raw = localStorage.getItem("userLocation");
-      if (raw) {
-        liveCoords = extractCoords(JSON.parse(raw));
-      }
-    } catch {
-      // ignore
-    }
-
-    const addressCoords = extractCoords(location);
-    if (!liveCoords || !addressCoords) return 0;
-
-    return calculateDistanceInKm(
-      liveCoords.latitude,
-      liveCoords.longitude,
-      addressCoords.latitude,
-      addressCoords.longitude
-    );
-  }, [location]);
-
-  const resolvedPlaceholders = useMemo(() => {
-    if (placeholdersProp?.length) return placeholdersProp;
-    if (isTaxi) return TAXI_PLACEHOLDERS;
-    if (isGrocery) return GROCERY_PLACEHOLDERS;
-    return FOOD_PLACEHOLDERS;
-  }, [placeholdersProp, isTaxi, isGrocery]);
-
-  const placeholderIndex = placeholderIndexProp ?? internalPlaceholderIndex;
-
-  useEffect(() => {
-    if (placeholderIndexProp !== undefined && placeholderIndexProp !== null) return undefined;
-    const timer = setInterval(() => {
-      setInternalPlaceholderIndex((prev) => (prev + 1) % resolvedPlaceholders.length);
-    }, 3500);
-    return () => clearInterval(timer);
-  }, [placeholderIndexProp, resolvedPlaceholders.length]);
-
-  const onLocationClick = useCallback(() => {
-    if (handleLocationClick) {
-      handleLocationClick();
-      return;
-    }
-    if (isTaxi) {
-      navigate('/taxi/user/ride/select-location');
-      return;
-    }
-    if (isGrocery) {
-      navigate('/food/user/grocery');
-    }
-  }, [handleLocationClick, isTaxi, isGrocery, navigate]);
-
-  const onSearchFocus = useCallback(() => {
-    if (handleSearchFocus) {
-      handleSearchFocus();
-      return;
-    }
-    if (isTaxi) {
-      navigate('/taxi/user/ride/select-location');
-      return;
-    }
-    if (isFood) {
-      navigate('/food/user/search');
-      return;
-    }
-    if (isGrocery) {
-      navigate('/food/user/search?vertical=grocery');
-    }
-  }, [handleSearchFocus, isTaxi, isFood, isGrocery, navigate]);
-
-  const walletPath = isTaxi ? '/taxi/user/wallet' : '/food/user/wallet';
 
   const displayTitle = useMemo(() => {
     if (isLocating) return "Locating...";
@@ -411,6 +305,73 @@ export default function HomeHeader({
     const parts = [location?.state, location?.zipCode || location?.postalCode].filter(Boolean);
     return parts.join(", ");
   }, [locationSubtitle, location, isLocating]);
+
+  const selectedAddressDistanceKm = useMemo(() => {
+    const deliveryAddressMode = localStorage.getItem("deliveryAddressMode") || "saved";
+    if (deliveryAddressMode === "current") return 0;
+
+    let liveCoords = null;
+    try {
+      const raw = localStorage.getItem("userLocation");
+      if (raw) {
+        liveCoords = extractCoords(JSON.parse(raw));
+      }
+    } catch {
+      // ignore
+    }
+
+    const addressCoords = extractCoords(location);
+    if (!liveCoords || !addressCoords) return 0;
+
+    return calculateDistanceInKm(
+      liveCoords.latitude,
+      liveCoords.longitude,
+      addressCoords.latitude,
+      addressCoords.longitude
+    );
+  }, [location]);
+
+  const resolvedPlaceholders = useMemo(() => {
+    if (placeholdersProp?.length) return placeholdersProp;
+    if (isTaxi) return TAXI_PLACEHOLDERS;
+    return FOOD_PLACEHOLDERS;
+  }, [placeholdersProp, isTaxi]);
+
+  const placeholderIndex = placeholderIndexProp ?? internalPlaceholderIndex;
+
+  useEffect(() => {
+    if (placeholderIndexProp !== undefined && placeholderIndexProp !== null) return undefined;
+    const timer = setInterval(() => {
+      setInternalPlaceholderIndex((prev) => (prev + 1) % resolvedPlaceholders.length);
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [placeholderIndexProp, resolvedPlaceholders.length]);
+
+  const onLocationClick = useCallback(() => {
+    if (handleLocationClick) {
+      handleLocationClick();
+      return;
+    }
+    if (isTaxi) {
+      navigate('/taxi/user/ride/select-location');
+    }
+  }, [handleLocationClick, isTaxi, navigate]);
+
+  const onSearchFocus = useCallback(() => {
+    if (handleSearchFocus) {
+      handleSearchFocus();
+      return;
+    }
+    if (isTaxi) {
+      navigate('/taxi/user/ride/select-location');
+      return;
+    }
+    if (isFood) {
+      navigate('/food/user/search');
+    }
+  }, [handleSearchFocus, isTaxi, isFood, navigate]);
+
+  const walletPath = isTaxi ? '/taxi/user/wallet' : '/food/user/wallet';
 
   const [notifications, setNotifications] = useState(() => {
     if (typeof window === 'undefined') return [];
@@ -476,109 +437,150 @@ export default function HomeHeader({
     });
   };
 
+  const [isVegOnly, setIsVegOnly] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return JSON.parse(localStorage.getItem("raydo_veg_mode_only") || "false");
+    } catch {
+      return false;
+    }
+  });
+  const [isVideoMuted, setIsVideoMuted] = useState(true);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  const defaultContentTemplates = useMemo(() => [
-    { title: "FLAT", highlight: "50% OFF", subTitle: "with FREE delivery" },
-    { title: "FLAT", highlight: "₹150 OFF", subTitle: "on Premium Dining" },
-    { title: "FREE", highlight: "Delivery", subTitle: "on orders above ₹199" },
-  ], []);
+  const defaultPosterTemplates = useMemo(() => [
+    {
+      title: "HUNGRY?",
+      highlight: companyName,
+      subTitle: "Fresh food. Fast delivery.",
+      offerText: "₹150 OFF",
+      offerSub: "on first order",
+      ctaText: "ORDER NOW",
+      imageUrl: heroAppetizingFood,
+      videoUrl: "/food/cute_video_hero_section_ke_liy.mp4",
+    },
+    {
+      title: "PIZZA &",
+      highlight: "BURGER",
+      subTitle: "Up to 50% OFF on Top Restaurants",
+      offerText: "FREE DELIVERY",
+      offerSub: "on orders above ₹199",
+      ctaText: "EXPLORE DEALS",
+      imageUrl: heroAppetizingFood,
+      videoUrl: "/food/cute_video_hero_section_ke_liy.mp4",
+    },
+    {
+      title: "FAST &",
+      highlight: "FRESH",
+      subTitle: "Hot meals delivered in 25-30 Mins",
+      offerText: "EXTRA ₹100 OFF",
+      offerSub: "with RAYDO Pass",
+      ctaText: "ORDER NOW",
+      imageUrl: heroAppetizingFood,
+      videoUrl: "/food/cute_video_hero_section_ke_liy.mp4",
+    }
+  ], [companyName]);
 
   const slideBanners = useMemo(() => {
     if (Array.isArray(heroBanners) && heroBanners.length > 0) {
       return heroBanners.map((banner, index) => {
         const isObj = typeof banner === 'object' && banner !== null;
-        const imageUrl = isObj ? (banner.imageUrl || banner.image) : banner;
-        const title = isObj && banner.title ? banner.title : defaultContentTemplates[index % defaultContentTemplates.length].title;
-        const highlight = isObj && banner.title ? "" : defaultContentTemplates[index % defaultContentTemplates.length].highlight;
-        const subTitle = isObj && (banner.subTitle || banner.ctaText) ? (banner.subTitle || banner.ctaText) : defaultContentTemplates[index % defaultContentTemplates.length].subTitle;
+        const imageUrl = isObj ? (banner.imageUrl || banner.image || banner.coverImage) : banner;
+        const template = defaultPosterTemplates[index % defaultPosterTemplates.length];
 
         return {
           id: isObj ? (banner._id || banner.id || index) : index,
-          imageUrl: imageUrl || bannerImages[index % bannerImages.length],
-          title,
-          highlight,
-          subTitle,
+          title: isObj && banner.title ? String(banner.title).toUpperCase() : template.title,
+          highlight: isObj && banner.highlight ? String(banner.highlight).toUpperCase() : template.highlight,
+          subTitle: isObj && (banner.subTitle || banner.description) ? (banner.subTitle || banner.description) : template.subTitle,
+          offerText: isObj && (banner.offerText || banner.discountText || banner.badge) ? (banner.offerText || banner.discountText || banner.badge) : template.offerText,
+          offerSub: isObj && banner.offerSub ? banner.offerSub : template.offerSub,
+          ctaText: isObj && (banner.ctaText || banner.buttonText) ? (banner.ctaText || banner.buttonText) : template.ctaText,
+          ctaLink: isObj ? (banner.ctaLink || banner.link || banner.targetUrl) : null,
+          imageUrl: imageUrl || heroAppetizingFood,
+          videoUrl: isObj ? (banner.videoUrl || banner.video || template.videoUrl) : template.videoUrl,
         };
       });
     }
+    return defaultPosterTemplates;
+  }, [heroBanners, defaultPosterTemplates]);
 
-    return bannerImages.map((img, index) => {
-      const template = defaultContentTemplates[index % defaultContentTemplates.length];
-      return {
-        id: index,
-        imageUrl: img,
-        title: template.title,
-        highlight: template.highlight,
-        subTitle: template.subTitle,
-      };
-    });
-  }, [heroBanners, bannerImages, defaultContentTemplates]);
+useEffect(() => {
+  if (!isFood) return undefined;
+  const timer = setInterval(() => {
+    setCurrentSlide((prev) => (prev + 1) % Math.max(slideBanners.length, 1));
+  }, 4000);
+  return () => clearInterval(timer);
+}, [slideBanners.length, isFood]);
 
-  useEffect(() => {
-    if (!isFood) return undefined;
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % Math.max(slideBanners.length, 1));
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [slideBanners.length, isFood]);
+return (
+  <>
+    {/* Header Container: Dynamic Logo + Location + Connected Full Video Hero */}
+    <div className="relative z-10 w-full bg-gradient-to-r from-[#FFC700] via-[#FF8800] to-[#FF6B00] text-black transition-colors duration-300 pb-4 shadow-xl rounded-b-[28px] sm:rounded-b-[36px]">
+      {/* Row 1: Logo + Address + Action Icons */}
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
+        {/* Dynamic Logo */}
+        <Link to="/food/user" className="flex items-center gap-2 flex-shrink-0">
+          <img
+            src={dynamicLogoUrl}
+            alt={companyName}
+            className="h-8 sm:h-9 w-auto max-w-[130px] object-contain filter drop-shadow-md"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = quickSpicyLogo;
+            }}
+          />
+          {(!businessSettings?.userLogo?.url && !businessSettings?.logo?.url) && (
+            <div className="flex flex-col leading-none">
+              <span className="text-[18px] sm:text-[20px] font-black tracking-tighter uppercase text-black drop-shadow-xs">
+                {companyName}
+              </span>
+            </div>
+          )}
+        </Link>
 
-  return (
-    <>
-      {/* Container 1: Location + Vertical Navigation Tabs */}
-    <div
-      className="relative z-10 w-full transition-colors duration-500 ease-in-out"
-      style={{ backgroundColor: verticalTheme.theme }}
-    >
-        <div className="relative z-20 px-4 pt-4 pb-2 flex items-center justify-between gap-3">
+        {/* Address Dropdown Pill */}
+        <button
+          type="button"
+          className="flex items-center gap-1.5 min-w-0 flex-1 max-w-[210px] sm:max-w-[260px] mx-1 text-left bg-black/15 hover:bg-black/25 px-3 py-1.5 rounded-full transition-all border border-white/25 backdrop-blur-md shadow-inner text-white"
+          onClick={onLocationClick}
+        >
+          <MapPin className="h-4 w-4 flex-shrink-0 text-white fill-white/20" strokeWidth={2.2} />
+          <div className="flex items-center gap-1 min-w-0 flex-1 text-white">
+            <span className="text-[12px] sm:text-[13px] font-extrabold truncate leading-tight drop-shadow-xs flex-1">
+              {displayTitle} {displaySubtitle ? `· ${displaySubtitle}` : ''}
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 opacity-90" />
+          </div>
+        </button>
+
+        {/* Action Icons: Wallet, Notification Bell & Cart (3 Circular Capsule Buttons matching Reference Image) */}
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+          {/* Wallet Button */}
           <button
             type="button"
-            className="flex items-center gap-1.5 min-w-0 flex-1 text-left"
-            onClick={onLocationClick}
+            className="h-8.5 w-8.5 sm:h-10 sm:w-10 relative flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 transition-all text-gray-900 border border-white/60"
+            onClick={() => navigate(walletPath)}
+            aria-label="Wallet"
           >
-            {isLocating ? (
-              <Loader2 className="h-4 w-4 animate-spin flex-shrink-0 text-white" />
-            ) : (
-              <MapPin className="h-5 w-5 flex-shrink-0" strokeWidth={1.5} style={{ color: verticalTheme.accent, fill: verticalTheme.accent }} />
-            )}
-            <div className="flex flex-col min-w-0 text-white">
-              <div className="flex items-center gap-0.5 min-w-0">
-                <span className="text-[14px] font-bold truncate drop-shadow-sm">
-                  {displayTitle}
-                </span>
-                <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 opacity-90" />
-              </div>
-              {displaySubtitle ? (
-                <span className="text-[11px] font-medium truncate opacity-80 max-w-[210px]">
-                  {displaySubtitle}
-                </span>
-              ) : null}
+            <div className="w-4 h-4 sm:w-4.5 sm:h-4.5 border-2 border-black rounded-md flex items-center justify-center bg-yellow-400">
+              <span className="text-black text-[9px] sm:text-[10px] font-black">₹</span>
             </div>
           </button>
 
-          <div className="flex items-center gap-2.5 flex-shrink-0">
-            <button
-              type="button"
-              className="h-10 w-10 relative flex items-center justify-center rounded-full bg-white shadow-sm hover:bg-gray-50 transition-all"
-              onClick={() => navigate(walletPath)}
-              aria-label="Wallet"
-            >
-              <div className="w-5 h-5 border-2 border-gray-800 rounded flex items-center justify-center">
-                <span className="text-gray-800 text-[10px] font-bold font-serif">₹</span>
-              </div>
-            </button>
-
-            {!isTaxi && (
+          {/* Notification Bell Button */}
+          {!isTaxi && (
             <Popover>
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className="h-10 w-10 relative flex items-center justify-center rounded-full bg-white shadow-sm hover:bg-gray-50 active:scale-95 transition-all"
+                  className="h-8.5 w-8.5 sm:h-10 sm:w-10 relative flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 active:scale-95 transition-all text-gray-900 border border-white/60"
                   aria-label="Notifications"
                 >
-                  <Bell className="h-5 w-5 text-gray-800" />
+                  <Bell className="h-4 w-4 sm:h-4.5 sm:w-4.5 text-black" strokeWidth={2.2} />
                   {unreadCount > 0 && (
-                    <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-yellow-400 rounded-full border-2 border-white" />
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />
                   )}
                 </button>
               </PopoverTrigger>
@@ -644,213 +646,157 @@ export default function HomeHeader({
                 </div>
               </PopoverContent>
             </Popover>
-            )}
+          )}
 
-            {!isTaxi && (
+          {/* Cart Button */}
+          {isFood && (
             <button
               type="button"
-              className="h-10 w-10 relative flex items-center justify-center rounded-full bg-white shadow-sm hover:bg-gray-50 transition-all"
+              className="h-8.5 w-8.5 sm:h-10 sm:w-10 relative flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 active:scale-95 transition-all text-gray-900 border border-white/60"
               onClick={() => navigate('/food/user/cart')}
               aria-label="Cart"
             >
-              <ShoppingBag className="h-5 w-5 text-gray-800" />
+              <ShoppingCart className="h-4 w-4 sm:h-4.5 sm:w-4.5 text-black" strokeWidth={2.2} />
               {itemCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center border-2 border-white" style={{ backgroundColor: verticalTheme.accent }}>
-                  <span className="text-[9px] font-bold text-white leading-none">
-                    {itemCount > 9 ? "9+" : itemCount}
-                  </span>
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white shadow-xs">
+                  {itemCount > 9 ? "9+" : itemCount}
                 </span>
               )}
             </button>
-            )}
-          </div>
-        </div>
-
-        <div className="relative z-20 px-3 pb-0">
-          <div className="flex w-full gap-1">
-            {VERTICALS.map((vertical) => {
-              const isActive = vertical.id === activeVertical;
-              return (
-                <div key={vertical.id} className={`flex-1 relative flex flex-col items-center ${isActive ? 'z-20' : 'z-10'}`}>
-                  <button
-                    type="button"
-                    onClick={() => handleVerticalTabClick(vertical.id)}
-                    style={isActive ? { '--active-tab-bg': verticalTheme.activeTab } : {}}
-                    className={`w-full flex flex-col items-center justify-center px-2 transition-all duration-300 ${
-                      isActive
-                        ? `${currentVertical.activeTabBg} curvy-active-tab pt-2.5 pb-2.5 rounded-t-[1.75rem] shadow-sm`
-                        : `${currentVertical.inactiveTabBg} rounded-t-[1.25rem] pt-2.5 pb-2.5`
-                    }`}
-                  >
-                    <div className="mb-1.5 flex items-center justify-center">
-                      {renderVerticalIcon(vertical.id, isActive)}
-                    </div>
-                    <span className={`text-[10px] font-bold leading-none ${isActive ? 'text-white' : 'text-white/75'}`}>
-                      {vertical.name}
-                    </span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Container 2: Search Row — Sticky at top-0 */}
-      {!hideSearchRow && (
-        <div
-          className={`w-full px-3 pt-2.5 transition-all duration-300 sticky top-0 z-[50] ${
-            isCategoryStuck && isFood
-              ? 'shadow-md pb-3'
-              : `shadow-[0_10px_40px_rgba(0,0,0,0.18)] ${
-                  isFood ? 'pb-3' : 'rounded-b-[1.75rem] pb-4'
-                }`
-          }`}
-          style={{ backgroundColor: verticalTheme.theme }}
-        >
-          <div className="flex items-center gap-2.5">
-            {isTaxi ? (
-              <button
-                type="button"
-                onClick={onSearchFocus}
-                className="flex w-full items-center gap-2 rounded-[18px] border border-white/80 bg-white/92 px-3.5 py-3 text-left shadow-[0_12px_26px_rgba(15,23,42,0.06)] active:scale-[0.99] transition-transform"
-              >
-                <Search className="h-4 w-4 text-slate-500 flex-shrink-0" strokeWidth={2.5} />
-                <span className="min-w-0 flex-1 truncate text-[12px] font-bold text-slate-500">
-                  Search destination
-                </span>
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600 flex-shrink-0">
-                  Go
-                </span>
-              </button>
-            ) : (
-              <>
-                <div
-                  className="flex-1 min-w-0 rounded-[14px] flex items-center px-3 py-2 bg-white dark:bg-[#1a1a1a] shadow-[0_4px_16px_rgba(0,0,0,0.15)] cursor-pointer active:scale-[0.99] transition-all duration-200 overflow-hidden"
-                  onClick={onSearchFocus}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onSearchFocus();
-                    }
-                  }}
-                >
-                  <Search className="h-[18px] w-[18px] mr-2 flex-shrink-0" strokeWidth={2.5} style={{ color: verticalTheme.accent }} />
-                  <div className="flex-1 relative h-5 min-w-0">
-                    <AnimatePresence mode="wait">
-                      <motion.span
-                        key={placeholderIndex}
-                        initial={{ y: 12, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        exit={{ y: -12, opacity: 0 }}
-                        transition={{ duration: 0.25, ease: 'easeOut' }}
-                        className="absolute inset-0 text-[14px] font-medium text-gray-400 truncate"
-                      >
-                        {resolvedPlaceholders?.[placeholderIndex] || 'Search "chinese"'}
-                      </motion.span>
-                    </AnimatePresence>
-                  </div>
-                  <div className="h-5 w-px bg-gray-200 mx-2.5 flex-shrink-0" />
-                  <div
-                    className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center active:scale-95 transition-all"
-                    style={{ backgroundColor: verticalTheme.accentSoft }}
-                  >
-                    <Mic className="h-[18px] w-[18px]" strokeWidth={2.5} style={{ color: verticalTheme.accent }} />
-                  </div>
-                </div>
+      {/* Row 2: Service Vertical Toggle (Food / Taxi Switcher - Black/White Treatment) */}
+      <div className="px-4 py-2 flex justify-center">
+        <div className="bg-black/20 p-1 rounded-full flex items-center gap-1 border border-white/25 shadow-inner backdrop-blur-md">
+          <button
+            type="button"
+            onClick={() => handleVerticalTabClick('food')}
+            className={`flex items-center gap-2 px-6 py-1.5 rounded-full text-[12.5px] font-black transition-all duration-300 ${isFood
+                ? 'bg-black text-[#FFC700] shadow-lg border border-amber-400/40 scale-[1.03]'
+                : 'text-white/90 hover:bg-black/10'
+              }`}
+          >
+            <span className="text-base leading-none">🍔</span>
+            <span>Food</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleVerticalTabClick('taxi')}
+            className={`flex items-center gap-2 px-6 py-1.5 rounded-full text-[12.5px] font-black transition-all duration-300 ${isTaxi
+                ? 'bg-black text-[#FFC700] shadow-lg border border-amber-400/40 scale-[1.03]'
+                : 'text-white/90 hover:bg-black/10'
+              }`}
+          >
+            <span className="text-base leading-none">🚕</span>
+            <span>Taxi</span>
+          </button>
+        </div>
+      </div>
 
-                {isFood && (
-                  <div
-                    className="flex flex-col items-center justify-center cursor-pointer flex-shrink-0 w-[52px]"
-                    onClick={() => handleVegModeChange && handleVegModeChange(!isVegMode)}
-                    ref={vegModeToggleRef}
+      {/* Row 3: Search Input Bar + VEG MODE Switch */}
+      {!hideSearchRow && (
+        <div className="px-4 pt-1.5">
+          <div className="flex items-center gap-2">
+            {/* Search Input Bar */}
+            <div
+              className="flex-1 min-w-0 rounded-full flex items-center px-4 py-2.5 bg-white shadow-md cursor-pointer active:scale-[0.99] transition-all duration-200 border border-amber-200/50 hover:border-amber-400"
+              onClick={onSearchFocus}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSearchFocus();
+                }
+              }}
+            >
+              <Search className="h-4 w-4 mr-2.5 text-orange-500 flex-shrink-0" strokeWidth={2.5} />
+              <div className="flex-1 relative h-5 min-w-0">
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={placeholderIndex}
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -10, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: 'easeOut' }}
+                    className="absolute inset-0 text-[13px] font-semibold text-gray-500 truncate"
                   >
-                    <span className="text-[9px] font-black uppercase tracking-wide leading-tight text-white text-center">
-                      Veg
-                    </span>
-                    <span className="text-[9px] font-black uppercase tracking-wide leading-tight text-white text-center mb-1">
-                      Mode
-                    </span>
-                    <div className={`w-9 h-[18px] rounded-full relative transition-colors ${isVegMode ? 'bg-[#065f46]' : 'bg-white/40'}`}>
-                      <div className={`absolute top-[2px] w-3.5 h-3.5 rounded-full bg-white transition-transform ${isVegMode ? 'translate-x-[18px]' : 'translate-x-[2px]'} shadow-sm`} />
-                    </div>
-                  </div>
-                )}
-              </>
+                    {resolvedPlaceholders?.[placeholderIndex] || 'Search "biryani"'}
+                  </motion.span>
+                </AnimatePresence>
+              </div>
+              <div className="h-4 w-px bg-gray-200 mx-2 flex-shrink-0" />
+              <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm">
+                <Mic className="h-3.5 w-3.5" strokeWidth={2.5} />
+              </div>
+            </div>
+
+            {/* VEG MODE Switch (Matching Reference Image next to search input) */}
+            {isFood && (
+              <div className="flex flex-col items-center justify-center flex-shrink-0 px-1">
+                <span className="text-[8.5px] font-black tracking-tight text-white uppercase leading-none mb-1 drop-shadow-xs">
+                  VEG MODE
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextState = !isVegOnly;
+                    setIsVegOnly(nextState);
+                    localStorage.setItem("raydo_veg_mode_only", JSON.stringify(nextState));
+                    window.dispatchEvent(new CustomEvent("vegModeChanged", { detail: { isVegOnly: nextState } }));
+                  }}
+                  className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shadow-md border ${
+                    isVegOnly ? "bg-emerald-500 border-emerald-300" : "bg-white/40 border-white/60"
+                  }`}
+                  title={isVegOnly ? "Pure Veg Mode Active" : "Toggle Pure Veg Mode"}
+                >
+                  <div
+                    className={`w-3.5 h-3.5 rounded-full shadow-xs transform transition-transform ${
+                      isVegOnly ? "translate-x-4 bg-white" : "translate-x-0 bg-white"
+                    }`}
+                  />
+                </button>
+              </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Selected Address Far Distance Warning Banner */}
-      {selectedAddressDistanceKm > 0.5 && isFood && (
-        <div className="bg-amber-100 dark:bg-amber-950/70 border-b border-amber-200 dark:border-amber-900/50 px-4 py-2 flex items-center justify-between text-xs font-semibold text-amber-900 dark:text-amber-200 relative z-[40]">
-          <div className="flex items-center gap-2 max-w-7xl mx-auto">
-            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-            <span>
-              Selected address is <span className="underline font-bold">{selectedAddressDistanceKm} km</span> away from your location
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Container 3: Slide Banners — rounded corners and shadow at the bottom */}
+      {/* Row 4: Clean Full Hero Video Banner */}
       {isFood && (
-        <div
-          className="relative z-10 w-full overflow-hidden rounded-b-[1.75rem] shadow-[0_10px_40px_rgba(0,0,0,0.18)]"
-          style={{ backgroundColor: verticalTheme.theme }}
-        >
-          <div className="relative w-full h-[168px] overflow-hidden">
-            <div
-              className="absolute inset-0 flex transition-transform duration-700 ease-in-out"
-              style={{ transform: `translateX(-${currentSlide * 100}%)` }}
-            >
-              {slideBanners.map((banner, index) => {
-                return (
-                  <div key={banner.id || index} className="relative w-full h-full shrink-0">
-                    <img
-                      src={banner.imageUrl}
-                      alt={banner.title || "Banner"}
-                      className="absolute inset-0 w-full h-full object-cover"
-                      loading={index === 0 ? "eager" : "lazy"}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/45 to-transparent" />
-                    <div className="relative z-10 h-full flex items-center">
-                      <div className="px-4 pt-5 pb-1">
-                        <h2 className="text-white text-[24px] md:text-[26px] font-black leading-[1.05] drop-shadow-lg uppercase tracking-tight">
-                          {banner.title}
-                          {banner.highlight ? (
-                            <>
-                              <br />
-                              <span className="text-[36px] md:text-[40px] text-yellow-300 font-extrabold">{banner.highlight}</span>
-                            </>
-                          ) : null}
-                        </h2>
-                        {banner.subTitle && (
-                          <p className="text-white/95 text-[14px] md:text-[16px] font-bold mt-1 drop-shadow-md">
-                            {banner.subTitle}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="absolute bottom-2.5 inset-x-0 flex justify-center gap-1.5 z-20">
-              {slideBanners.map((_, i) => (
-                <span
-                  key={i}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${i === currentSlide ? 'bg-white w-5' : 'bg-white/45 w-1.5'}`}
-                />
-              ))}
-            </div>
+        <div className="px-3 pt-3">
+          <div
+            className="relative w-full rounded-[24px] overflow-hidden shadow-xl border border-amber-400/30 cursor-pointer group bg-black"
+            onClick={onSearchFocus}
+          >
+            <video
+              autoPlay
+              loop
+              muted={isVideoMuted}
+              playsInline
+              preload="auto"
+              poster={cinematicFoodPoster}
+              className="w-full h-[190px] sm:h-[240px] md:h-[280px] object-cover transform group-hover:scale-105 transition-transform duration-700"
+              src="/food/cute_video_hero_section_ke_liy.mp4"
+            />
           </div>
         </div>
       )}
-    </>
-  );
+    </div>
+
+    {/* Selected Address Distance Warning Banner */}
+    {selectedAddressDistanceKm > 0.5 && isFood && (
+      <div className="bg-amber-100 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-xs font-semibold text-amber-900 relative z-[40]">
+        <div className="flex items-center gap-2 max-w-7xl mx-auto">
+          <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+          <span>
+            Selected address is <span className="underline font-bold">{selectedAddressDistanceKm} km</span> away from your location
+          </span>
+        </div>
+      </div>
+    )}
+  </>
+);
 }

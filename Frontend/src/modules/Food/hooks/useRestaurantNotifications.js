@@ -157,7 +157,7 @@ export const useRestaurantNotifications = () => {
             requireInteraction: true,
             silent: false,
             vibrate: [200, 100, 200, 100, 300],
-            icon: '/eqosy-logo.png',
+            icon: '/raydo-logo.png',
             data: notificationOptions.data,
           });
           return;
@@ -169,7 +169,7 @@ export const useRestaurantNotifications = () => {
         tag: notificationOptions.tag,
         requireInteraction: true,
         silent: false,
-        icon: '/eqosy-logo.png',
+        icon: '/raydo-logo.png',
         data: notificationOptions.data,
       });
       notif.onclick = (event) => {

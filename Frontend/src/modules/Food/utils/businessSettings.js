@@ -11,8 +11,8 @@ const SETTINGS_KEY = 'food_business_settings';
 
 export const normalizeCompanyName = (value) => {
   const raw = typeof value === "string" ? value.trim() : "";
-  if (!raw) return "Eqosy";
-  if (raw.toLowerCase() === "appzeto") return "Eqosy";
+  if (!raw) return "Raydo";
+  if (raw.toLowerCase() === "appzeto") return "Raydo";
   return raw;
 };
 
@@ -151,7 +151,7 @@ export const getCachedSettings = () => {
 
 /**
  * Get company name from business settings with fallback
- * @returns {string} Company name or default "Eqosy Food"
+ * @returns {string} Company name or default "Raydo Food"
  */
 export const getCompanyName = () => {
   const settings = getCachedSettings();
@@ -160,14 +160,14 @@ export const getCompanyName = () => {
 
 /**
  * Get company name asynchronously (loads if not cached)
- * @returns {Promise<string>} Company name or default "Eqosy Food"
+ * @returns {Promise<string>} Company name or default "Raydo Food"
  */
 export const getCompanyNameAsync = async () => {
   try {
     const settings = await loadBusinessSettings();
     return normalizeCompanyName(settings?.companyName);
   } catch (error) {
-    return "Eqosy";
+    return "Raydo";
   }
 };
 

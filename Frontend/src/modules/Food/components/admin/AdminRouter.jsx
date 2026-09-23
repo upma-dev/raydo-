@@ -124,7 +124,7 @@ const ReactSite = lazy(() => import("@food/pages/admin/system/ReactSite"));
 const CleanDatabase = lazy(() => import("@food/pages/admin/system/CleanDatabase"));
 const AddonActivation = lazy(() => import("@food/pages/admin/system/AddonActivation"));
 const LandingPageManagement = lazy(() => import("@food/pages/admin/system/LandingPageManagement"));
-const EqosyLandingSettings = lazy(() => import("@food/pages/admin/system/EqosyLandingSettings"));
+const RaydoLandingSettings = lazy(() => import("@food/pages/admin/system/RaydoLandingSettings"));
 const DiningManagement = lazy(() => import("@food/pages/admin/system/DiningManagement"));
 const DiningList = lazy(() => import("@food/pages/admin/system/DiningList"));
 const EditRestaurant = lazy(() => import("@food/pages/admin/restaurant/EditRestaurant"));
@@ -308,7 +308,7 @@ export default function AdminRouter() {
             <Route path="clean-database" element={<CleanDatabase />} />
             <Route path="addon-activation" element={<AddonActivation />} />
             <Route path="hero-banner-management" element={<LandingPageManagement />} />
-            <Route path="eqosy-landing-settings" element={<EqosyLandingSettings />} />
+            <Route path="raydo-landing-settings" element={<RaydoLandingSettings />} />
             <Route path="dining-management" element={<DiningManagement />} />
             <Route path="dining-list" element={<DiningList />} />
 

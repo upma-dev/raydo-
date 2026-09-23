@@ -2197,7 +2197,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 <ol className="list-decimal list-inside space-y-1 text-slate-600 font-medium pl-0.5">
                   <li>Swipe down phone Notification / Quick Settings bar.</li>
                   <li>Tap to turn <strong>ON Location / GPS</strong>.</li>
-                  <li>Grant location permission to Eqosy app if prompted.</li>
+                  <li>Grant location permission to Raydo app if prompted.</li>
                 </ol>
               </div>
 

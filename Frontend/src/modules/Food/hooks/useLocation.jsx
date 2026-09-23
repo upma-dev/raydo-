@@ -126,7 +126,7 @@ export function useLocation() {
         const parsed = JSON.parse(stored);
         if (parsed?.latitude && parsed?.longitude) return parsed;
       }
-      const taxiStored = localStorage.getItem("eqosy:lastLocation");
+      const taxiStored = localStorage.getItem("raydo:lastLocation");
       if (taxiStored) {
         const parsed = JSON.parse(taxiStored);
         if (parsed?.lat && parsed?.lon) {
@@ -157,7 +157,7 @@ export function useLocation() {
             return;
           }
         }
-        const taxiStored = localStorage.getItem("eqosy:lastLocation");
+        const taxiStored = localStorage.getItem("raydo:lastLocation");
         if (taxiStored) {
           const parsed = JSON.parse(taxiStored);
           if (parsed?.lat && parsed?.lon) {
@@ -174,13 +174,13 @@ export function useLocation() {
     };
 
     window.addEventListener('storage', handleLocationSync);
-    window.addEventListener('eqosy:location-updated', handleLocationSync);
+    window.addEventListener('raydo:location-updated', handleLocationSync);
     window.addEventListener('userLocationUpdated', handleLocationSync);
     window.addEventListener('locationChanged', handleLocationSync);
 
     return () => {
       window.removeEventListener('storage', handleLocationSync);
-      window.removeEventListener('eqosy:location-updated', handleLocationSync);
+      window.removeEventListener('raydo:location-updated', handleLocationSync);
       window.removeEventListener('userLocationUpdated', handleLocationSync);
       window.removeEventListener('locationChanged', handleLocationSync);
     };
@@ -459,7 +459,7 @@ export function useLocation() {
 
         debugLog("?? Parsing formatted address for area:", { formattedAddress, addressParts, city, state, currentArea: area })
 
-        // EQOSY-STYLE: If we have 3+ parts, first part is ALWAYS the area/locality
+        // RAYDO-STYLE: If we have 3+ parts, first part is ALWAYS the area/locality
         // Format: "New Palasia, Indore, Madhya Pradesh" -> area = "New Palasia"
         if (addressParts.length >= 3) {
           const firstPart = addressParts[0]
@@ -592,7 +592,7 @@ export function useLocation() {
       }
 
       // FINAL FALLBACK: If area is still empty, force extract from formatted_address
-      // This is the last resort - be very aggressive (EQOSY-STYLE)
+      // This is the last resort - be very aggressive (RAYDO-STYLE)
       // Even if formatted_address only has 2 parts (City, State), try to extract area
       if (!area && formattedAddress) {
         const parts = formattedAddress.split(',').map(p => p.trim()).filter(p => p.length > 0)
@@ -637,7 +637,7 @@ export function useLocation() {
 
         // If we have 3+ parts, extract area from first part
         if (parts.length >= 3) {
-          // EQOSY PATTERN: "New Palasia, Indore, Madhya Pradesh"
+          // RAYDO PATTERN: "New Palasia, Indore, Madhya Pradesh"
           // First part = Area, Second = City, Third = State
           const potentialArea = parts[0]
           // Validate it's not state, city, or generic names
@@ -649,7 +649,7 @@ export function useLocation() {
             area = potentialArea
             if (!city && parts[1]) city = parts[1]
             if (!state && parts[2]) state = parts[2]
-            debugLog("??? EQOSY-STYLE EXTRACTION:", { area, city, state })
+            debugLog("??? RAYDO-STYLE EXTRACTION:", { area, city, state })
           }
         } else if (parts.length === 2) {
           // Only 2 parts: "Indore, Madhya Pradesh" - area is missing
@@ -973,14 +973,14 @@ export function useLocation() {
               debugLog("?? Saving location:", finalLoc)
               localStorage.setItem("userLocation", JSON.stringify(finalLoc))
               try {
-                localStorage.setItem("eqosy:lastLocation", JSON.stringify({
+                localStorage.setItem("raydo:lastLocation", JSON.stringify({
                   address: finalLoc.formattedAddress || finalLoc.address || finalLoc.city || '',
                   lat: finalLoc.latitude,
                   lon: finalLoc.longitude,
                   updatedAt: Date.now()
                 }))
                 window.dispatchEvent(new Event("storage"))
-                window.dispatchEvent(new Event("eqosy:location-updated"))
+                window.dispatchEvent(new Event("raydo:location-updated"))
                 window.dispatchEvent(new CustomEvent("userLocationUpdated", { detail: finalLoc }))
                 window.dispatchEvent(new CustomEvent("locationChanged", { detail: finalLoc }))
               } catch {}

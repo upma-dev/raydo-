@@ -36,8 +36,8 @@ export default function LandingPage() {
               onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
             >
               <img
-                src="/eqosy-logo.png"
-                alt="Eqosy Logo"
+                src="/raydo-logo.png"
+                alt="Raydo Logo"
                 className="h-8 sm:h-9 w-auto object-contain"
               />
               <span className="font-display text-2xl sm:text-3xl font-black tracking-tight inline-flex items-center">

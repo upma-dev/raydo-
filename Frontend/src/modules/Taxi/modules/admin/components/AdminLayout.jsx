@@ -59,7 +59,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import quickSpicyLogo from "@food/assets/eqosy-logo.png";
+import quickSpicyLogo from "@food/assets/raydo-logo.png";
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -908,6 +908,7 @@ const AdminLayout = () => {
             label: 'Business Settings',
             permission: 'settings.view',
             subItems: [
+              { label: 'Global Branding & Setup', path: '/admin/food/business-setup', permission: 'settings.view' },
               { label: 'General Settings', path: '/taxi/admin/settings/business/general', permission: 'settings.view' },
               { label: 'Customization Settings', path: '/taxi/admin/settings/business/customization', permission: 'settings.view' },
               { label: 'Transport Ride Settings', path: '/taxi/admin/settings/business/transport-ride', permission: 'settings.view' },
@@ -1514,12 +1515,12 @@ const AdminLayout = () => {
           <div className="group/sidebar-head relative mb-4 flex h-24 items-center border-b border-white/5 px-6">
             <div className="flex items-center gap-4">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all group-hover/sidebar-head:scale-105">
-                <img src={quickSpicyLogo} alt="Eqosy" className="h-10 w-10 object-contain" />
+                <img src={quickSpicyLogo} alt="Raydo" className="h-10 w-10 object-contain" />
               </div>
               {!isCollapsed && (
                 <div className="flex flex-col">
                   <h3 className="text-[15px] font-extrabold leading-tight text-white tracking-tight">
-                    Eqosy Admin
+                    Raydo Admin
                   </h3>
                   <div className="mt-1 flex items-center gap-1.5">
                     <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />

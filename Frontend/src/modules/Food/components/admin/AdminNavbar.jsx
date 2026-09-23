@@ -46,7 +46,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@food/components/ui/popover";
-import quickSpicyLogo from "@food/assets/eqosy-logo.png";
+import quickSpicyLogo from "@food/assets/raydo-logo.png";
 import { adminAPI } from "@food/api";
 import { clearModuleAuth } from "@food/utils/auth";
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings";

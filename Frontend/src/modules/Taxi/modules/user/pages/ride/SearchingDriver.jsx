@@ -147,7 +147,7 @@ const BlinkingVehicleMarker = ({ marker, iconUrl }) => (
 
 const DRIVER_PLACEHOLDER = { name: 'Captain', rating: '4.9', vehicle: 'Taxi', plate: 'Assigned', phone: '', eta: 2 };
 const STAGES = { SEARCHING: 'searching', ACCEPTED: 'accepted', COMPLETING: 'completing' };
-const CONSUMED_SEARCH_NONCE_PREFIX = 'eqosy_consumed_search_nonce:';
+const CONSUMED_SEARCH_NONCE_PREFIX = 'raydo_consumed_search_nonce:';
 const ACTIVE_SEARCH_NONCES = new Set();
 const ACTIVE_SEARCH_NONCE_CLEANUPS = new Map();
 
@@ -850,7 +850,7 @@ const SearchingDriver = () => {
         const response = await api.patch(`/rides/${rideId}/cancel`, cancellationData);
         const data = response?.data?.data || response?.data || {};
         if (data.cancellationCharge > 0 || data.isFeeApplied) {
-          toast.success(`Your ride has been cancelled. A cancellation fee of ₹${data.cancellationCharge} has been applied according to Eqosy's cancellation policy.`);
+          toast.success(`Your ride has been cancelled. A cancellation fee of ₹${data.cancellationCharge} has been applied according to Raydo's cancellation policy.`);
         } else {
           toast.success("Your ride has been cancelled successfully.");
         }

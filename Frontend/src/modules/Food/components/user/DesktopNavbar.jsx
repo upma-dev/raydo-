@@ -1,4 +1,4 @@
-﻿import { Link, useLocation, useNavigate } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useEffect, useState, useRef } from "react"
 import { ChevronDown, ShoppingCart, Wallet, Search, Mic } from "lucide-react"
 import { Button } from "@food/components/ui/button"
@@ -10,7 +10,7 @@ import { useLocationSelector, useSearchOverlay } from "./UserLayout"
 import { useProfile } from "@food/context/ProfileContext"
 import { FaLocationDot } from "react-icons/fa6"
 import { AnimatePresence, motion } from "framer-motion"
-import quickSpicyLogo from "@food/assets/eqosy-logo.png"
+import quickSpicyLogo from "@food/assets/raydo-logo.png"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -213,7 +213,7 @@ export default function DesktopNavbar({ showLogo = true }) {
                         <div className="flex-1 max-w-3xl mx-4 flex items-center gap-4">
                             {/* Search Bar */}
                             <div className="relative flex-1">
-                                <div className="relative bg-gray-100 dark:bg-[#2a2a2a] rounded-lg transition-all duration-300 focus-within:ring-2 focus-within:ring-[#EB590E] focus-within:bg-white dark:focus-within:bg-[#1a1a1a] border border-transparent focus-within:border-[#EB590E]/20">
+                                <div className="relative bg-gray-100 dark:bg-[#2a2a2a] rounded-lg transition-all duration-300 focus-within:ring-2 focus-within:ring-[#FF385C] focus-within:bg-white dark:focus-within:bg-[#1a1a1a] border border-transparent focus-within:border-[#FF385C]/20">
                                     <div className="flex items-center px-3 py-2">
                                         <Search className="h-4 w-4 text-gray-500 flex-shrink-0 mr-3" />
                                         <Input
@@ -239,7 +239,7 @@ export default function DesktopNavbar({ showLogo = true }) {
                                                 onClick={() => setHeroSearch("")}
                                             >
                                                 <span className="sr-only">Clear</span>
-                                                <span aria-hidden="true">ï¿½</span>
+                                                <span aria-hidden="true">×</span>
                                             </Button>
                                         )}
                                     </div>
@@ -282,7 +282,7 @@ export default function DesktopNavbar({ showLogo = true }) {
                                 >
                                     <ShoppingCart className="!h-5 !w-5 lg:!h-6 lg:!w-6 text-gray-700 dark:text-gray-300" strokeWidth={2} />
                                     {cartCount > 0 && (
-                                        <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center ring-2 ring-white dark:ring-gray-800">
+                                        <span className="absolute -top-1 -right-1 w-6 h-6 bg-[#FF385C] rounded-full flex items-center justify-center ring-2 ring-white dark:ring-gray-800">
                                             <span className="text-xs font-bold text-white">{cartCount > 99 ? "99+" : cartCount}</span>
                                         </span>
                                     )}
@@ -303,15 +303,15 @@ export default function DesktopNavbar({ showLogo = true }) {
                             <Link
                                 to="/food/user"
                                 className={`flex flex-col items-center gap-1 px-2 py-1 transition-colors relative group ${isDelivery
-                                    ? "text-orange-600 dark:text-orange-500"
-                                    : "text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-500"
+                                    ? "text-[#FF385C]"
+                                    : "text-gray-600 dark:text-gray-400 hover:text-[#FF385C]"
                                     }`}
                             >
                                 <span className="text-sm font-bold tracking-wide uppercase">Delivery</span>
                                 {isDelivery && (
                                     <motion.div
                                         layoutId="navIndicator"
-                                        className="absolute -bottom-3 left-0 right-0 h-0.5 bg-orange-600 dark:bg-orange-500"
+                                        className="absolute -bottom-3 left-0 right-0 h-0.5 bg-[#FF385C]"
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         transition={{ duration: 0.3 }}
@@ -323,15 +323,15 @@ export default function DesktopNavbar({ showLogo = true }) {
                             <Link
                                 to="/food/user/under-250"
                                 className={`flex flex-col items-center gap-1 px-2 py-1 transition-colors relative group ${isUnder250
-                                    ? "text-orange-600 dark:text-orange-500"
-                                    : "text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-500"
+                                    ? "text-[#FF385C]"
+                                    : "text-gray-600 dark:text-gray-400 hover:text-[#FF385C]"
                                     }`}
                             >
                                 <span className="text-sm font-bold tracking-wide uppercase">Switch 99</span>
                                 {isUnder250 && (
                                     <motion.div
                                         layoutId="navIndicator"
-                                        className="absolute -bottom-3 left-0 right-0 h-0.5 bg-orange-600 dark:bg-orange-500"
+                                        className="absolute -bottom-3 left-0 right-0 h-0.5 bg-[#FF385C]"
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         transition={{ duration: 0.3 }}
@@ -343,15 +343,15 @@ export default function DesktopNavbar({ showLogo = true }) {
                             <Link
                                 to="/food/user/dining"
                                 className={`flex flex-col items-center gap-1 px-2 py-1 transition-colors relative group ${isDining
-                                    ? "text-orange-600 dark:text-orange-500"
-                                    : "text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-500"
+                                    ? "text-[#FF385C]"
+                                    : "text-gray-600 dark:text-gray-400 hover:text-[#FF385C]"
                                     }`}
                             >
                                 <span className="text-sm font-bold tracking-wide uppercase">Dining</span>
                                 {isDining && (
                                     <motion.div
                                         layoutId="navIndicator"
-                                        className="absolute -bottom-3 left-0 right-0 h-0.5 bg-orange-600 dark:bg-orange-500"
+                                        className="absolute -bottom-3 left-0 right-0 h-0.5 bg-[#FF385C]"
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         transition={{ duration: 0.3 }}
@@ -363,15 +363,15 @@ export default function DesktopNavbar({ showLogo = true }) {
                             <Link
                                 to="/food/user/profile"
                                 className={`flex flex-col items-center gap-1 px-2 py-1 transition-colors relative group ${isProfile
-                                    ? "text-orange-600 dark:text-orange-500"
-                                    : "text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-500"
+                                    ? "text-[#FF385C]"
+                                    : "text-gray-600 dark:text-gray-400 hover:text-[#FF385C]"
                                     }`}
                             >
                                 <span className="text-sm font-bold tracking-wide uppercase">Profile</span>
                                 {isProfile && (
                                     <motion.div
                                         layoutId="navIndicator"
-                                        className="absolute -bottom-3 left-0 right-0 h-0.5 bg-orange-600 dark:bg-orange-500"
+                                        className="absolute -bottom-3 left-0 right-0 h-0.5 bg-[#FF385C]"
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         transition={{ duration: 0.3 }}

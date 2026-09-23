@@ -626,7 +626,7 @@ function showForegroundNotification(payload = {}) {
           if (registration) {
             registration.showNotification(title, {
               body,
-              icon: "/eqosy-logo.png",
+              icon: "/raydo-logo.png",
               image,
               tag: notificationKey || undefined,
               data: payload?.data || {},
@@ -636,7 +636,7 @@ function showForegroundNotification(payload = {}) {
           } else {
             const notif = new Notification(title, {
               body,
-              icon: "/eqosy-logo.png",
+              icon: "/raydo-logo.png",
               image,
               tag: notificationKey || undefined,
               requireInteraction: true
@@ -652,7 +652,7 @@ function showForegroundNotification(payload = {}) {
         }).catch(() => {
           const notif = new Notification(title, {
             body,
-            icon: "/eqosy-logo.png",
+            icon: "/raydo-logo.png",
             image,
             tag: notificationKey || undefined,
             requireInteraction: true
@@ -668,7 +668,7 @@ function showForegroundNotification(payload = {}) {
       } else {
         const notif = new Notification(title, {
           body,
-          icon: "/eqosy-logo.png",
+          icon: "/raydo-logo.png",
           image,
           tag: notificationKey || undefined,
         });

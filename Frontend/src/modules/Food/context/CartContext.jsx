@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react"
 import { buildCartLineId } from "@food/utils/foodVariants"
-import EqosyCartLoader from "@food/components/ui/EqosyCartLoader"
+import RaydoCartLoader from "@food/components/ui/RaydoCartLoader"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
 const debugError = (...args) => { }
@@ -15,7 +15,7 @@ const defaultCartContext = {
   total: 0,
   lastAddEvent: null,
   lastRemoveEvent: null,
-  triggerEqosyCartLoader: () => { },
+  triggerRaydoCartLoader: () => { },
   addToCart: () => {
     debugWarn('CartProvider not available - addToCart called');
   },
@@ -160,19 +160,19 @@ export function CartProvider({ children }) {
   // Track last remove event for animation
   const [lastRemoveEvent, setLastRemoveEvent] = useState(null)
 
-  // Eqosy Custom Cart Loader State
-  const [showEqosyLoader, setShowEqosyLoader] = useState(false);
-  const [eqosyLoaderOptions, setEqosyLoaderOptions] = useState({
+  // Raydo Custom Cart Loader State
+  const [showRaydoLoader, setShowRaydoLoader] = useState(false);
+  const [raydoLoaderOptions, setRaydoLoaderOptions] = useState({
     message: "Adding to Cart...",
-    subMessage: "Preparing your fresh delicacies with Eqosy",
+    subMessage: "Preparing your fresh delicacies with Raydo",
     duration: 850
   });
 
-  const triggerEqosyCartLoader = useCallback((message = "Adding to Cart...", subMessage = "Preparing your fresh delicacies with Eqosy", durationMs = 850) => {
-    setEqosyLoaderOptions({ message, subMessage, duration: durationMs });
-    setShowEqosyLoader(true);
+  const triggerRaydoCartLoader = useCallback((message = "Adding to Cart...", subMessage = "Preparing your fresh delicacies with Raydo", durationMs = 850) => {
+    setRaydoLoaderOptions({ message, subMessage, duration: durationMs });
+    setShowRaydoLoader(true);
     setTimeout(() => {
-      setShowEqosyLoader(false);
+      setShowRaydoLoader(false);
     }, durationMs);
   }, []);
 
@@ -217,7 +217,7 @@ const isItemAvailableNow = (availableTime) => {
         return { ok: false, error: message, code: 'TIME_UNAVAILABLE' }
       }
     }
-    triggerEqosyCartLoader("Adding to Cart...", "Preparing your fresh delicacies with Eqosy", 850);
+    triggerRaydoCartLoader("Adding to Cart...", "Preparing your fresh delicacies with Raydo", 850);
     const safeCart = normalizeCartData(cart)
     if (safeCart.length > 0) {
       const firstItemRestaurantId = safeCart[0]?.restaurantId
@@ -576,7 +576,7 @@ const isItemAvailableNow = (availableTime) => {
       total: cartForAnimation.total,
       lastAddEvent,
       lastRemoveEvent,
-      triggerEqosyCartLoader,
+      triggerRaydoCartLoader,
       addToCart,
       removeFromCart,
       updateQuantity,
@@ -587,16 +587,16 @@ const isItemAvailableNow = (availableTime) => {
       cleanCartForRestaurant,
       replaceCart,
     }),
-    [cart, cartForAnimation, lastAddEvent, lastRemoveEvent, triggerEqosyCartLoader]
+    [cart, cartForAnimation, lastAddEvent, lastRemoveEvent, triggerRaydoCartLoader]
   )
 
   return (
     <CartContext.Provider value={value}>
       {children}
-      <EqosyCartLoader
-        show={showEqosyLoader}
-        message={eqosyLoaderOptions.message}
-        subMessage={eqosyLoaderOptions.subMessage}
+      <RaydoCartLoader
+        show={showRaydoLoader}
+        message={raydoLoaderOptions.message}
+        subMessage={raydoLoaderOptions.subMessage}
       />
     </CartContext.Provider>
   )

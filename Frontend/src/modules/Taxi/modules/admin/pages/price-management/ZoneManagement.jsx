@@ -337,13 +337,18 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
   const onPlaceChanged = () => {
     if (autocomplete !== null) {
       const place = autocomplete.getPlace();
-      if (place.geometry) {
-        const loc = {
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng()
-        };
-        setMapCenter(loc);
-        mapRef.current?.panTo(loc);
+      if (place?.geometry) {
+        if (place.geometry.viewport && mapRef.current) {
+          mapRef.current.fitBounds(place.geometry.viewport);
+        } else if (place.geometry.location) {
+          const loc = {
+            lat: place.geometry.location.lat(),
+            lng: place.geometry.location.lng()
+          };
+          setMapCenter(loc);
+          mapRef.current?.panTo(loc);
+          mapRef.current?.setZoom(14);
+        }
       }
     }
   };

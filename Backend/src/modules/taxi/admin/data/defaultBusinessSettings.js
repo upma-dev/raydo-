@@ -1,17 +1,17 @@
 export const createDefaultBusinessSettings = () => ({
   scope: 'default',
   general: {
-    app_name: 'Eqosy',
+    app_name: 'Raydo',
     contact_phone_1: '0000000000',
     contact_phone_2: '0000000000',
     contact_booking_number: '9999999999',
-    footer_1: '2026 © Eqosy.',
-    footer_2: 'Design & Develop by Eqosy',
+    footer_1: '2026 © Raydo.',
+    footer_2: 'Design & Develop by Raydo',
     default_lat: '22.7196',
     default_lng: '75.8577',
-    logo: '/eqosy-logo.png',
-    footer_logo: '/eqosy-logo.png',
-    hero_video_url: '/eqosy_promotional_video.mp4',
+    logo: '/raydo-logo.png',
+    footer_logo: '/raydo-logo.png',
+    hero_video_url: '/raydo_promotional_video.mp4',
     favicon: '/favicon.ico',
   },
   customization: {

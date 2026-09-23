@@ -1,8 +1,8 @@
 {
-  "name": "eqosy-backend",
+  "name": "raydo-backend",
   "version": "1.0.0",
   "type": "module",
-  "description": "Eqosy Product Backend",
+  "description": "Raydo Product Backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
