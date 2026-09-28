@@ -7,13 +7,13 @@ import { POOLING_ENABLED, RENTAL_ENABLED } from '../../../shared/featureFlags';
 import { getSavedLocationCoords } from '../services/locationStore';
 
 // Vehicle Asset Imports
-import busImg from '../../../assets/3d images/AutoCab/bus.png';
-import poolingImg from '../../../assets/3d images/AutoCab/taxi.png';
-import outstationImg from '../../../assets/3d images/AutoCab/one way.png';
-import rideImg from '../../../assets/3d images/AutoCab/taxi.png';
-import deliveryImg from '../../../assets/icons/Delivery.png';
-import bikeImg from '../../../assets/icons/bike.png';
-import autoImg from '../../../assets/icons/auto.png';
+import busImg from '@/assets/hero_bus.png';
+import poolingImg from '@/assets/hero_sedan.png';
+import outstationImg from '@/assets/hero_sedan.png';
+import rideImg from '@/assets/hero_sedan.png';
+import deliveryImg from '@/assets/hero_parcel.png';
+import bikeImg from '@/assets/hero_bike.png';
+import autoImg from '@/assets/hero_bike.png';
 
 function getSavedStops() {
   const stops = [];

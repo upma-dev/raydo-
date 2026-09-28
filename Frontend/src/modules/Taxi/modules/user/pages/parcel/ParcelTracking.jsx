@@ -40,10 +40,10 @@ const loadRazorpayScript = () =>
   });
 
 // Assets (Using the same icons as RideTracking)
-import carIcon from '../../../../assets/icons/car.png';
-import bikeIcon from '../../../../assets/icons/bike.png';
-import autoIcon from '../../../../assets/icons/auto.png';
-import deliveryIcon from '../../../../assets/icons/Delivery.png';
+import carIcon from '@/assets/hero_sedan.png';
+import bikeIcon from '@/assets/hero_bike.png';
+import autoIcon from '@/assets/hero_bike.png';
+import deliveryIcon from '@/assets/hero_parcel.png';
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
 const DEFAULT_CENTER = { lat: 22.7196, lng: 75.8577 };

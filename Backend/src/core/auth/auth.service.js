@@ -69,12 +69,8 @@ export const requestUserOtp = async (phone) => {
   }
 
   const existingUser = await FoodUser.findOne({ phone }).select("_id name").lean();
-  const otp = await createOrUpdateOtp(phone, "user");
-  // TODO: integrate SMS provider here
-  const shouldExposeOtp =
-    config.nodeEnv !== "production" || config.useDefaultOtp;
+  await createOrUpdateOtp(phone, "user");
   return {
-    ...(shouldExposeOtp ? { otp } : {}),
     isExistingUser: Boolean(existingUser?._id),
     needsNamePrompt:
       !existingUser?._id ||
@@ -107,7 +103,7 @@ export const verifyUserOtpAndLogin = async (
   logger.info(
     `[Auth Verify] User lookup done in ${Date.now() - loginStart}ms phone=${phone}`,
   );
-  
+
   // Ensure user exists and mark as verified on successful OTP.
   // Check if user is new or hasn't provided a name yet
   const needsNamePrompt = !userDoc || !userDoc.name || String(userDoc.name).trim() === "" || String(userDoc.name).toLowerCase() === "null";
@@ -348,11 +344,8 @@ export const requestRestaurantOtp = async (phone) => {
   if (!phone) {
     throw new ValidationError("Phone is required");
   }
-  const otp = await createOrUpdateOtp(phone, "restaurant");
-  // Only expose OTP in response when in default/dev mode — never in production with real SMS
-  const shouldExposeOtp =
-    config.nodeEnv !== "production" || config.useDefaultOtp;
-  return shouldExposeOtp ? { otp } : {};
+  await createOrUpdateOtp(phone, "restaurant");
+  return {};
 };
 
 export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform) => {
@@ -371,27 +364,12 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     ...(last10 ? [{ [field]: { $regex: new RegExp(last10 + "$") } }] : []),
   ];
 
-  const restaurant = await FoodRestaurant.findOne({
+  const restaurantDoc = await FoodRestaurant.findOne({
     $or: [
       ...phoneOrFields("ownerPhone"),
       ...phoneOrFields("primaryContactNumber"),
     ],
   });
-  let restaurantDoc = restaurant;
-  if (!restaurantDoc && isDefaultPhone(phone, DEFAULT_CREDENTIALS.restaurantPhone)) {
-    // Auto-provision default restaurant account for configured default phone.
-    restaurantDoc = await FoodRestaurant.create({
-      restaurantName: "Raydo Demo Restaurant",
-      ownerName: "Raydo Restaurant Owner",
-      ownerEmail: "restaurant@raydo.com",
-      ownerPhone: normalizePhone10(DEFAULT_CREDENTIALS.restaurantPhone),
-      primaryContactNumber: normalizePhone10(DEFAULT_CREDENTIALS.restaurantPhone),
-      city: "Bhopal",
-      state: "Madhya Pradesh",
-      status: "approved",
-      approvedAt: new Date(),
-    });
-  }
   if (!restaurantDoc) {
     // Phone has been successfully verified, but no restaurant exists yet.
     // Frontend will use this to redirect into registration/onboarding.
@@ -455,11 +433,8 @@ export const requestDeliveryOtp = async (phone) => {
   if (!phone) {
     throw new ValidationError("Phone is required");
   }
-  const otp = await createOrUpdateOtp(phone, "delivery");
-  // Only expose OTP in response when in default/dev mode — never in production with real SMS
-  const shouldExposeOtp =
-    config.nodeEnv !== "production" || config.useDefaultOtp;
-  return shouldExposeOtp ? { otp } : {};
+  await createOrUpdateOtp(phone, "delivery");
+  return {};
 };
 
 const normalizePhoneForDelivery = (phone) => {
@@ -478,25 +453,12 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
     return { needsRegistration: true, phone };
   }
 
-  let deliveryPartner = await FoodDeliveryPartner.findOne({
+  const deliveryPartner = await FoodDeliveryPartner.findOne({
     $or: [
       { phone: normalized },
       { phone: { $regex: new RegExp(normalized + "$") } },
     ],
   });
-
-  if (!deliveryPartner && isDefaultPhone(phone, DEFAULT_CREDENTIALS.deliveryPhone)) {
-    // Auto-provision default delivery account for configured default phone.
-    deliveryPartner = await FoodDeliveryPartner.create({
-      name: "Raydo Delivery Partner",
-      phone: normalizePhone10(DEFAULT_CREDENTIALS.deliveryPhone),
-      city: "Bhopal",
-      state: "Madhya Pradesh",
-      vehicleType: "bike",
-      status: "approved",
-      approvedAt: new Date(),
-    });
-  }
 
   if (!deliveryPartner) {
     return { needsRegistration: true, phone };
@@ -532,9 +494,9 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
       rejectionReason: isRejected ? deliveryPartner.rejectionReason : null,
       message:
         isRejected
-          ? (deliveryPartner.rejectionReason 
-              ? `Your account was rejected: ${deliveryPartner.rejectionReason}`
-              : "Your delivery account was not approved. Please contact support.")
+          ? (deliveryPartner.rejectionReason
+            ? `Your account was rejected: ${deliveryPartner.rejectionReason}`
+            : "Your delivery account was not approved. Please contact support.")
           : "Your account is pending admin verification. You will be notified once approved.",
     };
   }
@@ -570,12 +532,12 @@ export const logout = async (refreshToken, fcmToken, platform) => {
   // 1. Remove specific FCM token from ALL collections if provided
   if (fcmToken) {
     console.log(`[FCM-Logout] Starting logout-driven token removal: platform=${platform}, tokenPreview=${fcmToken?.slice(0, 10)}...`);
-    
+
     // We try to remove the token from all 4 possible models regardless of the user ID, 
     // ensuring no stale connections are left across any role or app the user was logged into.
     const field = platform === "mobile" ? "fcmTokenMobile" : "fcmTokens";
     const models = [FoodUser, FoodRestaurant, FoodDeliveryPartner, FoodAdmin];
-    
+
     try {
       await Promise.all(
         models.map((model) =>
@@ -617,28 +579,28 @@ export const getProfile = async (userId, role) => {
 
         const location =
           doc.addressLine1 ||
-          doc.addressLine2 ||
-          doc.area ||
-          doc.city ||
-          doc.state ||
-          doc.pincode ||
-          doc.landmark
+            doc.addressLine2 ||
+            doc.area ||
+            doc.city ||
+            doc.state ||
+            doc.pincode ||
+            doc.landmark
             ? {
-                addressLine1: doc.addressLine1 || "",
-                addressLine2: doc.addressLine2 || "",
-                area: doc.area || "",
-                city: doc.city || "",
-                state: doc.state || "",
-                pincode: doc.pincode || "",
-                landmark: doc.landmark || "",
-              }
+              addressLine1: doc.addressLine1 || "",
+              addressLine2: doc.addressLine2 || "",
+              area: doc.area || "",
+              city: doc.city || "",
+              state: doc.state || "",
+              pincode: doc.pincode || "",
+              landmark: doc.landmark || "",
+            }
             : null;
 
         const menuImages = Array.isArray(doc.menuImages)
           ? doc.menuImages
-              .map((m) => (m && (typeof m === "string" ? m : m.url)) || null)
-              .filter(Boolean)
-              .map((url) => ({ url, publicId: null }))
+            .map((m) => (m && (typeof m === "string" ? m : m.url)) || null)
+            .filter(Boolean)
+            .map((url) => ({ url, publicId: null }))
           : [];
 
         profile = {
@@ -687,56 +649,56 @@ export const getProfile = async (userId, role) => {
           aadhar:
             partner.aadharPhoto || partner.aadharNumber
               ? {
-                  number: partner.aadharNumber || null,
-                  document: partner.aadharPhoto || null,
-                }
+                number: partner.aadharNumber || null,
+                document: partner.aadharPhoto || null,
+              }
               : null,
           pan:
             partner.panPhoto || partner.panNumber
               ? {
-                  number: partner.panNumber || null,
-                  document: partner.panPhoto || null,
-                }
+                number: partner.panNumber || null,
+                document: partner.panPhoto || null,
+              }
               : null,
           drivingLicense: partner.drivingLicensePhoto || partner.drivingLicenseNumber
             ? {
-                number: partner.drivingLicenseNumber || null,
-                document: partner.drivingLicensePhoto || null,
-              }
+              number: partner.drivingLicenseNumber || null,
+              document: partner.drivingLicensePhoto || null,
+            }
             : null,
           bankDetails:
             partner.bankAccountHolderName ||
-            partner.bankAccountNumber ||
-            partner.bankIfscCode ||
-            partner.bankName ||
-            partner.upiId ||
-            partner.upiQrCode
+              partner.bankAccountNumber ||
+              partner.bankIfscCode ||
+              partner.bankName ||
+              partner.upiId ||
+              partner.upiQrCode
               ? {
-                  accountHolderName: partner.bankAccountHolderName || null,
-                  accountNumber: partner.bankAccountNumber || null,
-                  ifscCode: partner.bankIfscCode || null,
-                  bankName: partner.bankName || null,
-                  upiId: partner.upiId || null,
-                  upiQrCode: partner.upiQrCode || null,
-                }
+                accountHolderName: partner.bankAccountHolderName || null,
+                accountNumber: partner.bankAccountNumber || null,
+                ifscCode: partner.bankIfscCode || null,
+                bankName: partner.bankName || null,
+                upiId: partner.upiId || null,
+                upiQrCode: partner.upiQrCode || null,
+              }
               : null,
         },
         location:
           partner.address || partner.city || partner.state
             ? {
-                addressLine1: partner.address,
-                city: partner.city,
-                state: partner.state,
-              }
+              addressLine1: partner.address,
+              city: partner.city,
+              state: partner.state,
+            }
             : null,
         vehicle:
           partner.vehicleType || partner.vehicleName || partner.vehicleNumber
             ? {
-                type: partner.vehicleType,
-                brand: partner.vehicleName,
-                model: partner.vehicleName,
-                number: partner.vehicleNumber,
-              }
+              type: partner.vehicleType,
+              brand: partner.vehicleName,
+              model: partner.vehicleName,
+              number: partner.vehicleNumber,
+            }
             : null,
       };
       break;
@@ -856,9 +818,7 @@ export const requestAdminForgotPasswordOtp = async (email) => {
     throw new AuthError("This email is not registered as an admin account.");
   }
 
-  const otp = config.useDefaultOtp
-    ? "123456"
-    : String(crypto.randomInt(100000, 999999));
+  const otp = String(crypto.randomInt(100000, 999999));
   const ttlMs = (config.otpExpiryMinutes || 10) * 60 * 1000;
   const expiresAt = new Date(Date.now() + ttlMs);
 
@@ -868,12 +828,8 @@ export const requestAdminForgotPasswordOtp = async (email) => {
     { upsert: true, new: true },
   );
 
-  if (config.useDefaultOtp) {
-    logger.info(`Admin reset OTP for ${normalizedEmail}: ${otp}`);
-  }
-
   const sent = await sendAdminResetOtpEmail(normalizedEmail, otp);
-  if (!sent && !config.useDefaultOtp) {
+  if (!sent) {
     logger.warn(
       `Admin OTP not sent by email to ${normalizedEmail}; check SMTP config.`,
     );

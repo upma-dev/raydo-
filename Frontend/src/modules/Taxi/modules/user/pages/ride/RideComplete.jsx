@@ -5,10 +5,10 @@ import { Banknote, CheckCircle2, ChevronRight, CreditCard, MessageSquare, Receip
 import api from '../../../../shared/api/axiosInstance';
 import { userAuthService } from '../../services/authService';
 import { clearCurrentRide, getCurrentRide } from '../../services/currentRideService';
-import carIcon from '../../../../assets/icons/car.png';
-import bikeIcon from '../../../../assets/icons/bike.png';
-import autoIcon from '../../../../assets/icons/auto.png';
-import deliveryIcon from '../../../../assets/icons/Delivery.png';
+import carIcon from '@/assets/hero_sedan.png';
+import bikeIcon from '@/assets/hero_bike.png';
+import autoIcon from '@/assets/hero_bike.png';
+import deliveryIcon from '@/assets/hero_parcel.png';
 import { useSettings } from '../../../../shared/context/SettingsContext';
 
 const TIP_OPTIONS = [0, 20, 50, 100];

@@ -4,8 +4,8 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Clock3, ShieldCheck, Sparkles, MapPin, Coins, Percent, Tag, Zap } from 'lucide-react';
 
 // Asset Imports for Vehicles
-import autoImg from '../../../assets/icons/auto.png';
-import taxiImg from '../../../assets/3d images/AutoCab/taxi.png';
+import autoImg from '@/assets/hero_bike.png';
+import taxiImg from '@/assets/hero_sedan.png';
 
 const RecommendedCard = ({ title, description, path, gradient, accentColor, image, isLeft, onNavigate, delay }) => {
   const [coords, setCoords] = useState({ x: 0, y: 0 });

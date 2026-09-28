@@ -16,17 +16,17 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 import { DELHI_CENTER, HAS_VALID_GOOGLE_MAPS_KEY, useAppGoogleMapsLoader } from '../../utils/googleMaps';
 import { API_BASE_URL } from '../../../../shared/api/runtimeConfig';
-import BikeIcon from '@/assets/icons/bike.png';
-import CarIcon from '@/assets/icons/car.png';
-import AutoIcon from '@/assets/icons/auto.png';
-import TruckIcon from '@/assets/icons/truck.png';
-import EhcvIcon from '@/assets/icons/ehcv.png';
-import HcvIcon from '@/assets/icons/hcv.png';
-import LcvIcon from '@/assets/icons/LCV.png';
-import McvIcon from '@/assets/icons/mcv.png';
-import LuxuryIcon from '@/assets/icons/Luxury.png';
-import PremiumIcon from '@/assets/icons/Premium.png';
-import SuvIcon from '@/assets/icons/SUV.png';
+import BikeIcon from '@/assets/hero_bike.png';
+import CarIcon from '@/assets/hero_sedan.png';
+import AutoIcon from '@/assets/hero_bike.png';
+import TruckIcon from '@/assets/hero_parcel.png';
+import EhcvIcon from '@/assets/hero_parcel.png';
+import HcvIcon from '@/assets/hero_parcel.png';
+import LcvIcon from '@/assets/hero_parcel.png';
+import McvIcon from '@/assets/hero_parcel.png';
+import LuxuryIcon from '@/assets/hero_sedan.png';
+import PremiumIcon from '@/assets/hero_sedan.png';
+import SuvIcon from '@/assets/hero_sedan.png';
 
 const mapContainerStyle = { width: '100%', height: '100%' };
 

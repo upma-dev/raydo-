@@ -2,10 +2,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, X, Car } from 'lucide-react';
-import heroImg from '@/assets/landing/hero.png';
+import heroSedanImg from '@/assets/hero_sedan.png';
 import { useSettings } from '../../../shared/context/SettingsContext';
-
-import mobilityBanner from '@/assets/images/mobility-banner-cartoony.png';
 
 const AuthLayout = ({ children, title, subtitle }) => {
   const navigate = useNavigate();

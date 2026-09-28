@@ -1416,11 +1416,6 @@ export default function RestaurantOnboarding() {
     return errors
   }
 
-  // Fill dummy data for testing (development mode only)
-
-
-
-
   const handleNext = async () => {
     setError("")
 

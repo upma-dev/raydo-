@@ -33,17 +33,25 @@ export const uploadImageBuffer = async (buffer, folder = 'uploads') => {
     });
 };
 
-export const uploadImageBufferDetailed = async (buffer, folder = 'uploads') => {
+export const uploadImageBufferDetailed = async (buffer, folder = 'uploads', mimetype = 'image/png') => {
     if (!buffer) {
         throw new Error('File buffer is required');
     }
 
-    return new Promise((resolve, reject) => {
+    if (!config.cloudinaryCloudName || !config.cloudinaryApiKey || !config.cloudinaryApiSecret) {
+        const mime = mimetype || 'image/png';
+        return {
+            secure_url: `data:${mime};base64,${buffer.toString('base64')}`,
+            public_id: ''
+        };
+    }
+
+    const uploadPromise = new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
             { folder, resource_type: 'image' },
             (error, result) => {
-                if (error) {
-                    return reject(error);
+                if (error || !result?.secure_url) {
+                    return reject(error || new Error('Upload stream returned invalid result'));
                 }
                 return resolve(result);
             }
@@ -51,5 +59,20 @@ export const uploadImageBufferDetailed = async (buffer, folder = 'uploads') => {
 
         stream.end(buffer);
     });
+
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Cloudinary upload timed out after 10s')), 10000);
+    });
+
+    try {
+        return await Promise.race([uploadPromise, timeoutPromise]);
+    } catch (err) {
+        console.warn('[Cloudinary Service] Detailed upload stream failed/timed out, using base64 fallback:', err?.message || err);
+        const mime = mimetype || 'image/png';
+        return {
+            secure_url: `data:${mime};base64,${buffer.toString('base64')}`,
+            public_id: ''
+        };
+    }
 };
 

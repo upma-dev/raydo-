@@ -10,17 +10,17 @@ import {
 import { useImageUpload } from '../../../../shared/hooks/useImageUpload';
 import DriverBottomNav from '../../../shared/components/DriverBottomNav';
 import OwnerVehicleFleet from './OwnerVehicleFleet';
-import CarIcon from '../../../../assets/icons/car.png';
-import BikeIcon from '../../../../assets/icons/bike.png';
-import AutoIcon from '../../../../assets/icons/auto.png';
-import TruckIcon from '../../../../assets/icons/truck.png';
-import EhcvIcon from '../../../../assets/icons/ehcv.png';
-import HcvIcon from '../../../../assets/icons/hcv.png';
-import LcvIcon from '../../../../assets/icons/LCV.png';
-import McvIcon from '../../../../assets/icons/mcv.png';
-import LuxuryIcon from '../../../../assets/icons/Luxury.png';
-import PremiumIcon from '../../../../assets/icons/Premium.png';
-import SuvIcon from '../../../../assets/icons/SUV.png';
+import CarIcon from '@/assets/hero_sedan.png';
+import BikeIcon from '@/assets/hero_bike.png';
+import AutoIcon from '@/assets/hero_bike.png';
+import TruckIcon from '@/assets/hero_parcel.png';
+import EhcvIcon from '@/assets/hero_parcel.png';
+import HcvIcon from '@/assets/hero_parcel.png';
+import LcvIcon from '@/assets/hero_parcel.png';
+import McvIcon from '@/assets/hero_parcel.png';
+import LuxuryIcon from '@/assets/hero_sedan.png';
+import PremiumIcon from '@/assets/hero_sedan.png';
+import SuvIcon from '@/assets/hero_sedan.png';
 
 const unwrap = (response) => response?.data?.data || response?.data || response;
 const VEHICLE_FLEET_DRAFT_KEY = 'driver_vehicle_fleet_draft';

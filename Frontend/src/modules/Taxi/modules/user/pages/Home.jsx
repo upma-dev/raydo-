@@ -8,11 +8,11 @@ import LocationMapSection from '../components/LocationMapSection';
 import ExplorerSection from '../components/ExplorerSection';
 
 import BottomNavbar from '../components/BottomNavbar';
-import carIcon from '../../../assets/icons/car.png';
-import bikeIcon from '../../../assets/icons/bike.png';
-import indiaGateRealImg from '@/assets/india_gate_real.png';
-import autoIcon from '../../../assets/icons/auto.png';
-import deliveryIcon from '../../../assets/icons/Delivery.png';
+import carIcon from '@/assets/hero_sedan.png';
+import bikeIcon from '@/assets/hero_bike.png';
+const indiaGateRealImg = 'https://images.unsplash.com/photo-1587474260584-136574528ed5?auto=format&fit=crop&w=400&q=80';
+import autoIcon from '@/assets/hero_bike.png';
+import deliveryIcon from '@/assets/hero_parcel.png';
 import api from '../../../shared/api/axiosInstance';
 import { BACKEND_ORIGIN } from '../../../shared/api/runtimeConfig';
 import { useSettings } from '../../../shared/context/SettingsContext';

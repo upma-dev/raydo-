@@ -19,17 +19,17 @@ const resolveAssetUrl = (value = '') => {
   if (raw.startsWith('/')) return `${BACKEND_ORIGIN}${raw}`;
   return `${BACKEND_ORIGIN}/${raw.replace(/^\/+/, '')}`;
 };
-import BikeIcon from '../../../../assets/icons/bike.png';
-import AutoIcon from '../../../../assets/icons/auto.png';
-import CarIcon from '../../../../assets/icons/car.png';
-import PremiumIcon from '../../../../assets/icons/Premium.png';
-import LuxuryIcon from '../../../../assets/icons/Luxury.png';
-import SuvIcon from '../../../../assets/icons/SUV.png';
-import TruckIcon from '../../../../assets/icons/truck.png';
-import LcvIcon from '../../../../assets/icons/LCV.png';
-import McvIcon from '../../../../assets/icons/mcv.png';
-import HcvIcon from '../../../../assets/icons/hcv.png';
-import EhcvIcon from '../../../../assets/icons/ehcv.png';
+import BikeIcon from '@/assets/hero_bike.png';
+import AutoIcon from '@/assets/hero_bike.png';
+import CarIcon from '@/assets/hero_sedan.png';
+import PremiumIcon from '@/assets/hero_sedan.png';
+import LuxuryIcon from '@/assets/hero_sedan.png';
+import SuvIcon from '@/assets/hero_sedan.png';
+import TruckIcon from '@/assets/hero_parcel.png';
+import LcvIcon from '@/assets/hero_parcel.png';
+import McvIcon from '@/assets/hero_parcel.png';
+import HcvIcon from '@/assets/hero_parcel.png';
+import EhcvIcon from '@/assets/hero_parcel.png';
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
 const SELECT_VEHICLE_MAP_OPTIONS = {

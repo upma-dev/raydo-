@@ -248,35 +248,6 @@ const getRequiredVehicleFieldMap = async (role) => {
 const generateOtp = () => String(Math.floor(1000 + Math.random() * 9000));
 
 const hashOtp = (otp) => crypto.createHash('sha256').update(String(otp)).digest('hex');
-const isTruthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
-const getStaticDriverOtpConfig = () => ({
-  phone: normalizePhone(env.sms?.staticOtpPhone || ''),
-  otp: String(env.sms?.staticOtpCode || '').trim(),
-});
-const resolveDriverOnboardingOtpForPhone = (phone) => {
-  const normalizedPhone = normalizePhone(phone);
-  const staticOtpConfig = getStaticDriverOtpConfig();
-  const defaultOtpEnabled = isTruthy(env.sms?.useDefaultOtp);
-
-  if (defaultOtpEnabled && staticOtpConfig.otp) {
-    return {
-      otp: staticOtpConfig.otp,
-      isStatic: true,
-    };
-  }
-
-  if (staticOtpConfig.phone && staticOtpConfig.otp && normalizedPhone === staticOtpConfig.phone) {
-    return {
-      otp: staticOtpConfig.otp,
-      isStatic: true,
-    };
-  }
-
-  return {
-    otp: generateOtp(),
-    isStatic: false,
-  };
-};
 
 const getVehicleType = (vehicleTypeId, registerFor = '') => {
   const type = VEHICLE_TYPE_MAP[String(vehicleTypeId || registerFor || '').trim().toLowerCase()];
@@ -378,14 +349,13 @@ const normalizeStoredDocument = (value) => {
   };
 };
 
-const publicSessionPayload = (session, debugOtp = null) => ({
+const publicSessionPayload = (session) => ({
   registrationId: session.registrationId,
   phone: session.phone,
   role: session.role,
   status: session.status,
   otpVerified: Boolean(session.otpVerifiedAt),
   documentsUploaded: Object.keys(session.documents || {}).filter((key) => Boolean(session.documents?.[key])),
-  debugOtp,
 });
 
 const publicDriverPayload = (driver) => {
@@ -531,7 +501,7 @@ export const startDriverOnboarding = async ({ phone, role = 'driver' }) => {
     );
   }
 
-  const { otp, isStatic } = resolveDriverOnboardingOtpForPhone(normalizedPhone);
+  const otp = generateOtp();
   const now = Date.now();
   const registrationId = crypto.randomUUID();
 
@@ -550,25 +520,15 @@ export const startDriverOnboarding = async ({ phone, role = 'driver' }) => {
     { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
   );
 
-  const smsDispatch = isStatic
-    ? {
-        mode: 'static',
-        message: 'Static OTP enabled',
-      }
-    : await sendOtpSms({
-        phone: normalizedPhone,
-        otp,
-        purpose: 'driver onboarding OTP',
-      });
-  const debugOtp = process.env.NODE_ENV !== 'production' ? otp : null;
-
-  if (debugOtp) {
-    console.log(`[onboardingService] OTP for ${normalizedPhone} = ${debugOtp} (${smsDispatch.mode})`);
-  }
+  const smsDispatch = await sendOtpSms({
+    phone: normalizedPhone,
+    otp,
+    purpose: 'driver onboarding OTP',
+  });
 
   return {
-    message: smsDispatch.mode === 'live' ? 'OTP sent successfully' : 'OTP generated successfully',
-    session: publicSessionPayload(session, debugOtp),
+    message: 'OTP sent successfully',
+    session: publicSessionPayload(session),
   };
 };
 

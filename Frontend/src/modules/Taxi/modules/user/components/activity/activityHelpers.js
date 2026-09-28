@@ -1,10 +1,10 @@
-import carIcon from '../../../../assets/icons/car.png';
-import bikeIcon from '../../../../assets/icons/bike.png';
-import autoIcon from '../../../../assets/icons/auto.png';
-import LuxuryIcon from '../../../../assets/icons/Luxury.png';
-import PremiumIcon from '../../../../assets/icons/Premium.png';
-import SuvIcon from '../../../../assets/icons/SUV.png';
-import busIcon from '../../../../assets/3d images/AutoCab/bus.png';
+import carIcon from '@/assets/hero_sedan.png';
+import bikeIcon from '@/assets/hero_bike.png';
+import autoIcon from '@/assets/hero_bike.png';
+import LuxuryIcon from '@/assets/hero_sedan.png';
+import PremiumIcon from '@/assets/hero_sedan.png';
+import SuvIcon from '@/assets/hero_sedan.png';
+import busIcon from '@/assets/hero_bus.png';
 
 export const PAGE_SIZE = 4;
 export const TABS = ['All', 'Rides', 'Parcels', 'Rental', 'Bus', 'Pooling', 'Outstation', 'Scheduled', 'Support'];

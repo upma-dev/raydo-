@@ -4,11 +4,11 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useSettings } from '../../../../shared/context/SettingsContext';
 
-import imgShared    from '@/assets/3d images/AutoCab/taxi.png';
-import imgAirport   from '@/assets/3d images/AutoCab/airoplan.png';
-import imgSpiritual from '@/assets/3d images/AutoCab/temple.png';
-import imgOneWay    from '@/assets/3d images/AutoCab/one way.png';
-import imgBus       from '@/assets/3d images/AutoCab/bus.png';
+import imgShared    from '@/assets/hero_sedan.png';
+import imgAirport   from '@/assets/hero_sedan.png';
+import imgSpiritual from '@/assets/hero_sedan.png';
+import imgOneWay    from '@/assets/hero_sedan.png';
+import imgBus       from '@/assets/hero_bus.png';
 
 const services = [
   {

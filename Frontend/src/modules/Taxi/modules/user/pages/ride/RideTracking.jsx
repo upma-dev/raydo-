@@ -11,10 +11,10 @@ import { clearCurrentRide, getCurrentRide, saveCurrentRide } from '../../service
 import RideCancellationModal from '../../components/RideCancellationModal';
 import { showChatNotification } from '@/shared/utils/chatNotificationSound';
 import toast from 'react-hot-toast';
-import carIcon from '../../../../assets/icons/car.png';
-import bikeIcon from '../../../../assets/icons/bike.png';
-import autoIcon from '../../../../assets/icons/auto.png';
-import deliveryIcon from '../../../../assets/icons/Delivery.png';
+import carIcon from '@/assets/hero_sedan.png';
+import bikeIcon from '@/assets/hero_bike.png';
+import autoIcon from '@/assets/hero_bike.png';
+import deliveryIcon from '@/assets/hero_parcel.png';
 import { useSettings } from '../../../../shared/context/SettingsContext';
 // Cancellation receipt removed per requirements - user should not see bill on cancel
 

@@ -22,10 +22,10 @@ import { GoogleMap, MarkerF } from '@react-google-maps/api';
 import { HAS_VALID_GOOGLE_MAPS_KEY, useAppGoogleMapsLoader } from '../../../admin/utils/googleMaps';
 import { userAuthService } from '../../services/authService';
 import api from '../../../../shared/api/axiosInstance';
-import carIcon from '../../../../assets/icons/car.png';
-import bikeIcon from '../../../../assets/icons/bike.png';
-import autoIcon from '../../../../assets/icons/auto.png';
-import deliveryIcon from '../../../../assets/icons/Delivery.png';
+import carIcon from '@/assets/hero_sedan.png';
+import bikeIcon from '@/assets/hero_bike.png';
+import autoIcon from '@/assets/hero_bike.png';
+import deliveryIcon from '@/assets/hero_parcel.png';
 
 const Motion = motion;
 const PHONE_REGEX = /^[6-9]\d{9}$/;

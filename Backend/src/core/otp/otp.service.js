@@ -108,19 +108,7 @@ export const createOrUpdateOtp = async (phone, scope = 'default') => {
         }
     }
 
-    let otp;
-    if (config.useDefaultOtp) {
-        otp = '1234';
-        logger.info(`Default OTP mode enabled â€“ OTP is ${otp} for phone ${normalizedPhone}`);
-    } else {
-        otp = generateOtpCode();
-    }
-
-    // Dev debugging: print generated OTP in backend logs.
-    // Keep this enabled only for local/testing usage.
-    logger.info(`[OTP DEBUG] Generated OTP ${otp} for phone ${normalizedPhone}`);
-    // eslint-disable-next-line no-console
-    console.log(`[OTP DEBUG] Generated OTP ${otp} for phone ${normalizedPhone}`);
+    const otp = generateOtpCode();
 
     // Expiry calculation: prioritize seconds, then minutes, then fallback to MS string
     let ttlMs;
@@ -150,10 +138,7 @@ export const createOrUpdateOtp = async (phone, scope = 'default') => {
         });
     }
 
-    // Only send SMS if not in default OTP mode
-    if (!config.useDefaultOtp) {
-        await sendSmsViaIndiaHub(normalizedPhone, otp);
-    }
+    await sendSmsViaIndiaHub(normalizedPhone, otp);
 
     return otp;
 };

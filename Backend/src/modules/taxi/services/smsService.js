@@ -194,12 +194,6 @@ const buildSmsPayload = ({ phone, otp, appName, authMode = 'apiKey' }) => {
 };
 
 export const sendOtpSms = async ({ phone, otp, purpose = 'otp' }) => {
-  if (isTruthy(env.sms.useDefaultOtp)) {
-    return {
-      mode: 'debug',
-      message: 'Default OTP mode enabled',
-    };
-  }
 
   const digits = String(phone || '').replace(/\D/g, '');
   const msisdn = digits.startsWith('91') ? digits : `91${digits}`;

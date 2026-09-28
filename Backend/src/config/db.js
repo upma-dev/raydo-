@@ -7,21 +7,31 @@ try {
   dns.setDefaultResultOrder('ipv4first');
 } catch (_) {}
 
+// Set up Mongoose connection event listeners once
+mongoose.connection.on('disconnected', () => {
+    logger.warn('MongoDB connection lost. Mongoose will attempt to reconnect...');
+});
+
+mongoose.connection.on('reconnected', () => {
+    logger.info('MongoDB reconnected successfully');
+});
+
+mongoose.connection.on('error', (err) => {
+    logger.error(`MongoDB connection error event: ${err?.message || err}`);
+});
+
 export const connectDB = async () => {
     try {
-        if (process.env.MONGODB_DNS_SERVERS) {
-            const dnsServers = String(process.env.MONGODB_DNS_SERVERS)
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean);
+        const dnsServers = process.env.MONGODB_DNS_SERVERS
+            ? String(process.env.MONGODB_DNS_SERVERS).split(',').map((s) => s.trim()).filter(Boolean)
+            : ['8.8.8.8', '1.1.1.1', '8.8.4.4'];
 
-            if (dnsServers.length > 0) {
-                try {
-                    dns.setServers(dnsServers);
-                    logger.info(`Using custom DNS servers for MongoDB lookup: ${dnsServers.join(', ')}`);
-                } catch (dnsError) {
-                    logger.warn(`Failed to set custom DNS servers: ${dnsError.message}`);
-                }
+        if (dnsServers.length > 0) {
+            try {
+                dns.setServers(dnsServers);
+                logger.info(`Using DNS servers for MongoDB lookup: ${dnsServers.join(', ')}`);
+            } catch (dnsError) {
+                logger.warn(`Failed to set DNS servers: ${dnsError.message}`);
             }
         }
 
@@ -33,6 +43,22 @@ export const connectDB = async () => {
         logger.info(`MongoDB connected: ${conn.connection.host}`);
     } catch (error) {
         logger.error(`MongoDB connection error: ${error.message}`);
+        // If initial connection failed, retry once after 2 seconds
+        setTimeout(async () => {
+            if (mongoose.connection.readyState === 0) {
+                logger.info('Retrying MongoDB connection...');
+                try {
+                    await mongoose.connect(config.mongodbUri, {
+                        serverSelectionTimeoutMS: 10000,
+                        connectTimeoutMS: 15000,
+                        family: 4
+                    });
+                    logger.info('MongoDB connected on retry!');
+                } catch (retryErr) {
+                    logger.error(`MongoDB retry failed: ${retryErr.message}`);
+                }
+            }
+        }, 2000);
     }
 };
 

@@ -4,10 +4,10 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Sparkles, MapPin, Send, Package } from 'lucide-react';
 
 // Asset Imports
-import bikeImg from '../../../assets/icons/bike.png';
-import autoImg from '../../../assets/icons/auto.png';
-import carImg from '../../../assets/icons/car.png';
-import deliveryImg from '../../../assets/icons/Delivery.png';
+import bikeImg from '@/assets/hero_bike.png';
+import autoImg from '@/assets/hero_bike.png';
+import carImg from '@/assets/hero_sedan.png';
+import deliveryImg from '@/assets/hero_parcel.png';
 
 const GatewayCard = ({ title, subtitle, path, gradient, accentColor, buttonGradient, isRide, onNavigate, delay }) => {
   const [coords, setCoords] = useState({ x: 0, y: 0 });

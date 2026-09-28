@@ -1,9 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Sparkles } from 'lucide-react';
-import indiaGateImg from '@/assets/india_gate_real.png';
-import jaipurImg from '@/assets/jaipur.avif';
-import tajMahalImg from '@/assets/taj mahal.jpeg';
+const indiaGateImg = 'https://images.unsplash.com/photo-1587474260584-136574528ed5?auto=format&fit=crop&w=400&q=80';
+
+const jaipurImg = 'https://images.unsplash.com/photo-1603262110263-fb0112e7cc33?auto=format&fit=crop&w=400&q=80';
+const tajMahalImg = 'https://images.unsplash.com/photo-1564507592333-c60657eea523?auto=format&fit=crop&w=400&q=80';
 
 const ExplorerSection = ({ plain = false }) => {
   const navigate = useNavigate();

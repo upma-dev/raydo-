@@ -50,6 +50,18 @@ const RedirectToFoodUser = () => {
   return <Navigate to={`/food/user${location.pathname}${location.search}`} replace />
 }
 
+const RedirectToTaxiDriver = () => {
+  const location = useLocation()
+  const newPath = location.pathname.replace(/^\/driver/i, '/taxi/driver')
+  return <Navigate to={`${newPath}${location.search}`} replace />
+}
+
+const RedirectToTaxiOwner = () => {
+  const location = useLocation()
+  const newPath = location.pathname.replace(/^\/owner/i, '/taxi/owner')
+  return <Navigate to={`${newPath}${location.search}`} replace />
+}
+
 const LandingPage = lazyWithRetry(() => import('../modules/Taxi/modules/shared/pages/LandingPage'))
 const AdminRouter = lazyWithRetry(() => import('../modules/Food/components/admin/AdminRouter'))
 
@@ -57,26 +69,34 @@ const SmartFallbackRedirect = () => {
   const location = useLocation()
   const pathname = location.pathname.toLowerCase()
 
+  if (pathname.startsWith('/driver')) {
+    const newPath = location.pathname.replace(/^\/driver/i, '/taxi/driver')
+    return <Navigate to={`${newPath}${location.search}`} replace />
+  }
+  if (pathname.startsWith('/owner')) {
+    const newPath = location.pathname.replace(/^\/owner/i, '/taxi/owner')
+    return <Navigate to={`${newPath}${location.search}`} replace />
+  }
+  if (pathname.startsWith('/delivery')) {
+    const newPath = location.pathname.replace(/^\/delivery/i, '/food/delivery')
+    return <Navigate to={`${newPath}${location.search}`} replace />
+  }
+  if (pathname.startsWith('/restaurant')) {
+    const newPath = location.pathname.replace(/^\/restaurant/i, '/food/restaurant')
+    return <Navigate to={`${newPath}${location.search}`} replace />
+  }
   if (pathname.startsWith('/taxi')) {
-    return <Navigate to="/taxi/user" replace />
+    return <Navigate to={`/taxi/user${location.search}`} replace />
   }
   if (pathname.startsWith('/admin')) {
-    return <Navigate to="/admin/food" replace />
+    return <Navigate to={`/admin/food${location.search}`} replace />
   }
-  if (pathname.startsWith('/food/delivery') || pathname.startsWith('/delivery')) {
-    return <Navigate to="/food/delivery" replace />
-  }
-  if (pathname.startsWith('/food/restaurant') || pathname.startsWith('/restaurant')) {
-    return <Navigate to="/food/restaurant" replace />
-  }
-  if (pathname.startsWith('/food/user') || pathname.startsWith('/food')) {
-    return <Navigate to="/food/user" replace />
-  }
-  if (pathname.startsWith('/login') || pathname.startsWith('/auth')) {
-    return <Navigate to="/login" replace />
+  if (pathname.startsWith('/food')) {
+    return <Navigate to={`/food/user${location.search}`} replace />
   }
 
-  return <Navigate to="/food/user" replace />
+  // Any unmatched / invalid route redirects to Landing Page (/)
+  return <Navigate to="/" replace />
 }
 
 const AppRoutes = () => {
@@ -161,8 +181,8 @@ const AppRoutes = () => {
 
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/food/user" replace />} />
-      <Route path="/landing" element={<Navigate to="/food/user" replace />} />
+      <Route path="/" element={<Suspense fallback={<PageLoader />}><LandingPage /></Suspense>} />
+      <Route path="/landing" element={<Suspense fallback={<PageLoader />}><LandingPage /></Suspense>} />
       <Route path="/login/*" element={<Suspense fallback={<PageLoader />}><AuthApp /></Suspense>} />
       <Route path="/food/*" element={<FoodAppWrapper />} />
       <Route path="/taxi/*" element={<TaxiAppWrapper />} />
@@ -178,6 +198,8 @@ const AppRoutes = () => {
       <Route path="/restaurant/*" element={<RedirectToFood />} />
       <Route path="/restaurants/*" element={<RedirectToFoodUser />} />
       <Route path="/delivery/*" element={<RedirectToFood />} />
+      <Route path="/driver/*" element={<RedirectToTaxiDriver />} />
+      <Route path="/owner/*" element={<RedirectToTaxiOwner />} />
       <Route path="/usermain/*" element={<RedirectToFood />} />
       <Route path="/profile/*" element={<RedirectToFoodUser />} />
       <Route path="/cart/*" element={<RedirectToFoodUser />} />

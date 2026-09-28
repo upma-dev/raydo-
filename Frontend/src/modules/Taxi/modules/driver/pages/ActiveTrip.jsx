@@ -28,7 +28,7 @@ import { socketService } from '../../../shared/api/socket';
 import { pushDriverLocationRealtime } from '../../../shared/services/rideRealtime';
 import api from '../../../shared/api/axiosInstance';
 import { BACKEND_ORIGIN } from '../../../shared/api/runtimeConfig';
-import carIcon from '../../../assets/icons/car.png';
+import carIcon from '@/assets/hero_sedan.png';
 import { getLocalDriverToken } from '../services/registrationService';
 import CancellationReceiptModal from '../../shared/components/CancellationReceiptModal';
 import { showChatNotification } from '@/shared/utils/chatNotificationSound';

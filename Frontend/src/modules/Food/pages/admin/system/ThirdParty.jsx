@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { Settings, Info, Eye, EyeOff, CheckCircle, XCircle } from "lucide-react"
-const debugLog = (...args) => {}
-const debugWarn = (...args) => {}
-const debugError = (...args) => {}
+const debugLog = (...args) => { }
+const debugWarn = (...args) => { }
+const debugError = (...args) => { }
 
 
 const thirdPartyServices = [
@@ -99,11 +99,10 @@ function ToggleSwitch({ enabled, onToggle }) {
     <button
       type="button"
       onClick={onToggle}
-      className={`inline-flex items-center w-11 h-6 rounded-full border transition-all ${
-        enabled
+      className={`inline-flex items-center w-11 h-6 rounded-full border transition-all ${enabled
           ? "bg-blue-600 border-blue-600 justify-end"
           : "bg-slate-200 border-slate-300 justify-start"
-      }`}
+        }`}
     >
       <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
     </button>
@@ -124,7 +123,7 @@ export default function ThirdParty() {
   )
 
   const handleToggle = (id) => {
-    setServices(prev => prev.map(service => 
+    setServices(prev => prev.map(service =>
       service.id === id ? { ...service, enabled: !service.enabled } : service
     ))
   }
@@ -132,16 +131,16 @@ export default function ThirdParty() {
   const handleFieldChange = (serviceId, fieldKey, value) => {
     const key = `${serviceId}-${fieldKey}`
     setFieldValues(prev => ({ ...prev, [key]: value }))
-    
+
     // Mark as configured if at least one field has value
     const service = services.find(s => s.id === serviceId)
     const hasValue = service.fields.some(f => {
       const fieldKey = `${serviceId}-${f.key}`
       return fieldValues[fieldKey] || (f.key === fieldKey.split('-')[1] && value)
     })
-    
+
     if (hasValue && !service.configured) {
-      setServices(prev => prev.map(s => 
+      setServices(prev => prev.map(s =>
         s.id === serviceId ? { ...s, configured: true } : s
       ))
     }
@@ -163,8 +162,8 @@ export default function ThirdParty() {
     }))
     debugLog("Saving service:", service.name, serviceFields)
     alert(`${service.name} configuration saved successfully!`)
-    
-    setServices(prev => prev.map(s => 
+
+    setServices(prev => prev.map(s =>
       s.id === serviceId ? { ...s, configured: true } : s
     ))
   }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Download, ExternalLink, Shield, Zap, Star } from 'lucide-react';
 import './LinksPage.css';
-import bannerImg from '@/assets/images/links-banner.png';
+import bannerImg from '@/assets/raydo-3d-city.jpg';
 
 const LinksPage = () => {
   const links = [

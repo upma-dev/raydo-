@@ -24,38 +24,6 @@ export const validateUserPhone = (phone) => {
 const generateOtp = () => String(Math.floor(1000 + Math.random() * 9000));
 
 const hashOtp = (otp) => crypto.createHash('sha256').update(String(otp)).digest('hex');
-const getVisibleOtp = (otp) => (process.env.NODE_ENV !== 'production' ? String(otp) : null);
-const isTruthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
-const TEST_LOGIN_OTP_PHONE = '7610416911';
-const TEST_LOGIN_OTP_CODE = '0000';
-const getStaticUserOtpConfig = () => ({
-  phone: normalizeUserPhone(env.sms?.staticOtpPhone || TEST_LOGIN_OTP_PHONE),
-  otp: String(env.sms?.staticOtpCode || TEST_LOGIN_OTP_CODE).trim(),
-});
-const resolveUserOtpForPhone = (phone) => {
-  const normalizedPhone = normalizeUserPhone(phone);
-  const staticOtpConfig = getStaticUserOtpConfig();
-  const defaultOtpEnabled = isTruthy(env.sms?.useDefaultOtp);
-
-  if (defaultOtpEnabled && staticOtpConfig.otp) {
-    return {
-      otp: staticOtpConfig.otp,
-      isStatic: true,
-    };
-  }
-
-  if (staticOtpConfig.phone && staticOtpConfig.otp && normalizedPhone === staticOtpConfig.phone) {
-    return {
-      otp: staticOtpConfig.otp,
-      isStatic: true,
-    };
-  }
-
-  return {
-    otp: generateOtp(),
-    isStatic: false,
-  };
-};
 
 const ensureUserCanLogin = (user) => {
   if (user?.deletedAt || user?.isActive === false || user?.active === false) {
@@ -95,10 +63,9 @@ const getOtpSession = async (phone) => {
   return session;
 };
 
-const publicOtpSession = (session, debugOtp = null) => ({
+const publicOtpSession = (session) => ({
   phone: session.phone,
   status: session.otpVerifiedAt ? 'otp_verified' : 'otp_sent',
-  debugOtp,
 });
 
 export const startUserOtp = async ({ phone }) => {
@@ -111,7 +78,7 @@ export const startUserOtp = async ({ phone }) => {
     ensureUserCanLogin(user);
   }
 
-  const { otp, isStatic } = resolveUserOtpForPhone(normalizedPhone);
+  const otp = generateOtp();
   const now = Date.now();
 
   const session = await UserAuthSession.findOneAndUpdate(
@@ -126,26 +93,16 @@ export const startUserOtp = async ({ phone }) => {
     { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
   );
 
-  const smsDispatch = isStatic
-    ? {
-        mode: 'static',
-        message: 'Static OTP enabled',
-      }
-    : await sendOtpSms({
-        phone: normalizedPhone,
-        otp,
-        purpose: 'user OTP',
-      });
-  const debugOtp = getVisibleOtp(otp);
-
-  if (debugOtp) {
-    console.log(`[userOtpService] OTP for ${normalizedPhone} = ${debugOtp} (${smsDispatch.mode})`);
-  }
+  const smsDispatch = await sendOtpSms({
+    phone: normalizedPhone,
+    otp,
+    purpose: 'user OTP',
+  });
 
   return {
-    message: smsDispatch.mode === 'live' ? 'OTP sent successfully' : 'OTP generated successfully',
+    message: 'OTP sent successfully',
     exists: Boolean(user && !isReusableSignupUser(user)),
-    session: publicOtpSession(session, debugOtp),
+    session: publicOtpSession(session),
   };
 };
 

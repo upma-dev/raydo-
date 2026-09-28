@@ -10,9 +10,9 @@ import {
 } from 'lucide-react';
 import api from '../../../../shared/api/axiosInstance';
 
-import trucksImg from '../../../../assets/images/delivery/trucks.png';
-import bikeImg from '../../../../assets/images/delivery/bike.png';
-import moversImg from '../../../../assets/images/delivery/movers.png';
+import trucksImg from '@/assets/hero_parcel.png';
+import bikeImg from '@/assets/hero_bike.png';
+import moversImg from '@/assets/hero_parcel.png';
 
 import { useAppGoogleMapsLoader } from '../../../admin/utils/googleMaps';
 

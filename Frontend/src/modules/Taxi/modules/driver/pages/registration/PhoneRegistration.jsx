@@ -12,7 +12,7 @@ import {
 
 import { useSettings } from '../../../../shared/context/SettingsContext';
 import { RENTAL_ENABLED } from '../../../../shared/featureFlags';
-import loginBg from '../../../../assets/images/driver-login-bg.png';
+const loginBg = '';
 
 const PhoneRegistration = () => {
     const navigate = useNavigate();

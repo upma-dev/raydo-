@@ -24,12 +24,12 @@ const resolveAssetUrl = (value = '') => {
   if (raw.startsWith('/')) return raw;
   return `${BACKEND_ORIGIN}/${raw.replace(/^\/+/, '')}`;
 };
-import LuxuryIcon from '@/assets/icons/Luxury.png';
-import PremiumIcon from '@/assets/icons/Premium.png';
-import SuvIcon from '@/assets/icons/SUV.png';
-import BikeIcon from '@/assets/icons/bike.png';
-import CarIcon from '@/assets/icons/car.png';
-import AutoIcon from '@/assets/icons/auto.png';
+import LuxuryIcon from '@/assets/hero_sedan.png';
+import PremiumIcon from '@/assets/hero_sedan.png';
+import SuvIcon from '@/assets/hero_sedan.png';
+import BikeIcon from '@/assets/hero_bike.png';
+import CarIcon from '@/assets/hero_sedan.png';
+import AutoIcon from '@/assets/hero_bike.png';
 
 const MAP_OPTIONS = {
   disableDefaultUI: true,

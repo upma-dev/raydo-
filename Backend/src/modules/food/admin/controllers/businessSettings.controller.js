@@ -68,15 +68,26 @@ export async function updateBusinessSettings(req, res, next) {
         // Handle file uploads
         if (req.files) {
             const logoFields = ['logo', 'userLogo', 'deliveryLogo', 'driverLogo', 'restaurantLogo', 'adminLogo', 'favicon'];
+            const uploadPromises = [];
+
             for (const field of logoFields) {
                 if (req.files[field] && req.files[field][0]) {
+                    const fileObj = req.files[field][0];
                     const folder = field === 'favicon' ? 'business/favicons' : 'business/logos';
-                    const uploadResult = await uploadImageBufferDetailed(req.files[field][0].buffer, folder);
-                    settings[field] = {
-                        url: uploadResult.secure_url,
-                        publicId: uploadResult.public_id
-                    };
+                    uploadPromises.push(
+                        uploadImageBufferDetailed(fileObj.buffer, folder, fileObj.mimetype)
+                            .then((uploadResult) => {
+                                settings[field] = {
+                                    url: uploadResult.secure_url || uploadResult.url || uploadResult,
+                                    publicId: uploadResult.public_id || uploadResult.publicId || ''
+                                };
+                            })
+                    );
                 }
+            }
+
+            if (uploadPromises.length > 0) {
+                await Promise.all(uploadPromises);
             }
         }
 

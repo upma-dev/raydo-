@@ -42,10 +42,10 @@ import phonesImg from "@/assets/raydo-3d-phones.jpg";
 import mapImg from "@/assets/raydo-3d-map.jpg";
 import cityImg from "@/assets/raydo-3d-city.jpg";
 import realBurgerImg from "@/assets/real-burger.png";
-import taxi3dImg from "@/assets/3d images/AutoCab/taxi.png";
-import grocery3dImg from "@/assets/3d images/grocery.png";
-import gifts3dImg from "@/assets/3d images/gifts.png";
-import groceryFoodVideo from "@/assets/grocery-food-promo.mp4";
+import taxi3dImg from "@/assets/hero_sedan.png";
+import grocery3dImg from "@/assets/hero_parcel.png";
+import gifts3dImg from "@/assets/hero_parcel.png";
+import groceryFoodVideo from "@/assets/generate_video_for_my_wwebste.mp4";
 
 /* ==========================================================================
    SHARED SCROLL-REVEAL HOOK

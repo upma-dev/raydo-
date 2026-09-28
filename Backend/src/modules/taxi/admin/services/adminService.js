@@ -2812,19 +2812,9 @@ const buildLegacyOwnerSeeds = (serviceLocationId) => [
 const seedInitialData = async () => {
   const defaults = createDefaultAdminState();
 
-  // Seed Users
-  if (await User.countDocuments() === 0) {
-    await User.insertMany(defaults.users.map(u => ({ ...u, phone: u.mobile, password: 'password123' })));
-  }
-
   // Seed Service Locations
   if (await ServiceLocation.countDocuments() === 0) {
     await ServiceLocation.insertMany(defaults.serviceLocations);
-  }
-
-  // Seed Drivers
-  if (await Driver.countDocuments() === 0) {
-    await Driver.insertMany(defaults.drivers.map(d => ({ ...d, phone: d.mobile })));
   }
 
   // Seed Languages
@@ -2868,8 +2858,6 @@ const seedInitialData = async () => {
   if (await OnboardingScreen.countDocuments() === 0) {
     await OnboardingScreen.insertMany(defaults.onboardingScreens);
   }
-
-  await ensureFleetOwnersSeeded();
 };
 
 export const ensureServiceLocationsSeeded = async () => {
@@ -2880,56 +2868,7 @@ export const ensureServiceLocationsSeeded = async () => {
 };
 
 export const ensureFleetOwnersSeeded = async () => {
-  const now = new Date();
-
-  const serviceLocation = await ServiceLocation.findOneAndUpdate(
-    {
-      $or: [
-        { legacy_id: LEGACY_OWNER_SERVICE_LOCATION.legacy_id },
-        { name: LEGACY_OWNER_SERVICE_LOCATION.name },
-      ],
-    },
-    {
-      $set: {
-        ...LEGACY_OWNER_SERVICE_LOCATION,
-        updatedAt: LEGACY_OWNER_SERVICE_LOCATION.updatedAt || now,
-      },
-      $setOnInsert: {
-        createdAt: LEGACY_OWNER_SERVICE_LOCATION.createdAt || now,
-      },
-    },
-    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
-  );
-
-  const ownerSeeds = buildLegacyOwnerSeeds(serviceLocation._id);
-
-  for (const seed of ownerSeeds) {
-    const existingOwner = await Owner.findOne({
-      $or: [
-        { legacy_id: seed.legacy_id },
-        { email: seed.email },
-        { mobile: seed.mobile },
-      ],
-    }).lean();
-
-    if (existingOwner) {
-      await Owner.updateOne(
-        { _id: existingOwner._id },
-        {
-          $set: {
-            ...seed,
-            updatedAt: seed.updatedAt || now,
-          },
-          $setOnInsert: {
-            createdAt: seed.createdAt || now,
-          },
-        },
-      );
-      continue;
-    }
-
-    await Owner.create(seed);
-  }
+  // No-op: fleet owners creation should be done via registration or admin panel
 };
 
 export const ensureAdminState = async () => {
