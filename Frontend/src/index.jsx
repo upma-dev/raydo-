@@ -37,14 +37,11 @@ function isNativeLikeShell() {
   if (typeof window === 'undefined') return false
 
   const protocol = String(window.location?.protocol || '').toLowerCase()
-  const userAgent = String(window.navigator?.userAgent || '').toLowerCase()
 
   return (
     Boolean(window.flutter_inappwebview) ||
     Boolean(window.ReactNativeWebView) ||
-    protocol === 'file:' ||
-    userAgent.includes(' wv') ||
-    userAgent.includes('; wv')
+    protocol === 'file:'
   )
 }
 
@@ -59,8 +56,6 @@ function resolveNativeInitialRoute() {
 
   const storedRoute = String(localStorage.getItem(NATIVE_LAST_ROUTE_KEY) || '').trim()
 
-  // Routes that depend on React Router state (pickup/drop etc.) must never
-  // be restored after an app restart — the state is gone, showing stale data.
   const TRANSIENT_SEGMENTS = [
     '/ride/select-vehicle', '/ride/select-location', '/ride/searching',
     '/ride/tracking', '/ride/complete', '/ride/chat',
@@ -82,11 +77,6 @@ function resolveNativeInitialRoute() {
   if (storedRoute.startsWith('/food/') || storedRoute.startsWith('/admin')) {
     return storedRoute
   }
-
-  if (isModuleAuthenticated('restaurant')) return '/food/restaurant'
-  if (isModuleAuthenticated('delivery')) return '/food/delivery'
-  if (isModuleAuthenticated('admin')) return '/admin'
-  if (isModuleAuthenticated('user')) return '/food/user'
 
   return '/'
 }

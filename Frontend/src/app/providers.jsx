@@ -10,14 +10,11 @@ function shouldUseHashRouter() {
   if (typeof window === 'undefined') return false
 
   const protocol = String(window.location?.protocol || '').toLowerCase()
-  const userAgent = String(window.navigator?.userAgent || '').toLowerCase()
 
   return (
     Boolean(window.flutter_inappwebview) ||
     Boolean(window.ReactNativeWebView) ||
-    protocol === 'file:' ||
-    userAgent.includes(' wv') ||
-    userAgent.includes('; wv')
+    protocol === 'file:'
   )
 }
 
