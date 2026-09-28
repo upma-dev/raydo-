@@ -142,9 +142,7 @@ const AppRoutes = () => {
     const isNativeLikeShell =
       Boolean(window.flutter_inappwebview) ||
       Boolean(window.ReactNativeWebView) ||
-      protocol === 'file:' ||
-      userAgent.includes(' wv') ||
-      userAgent.includes('; wv')
+      protocol === 'file:'
 
     if (!isNativeLikeShell) return
 

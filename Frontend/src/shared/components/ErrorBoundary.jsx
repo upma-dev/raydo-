@@ -57,7 +57,7 @@ class ErrorBoundary extends React.Component {
     } else if (pathname.startsWith('/taxi')) {
       window.location.href = '/taxi/user'
     } else {
-      window.location.href = '/food/user'
+      window.location.href = '/'
     }
   }
 
