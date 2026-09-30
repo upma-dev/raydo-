@@ -21,6 +21,7 @@ import { POOLING_ENABLED, RENTAL_ENABLED } from './shared/featureFlags';
 import { showChatNotification } from '@/shared/utils/chatNotificationSound';
 import './App.css';
 
+const MaintenanceMode = lazy(() => import('@food/pages/admin/settings/MaintenanceMode'));
 
 // Lazy loading pages for performance
 const UserHome = lazy(() => import('./modules/user/pages/Home'));
@@ -1026,6 +1027,9 @@ function TaxiApp() {
                 />
                 <Route path="lang-select" element={<LanguageSelect />} />
                 <Route path="welcome" element={<DriverWelcome />} />
+                <Route path="terms" element={<LegalPage />} />
+                <Route path="privacy" element={<LegalPage />} />
+                <Route path="refund" element={<LegalPage />} />
                 <Route path="login" element={<PhoneRegistration />} />
                 <Route path="reg-phone" element={<PhoneRegistration />} />
                 <Route path="otp-verify" element={<OTPVerification />} />
@@ -1149,6 +1153,7 @@ function TaxiApp() {
               <Route path="admin" element={<AdminLayout />}>
                 <Route index element={<Navigate to="/taxi/admin/dashboard" />} />
                 <Route path="dashboard" element={<AdminDashboard />} />
+                <Route path="maintenance-mode" element={<MaintenanceMode />} />
                 <Route path="cancellation-analytics" element={<AdminCancellationAnalytics />} />
                 <Route path="earnings" element={<AdminEarnings />} />
                 <Route path="chat" element={<AdminChat />} />
@@ -1207,6 +1212,10 @@ function TaxiApp() {
                 <Route
                   path="user-import/create"
                   element={<AdminUserImportCreate />}
+                />
+                <Route
+                  path="maintenance-mode"
+                  element={<MaintenanceMode />}
                 />
 
                 <Route path="drivers" element={<AdminDriverList />} />

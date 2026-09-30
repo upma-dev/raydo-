@@ -744,6 +744,7 @@ const AdminLayout = () => {
             ],
           },
           { icon: Home, label: 'Dashboard', path: '/taxi/admin/dashboard', permission: 'dashboard.view' },
+          { icon: Settings, label: 'Maintenance Mode', path: '/taxi/admin/maintenance-mode' },
           { icon: IndianRupee, label: 'Admin Earnings', path: '/taxi/admin/earnings', permission: 'earnings.view' },
           { icon: MessageCircle, label: 'Chat', path: '/taxi/admin/chat', permission: 'chat.view' },
           {

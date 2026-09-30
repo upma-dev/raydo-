@@ -25,7 +25,7 @@ import { promotionsRouter as taxiPromotionsRouter } from '../modules/taxi/admin/
 import { getOrderPublic } from '../modules/food/orders/services/order.service.js';
 import { sendResponse } from '../utils/response.js';
 import franchiseRoutes from '../core/franchise/franchise.routes.js';
-
+import maintenanceRoutes from '../core/admin/routes/maintenanceSetting.routes.js';
 
 const router = express.Router();
 
@@ -80,5 +80,6 @@ router.use('/v1', taxiPromotionsRouter);
 
 router.use('/v1/taxi', taxiRouter);
 router.use('/v1/franchise', franchiseRoutes);
+router.use('/v1/maintenance', maintenanceRoutes);
 
 export default router;

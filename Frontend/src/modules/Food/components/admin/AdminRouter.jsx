@@ -116,6 +116,7 @@ const EmployeeList = lazy(() => import("@food/pages/admin/employees/EmployeeList
 const BusinessSetup = lazy(() => import("@food/pages/admin/settings/BusinessSetup"));
 const EmailTemplate = lazy(() => import("@food/pages/admin/settings/EmailTemplate"));
 const ThemeSettings = lazy(() => import("@food/pages/admin/settings/ThemeSettings"));
+const MaintenanceMode = lazy(() => import("@food/pages/admin/settings/MaintenanceMode"));
 const Gallery = lazy(() => import("@food/pages/admin/settings/Gallery"));
 const LoginSetup = lazy(() => import("@food/pages/admin/settings/LoginSetup"));
 const TermsAndCondition = lazy(() => import("@food/pages/admin/settings/TermsAndCondition"));
@@ -318,6 +319,7 @@ export default function AdminRouter() {
 
             {/* SYSTEM & BUSINESS SETTINGS */}
             <Route path="business-setup" element={<BusinessSetup />} />
+            <Route path="maintenance-mode" element={<MaintenanceMode />} />
             <Route path="email-template" element={<EmailTemplate />} />
             <Route path="theme-settings" element={<ThemeSettings />} />
             <Route path="gallery" element={<Gallery />} />
