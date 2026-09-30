@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { AlertTriangle, Plus, Trash2, Save, X, Edit2 } from "lucide-react"
 import { Button } from "@food/components/ui/button"
-import api from "@food/shared/api/axiosInstance"
+import api from "@food/api"
 import toast from "react-hot-toast"
 import {
   Dialog,
