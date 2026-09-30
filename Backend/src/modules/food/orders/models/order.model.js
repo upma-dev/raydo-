@@ -336,6 +336,18 @@ const orderSchema = new mongoose.Schema(
         lastRiderLocation: {
             type: { type: String, enum: ['Point'] },
             coordinates: { type: [Number] }
+        },
+        franchiseId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Franchise',
+            default: null,
+            index: true
+        },
+        territoryId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'FranchiseTerritory',
+            default: null,
+            index: true
         }
     },
     {
@@ -365,6 +377,23 @@ orderSchema.pre('save', async function (next) {
     if (this.order_id) {
         this.orderId = this.order_id;
     }
+
+    // Phase 2C Immutability Hardening
+    if (!this.isNew && (this.isModified('franchiseId') || this.isModified('territoryId'))) {
+        return next(new Error('Transaction ownership (franchiseId, territoryId) is immutable.'));
+    }
+
+    next();
+});
+
+orderSchema.pre(['findOneAndUpdate', 'updateOne', 'updateMany', 'findByIdAndUpdate'], function (next) {
+    const update = this.getUpdate();
+    if (update && update.$set) {
+        delete update.$set.franchiseId;
+        delete update.$set.territoryId;
+    }
+    if (update && update.franchiseId) delete update.franchiseId;
+    if (update && update.territoryId) delete update.territoryId;
     next();
 });
 

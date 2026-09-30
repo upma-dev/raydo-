@@ -1042,6 +1042,35 @@ export const createRideRecord = async ({
   const nextFareIncreaseAt = pricingNegotiationMode === 'user_increment_only'
     ? new Date(Date.now() + fareIncreaseWaitMinutes * 60 * 1000)
     : null;
+
+  // Phase 2C: Determine Franchise Ownership
+  let rideFranchiseId = null;
+  let rideTerritoryId = null;
+  try {
+    const FranchiseTerritory = mongoose.models.FranchiseTerritory || (await import('../../../core/franchise/franchiseTerritory.model.js')).FranchiseTerritory;
+    const territory = await FranchiseTerritory.findOne({
+      status: 'ASSIGNED', // Only use actively assigned territories
+      boundaries: {
+        $geoIntersects: {
+          $geometry: {
+            type: 'Point',
+            coordinates: pickupPoint,
+          },
+        },
+      },
+    })
+      .sort({ createdAt: 1 }) // Deterministic behavior for overlapping territories
+      .populate('assignedToFranchiseId', 'status')
+      .lean();
+
+    if (territory && territory.assignedToFranchiseId && territory.assignedToFranchiseId.status === 'ACTIVE') {
+      rideTerritoryId = territory._id;
+      rideFranchiseId = territory.assignedToFranchiseId._id;
+    }
+  } catch (err) {
+    // Soft fail: do not block ride creation if franchise lookup fails
+  }
+
   const pricingSnapshot = {
     setPriceId: pricingRule?._id || null,
     admin_commission_type_from_driver: Number(pricingRule?.admin_commission_type_from_driver ?? 1),
@@ -1172,6 +1201,8 @@ export const createRideRecord = async ({
       scheduledAt: normalizedScheduledAt,
       status: RIDE_STATUS.SEARCHING,
       liveStatus: RIDE_LIVE_STATUS.SEARCHING,
+      franchiseId: rideFranchiseId,
+      territoryId: rideTerritoryId,
     });
 
 
@@ -1232,6 +1263,8 @@ export const createRideRecord = async ({
             scheduledAt: normalizedScheduledAt,
             status: RIDE_STATUS.SEARCHING,
             liveStatus: RIDE_LIVE_STATUS.SEARCHING,
+            franchiseId: rideFranchiseId,
+            territoryId: rideTerritoryId,
           },
         ],
         { session },
@@ -1807,6 +1840,15 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
 
     await processCompletedRideReferralReward(ride);
     await processCompletedDriverReferralReward(ride);
+
+    // Phase 2C: Trigger Franchise Commission
+    try {
+      const { calculateAndPostCommission } = await import('../../../core/franchise/commission.service.js');
+      await calculateAndPostCommission(settledRide || ride, 'TAXI_RIDE');
+    } catch (err) {
+      // We don't throw here to avoid blocking the user flow, but we log the error
+      console.error(`Franchise commission trigger failed for taxi ride ${ride._id}:`, err);
+    }
   }
 
   const populatedRide = await populateRideRealtime(ride._id);

@@ -1019,6 +1019,15 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     prevPayStatus,
     paymentStatus: order.payment?.status,
   });
+
+  // Phase 2C: Trigger Franchise Commission
+  try {
+    const { calculateAndPostCommission } = await import('../../../../core/franchise/commission.service.js');
+    await calculateAndPostCommission(order, 'FOOD_ORDER');
+  } catch (err) {
+    logger.error(`Franchise commission trigger failed for order ${order._id}: ${err.message}`);
+  }
+
   return sanitizeOrderForExternal(order);
 }
 
@@ -1052,5 +1061,16 @@ export async function updateOrderStatusDelivery(orderId, deliveryPartnerId, orde
     from,
     to: orderStatus,
   });
+
+  // Phase 2C: Trigger Franchise Commission
+  if (orderStatus === 'delivered') {
+    try {
+      const { calculateAndPostCommission } = await import('../../../../core/franchise/commission.service.js');
+      await calculateAndPostCommission(order, 'FOOD_ORDER');
+    } catch (err) {
+      logger.error(`Franchise commission trigger failed for order ${order._id}: ${err.message}`);
+    }
+  }
+
   return order.toObject();
 }

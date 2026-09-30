@@ -276,6 +276,18 @@ const restaurantSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    franchiseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Franchise',
+      default: null,
+      index: true,
+    },
+    territoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FranchiseTerritory',
+      default: null,
+      index: true,
+    },
   },
   {
     collection: "food_restaurants",

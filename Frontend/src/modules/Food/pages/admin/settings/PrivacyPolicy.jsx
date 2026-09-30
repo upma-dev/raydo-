@@ -13,6 +13,7 @@ export default function PrivacyPolicy() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [viewMode, setViewMode] = useState("edit") // "edit" | "preview"
+  const [activeTab, setActiveTab] = useState("user") // "user" | "restaurant" | "delivery"
   const [privacyData, setPrivacyData] = useState({
     title: 'Privacy Policy',
     content: ''
@@ -20,12 +21,19 @@ export default function PrivacyPolicy() {
 
   useEffect(() => {
     fetchPrivacyData()
-  }, [])
+  }, [activeTab])
+
+  const getEndpoint = () => {
+    if (activeTab === "restaurant") return API_ENDPOINTS.ADMIN.RESTAURANT_PRIVACY;
+    if (activeTab === "delivery") return API_ENDPOINTS.ADMIN.DELIVERY_PRIVACY;
+    if (activeTab === "driver") return API_ENDPOINTS.ADMIN.DRIVER_PRIVACY;
+    return API_ENDPOINTS.ADMIN.PRIVACY;
+  }
 
   const fetchPrivacyData = async () => {
     try {
       setLoading(true)
-      const response = await api.get(API_ENDPOINTS.ADMIN.PRIVACY, { contextModule: "admin" })
+      const response = await api.get(getEndpoint(), { contextModule: "admin" })
       if (response.data.success) {
         const pageData = response.data.data || { title: 'Privacy Policy', content: '' }
         const content = pageData.content || ''
@@ -51,7 +59,7 @@ export default function PrivacyPolicy() {
       const htmlContent = plainTextToLegalHtml(privacyData.content)
       
       const response = await api.put(
-        API_ENDPOINTS.ADMIN.PRIVACY,
+        getEndpoint(),
         { title: privacyData.title, content: htmlContent },
         { contextModule: "admin" }
       )
@@ -90,7 +98,35 @@ export default function PrivacyPolicy() {
         {/* Page Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-slate-900">Privacy Policy</h1>
-          <p className="text-sm text-slate-600 mt-1">Manage your Privacy Policy content</p>
+          <p className="text-sm text-slate-600 mt-1">Manage Privacy Policy content for different apps</p>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-slate-200 mb-6 space-x-6">
+          <button
+            onClick={() => setActiveTab("user")}
+            className={`pb-3 font-medium text-sm transition-colors border-b-2 ${activeTab === "user" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+          >
+            User App
+          </button>
+          <button
+            onClick={() => setActiveTab("restaurant")}
+            className={`pb-3 font-medium text-sm transition-colors border-b-2 ${activeTab === "restaurant" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+          >
+            Restaurant App
+          </button>
+          <button
+            onClick={() => setActiveTab("delivery")}
+            className={`pb-3 font-medium text-sm transition-colors border-b-2 ${activeTab === "delivery" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+          >
+            Delivery App
+          </button>
+          <button
+            onClick={() => setActiveTab("driver")}
+            className={`pb-3 font-medium text-sm transition-colors border-b-2 ${activeTab === "driver" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+          >
+            Driver App (Taxi)
+          </button>
         </div>
 
         {/* Text Area */}

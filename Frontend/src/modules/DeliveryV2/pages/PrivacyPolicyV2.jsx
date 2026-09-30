@@ -1,7 +1,8 @@
 import { motion } from "framer-motion"
 import { useState, useEffect } from "react"
 import { ArrowLeft, Loader2 } from "lucide-react"
-import { publicAPI } from "@food/api"
+import api from "@food/api"
+import { API_ENDPOINTS } from "@food/api/config"
 import useDeliveryBackNavigation from "../hooks/useDeliveryBackNavigation"
 
 export default function PrivacyPolicyV2() {
@@ -13,7 +14,7 @@ export default function PrivacyPolicyV2() {
   useEffect(() => {
     const fetchPrivacy = async () => {
       try {
-        const response = await publicAPI.getPrivacy()
+        const response = await api.get(API_ENDPOINTS.ADMIN.DELIVERY_PRIVACY_PUBLIC)
         if (response.data.success) {
           setContent(response.data.data.content)
           setLastUpdated(response.data.data.updatedAt)

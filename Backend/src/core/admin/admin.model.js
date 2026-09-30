@@ -111,6 +111,12 @@ const adminSchema = new mongoose.Schema(
             type: Date,
             select: false,
         },
+        franchiseId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Franchise',
+            default: null,
+            index: true,
+        },
     },
     {
         collection: 'admins',

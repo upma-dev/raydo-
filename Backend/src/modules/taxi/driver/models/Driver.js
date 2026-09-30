@@ -62,6 +62,18 @@ const driverSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    franchiseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Franchise',
+      default: null,
+      index: true,
+    },
+    territoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FranchiseTerritory',
+      default: null,
+      index: true,
+    },
     country: {
       type: mongoose.Schema.Types.Mixed,
       default: null,

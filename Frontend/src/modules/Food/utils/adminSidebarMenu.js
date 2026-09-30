@@ -53,6 +53,71 @@ export const adminSidebarMenu = [
   },
   {
     type: "section",
+    label: "FRANCHISE MANAGEMENT",
+    items: [
+      {
+        type: "link",
+        label: "Franchises List",
+        path: "/admin/food/franchises",
+        icon: "Building2",
+      },
+      {
+        type: "link",
+        label: "KYC Documents",
+        path: "/admin/food/franchise/kyc",
+        icon: "ShieldCheck",
+      },
+      {
+        type: "link",
+        label: "Operations Dashboard",
+        path: "/admin/food/franchise/dashboard",
+        icon: "LayoutDashboard",
+      },
+      {
+        type: "link",
+        label: "Franchise Staff",
+        path: "/admin/food/franchise/staff",
+        icon: "Users",
+      },
+      {
+        type: "link",
+        label: "Franchise Drivers",
+        path: "/admin/food/franchise/drivers",
+        icon: "Car",
+      },
+      {
+        type: "link",
+        label: "Franchise Restaurants",
+        path: "/admin/food/franchise/restaurants",
+        icon: "Utensils",
+      },
+      {
+        type: "link",
+        label: "Delivery Partners",
+        path: "/admin/food/franchise/delivery-partners",
+        icon: "Bike",
+      },
+      {
+        type: "link",
+        label: "Fleet Vehicles",
+        path: "/admin/food/franchise/vehicles",
+        icon: "Truck",
+      },
+      {
+        type: "expandable",
+        label: "Financials & Commission",
+        icon: "IndianRupee",
+        subItems: [
+          { label: "Commission Rules", path: "/admin/food/franchise/commission-rules" },
+          { label: "Financial Dashboard", path: "/admin/food/franchise/financials" },
+          { label: "Franchise Wallet", path: "/admin/food/franchise/wallet" },
+          { label: "Financial Ledger", path: "/admin/food/franchise/ledger" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "section",
     label: "RESTAURANT MANAGEMENT",
     items: [
       {

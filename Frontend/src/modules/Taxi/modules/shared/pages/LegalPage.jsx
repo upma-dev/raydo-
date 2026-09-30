@@ -1,6 +1,9 @@
 import React from 'react';
 import { ArrowLeft, FileText, IndianRupee, ReceiptText, Scale, ScrollText, ShieldCheck } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import api from "@food/api";
+import { API_ENDPOINTS } from "@food/api/config";
 
 const vehiclePricing = [
   { type: 'Bike', capacity: 'Up to 2 riders', price: 'Starts at Rs 49', cancellationCut: 'Admin cut up to Rs 10', note: 'Best for quick solo rides and short-distance travel.' },
@@ -228,7 +231,22 @@ const getDocumentType = (pathname = '') => {
 const LegalPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const content = legalContent[getDocumentType(location.pathname)];
+  const docType = getDocumentType(location.pathname);
+  const [fetchedContent, setFetchedContent] = useState(null);
+  
+  useEffect(() => {
+    if (docType === 'privacy') {
+      api.get(API_ENDPOINTS.ADMIN.DRIVER_PRIVACY_PUBLIC)
+        .then(response => {
+          if (response.data?.success && response.data?.data?.content) {
+            setFetchedContent(response.data.data.content);
+          }
+        })
+        .catch(err => console.error("Error fetching driver privacy:", err));
+    }
+  }, [docType]);
+
+  const content = legalContent[docType];
   const Icon = content.icon || FileText;
 
   return (
@@ -263,8 +281,18 @@ const LegalPage = () => {
 
       <section className="px-6 py-16">
         <div className="mx-auto max-w-6xl space-y-8">
-          {content.sections.map((section) => (
-            <div key={section.title} className="rounded-[28px] border border-stone-200 bg-white p-8 shadow-sm">
+          {fetchedContent ? (
+            <div className="rounded-[28px] border border-stone-200 bg-white p-8 shadow-sm">
+              <div 
+                className="prose prose-slate max-w-none text-slate-700
+                           prose-headings:text-slate-900 prose-headings:font-black
+                           prose-a:text-[#f4b400]"
+                dangerouslySetInnerHTML={{ __html: fetchedContent }} 
+              />
+            </div>
+          ) : (
+            content.sections.map((section) => (
+              <div key={section.title} className="rounded-[28px] border border-stone-200 bg-white p-8 shadow-sm">
               <h2 className="text-xl font-black tracking-tight text-slate-900 md:text-2xl">
                 {section.title}
               </h2>
@@ -311,7 +339,8 @@ const LegalPage = () => {
                 </div>
               ) : null}
             </div>
-          ))}
+            ))
+          )}
         </div>
       </section>
     </div>

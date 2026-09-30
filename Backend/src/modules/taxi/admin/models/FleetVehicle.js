@@ -69,6 +69,18 @@ const fleetVehicleSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    franchiseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Franchise',
+      default: null,
+      index: true,
+    },
+    territoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FranchiseTerritory',
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true },
 );

@@ -93,7 +93,7 @@ export async function createOrder(userId, dto) {
   try {
     const restaurantId = toObjectId(dto.restaurantId, 'Restaurant ID');
     const restaurant = await FoodRestaurant.findById(restaurantId)
-      .select("status restaurantName zoneId location isAcceptingOrders isActive openingTime closingTime outletTimings deliveryTimings openDays")
+      .select("status restaurantName zoneId location isAcceptingOrders isActive openingTime closingTime outletTimings deliveryTimings openDays franchiseId territoryId")
       .lean();
 
     if (!restaurant) throw new ValidationError("Restaurant not found");
@@ -265,9 +265,35 @@ export async function createOrder(userId, dto) {
 
     const initialStatus = (paymentMethod === "razorpay" || paymentMethod === "card") ? "pending_payment" : "created";
 
+    // Phase 2C: Determine Franchise Ownership
+    let orderFranchiseId = null;
+    let orderTerritoryId = null;
+    if (restaurant.franchiseId && restaurant.territoryId) {
+      try {
+        const [Franchise, FranchiseTerritory] = await Promise.all([
+          mongoose.models.Franchise || (await import('../../../core/franchise/franchise.model.js')).Franchise,
+          mongoose.models.FranchiseTerritory || (await import('../../../core/franchise/franchiseTerritory.model.js')).FranchiseTerritory
+        ]);
+        
+        const [franchise, territory] = await Promise.all([
+          Franchise.findById(restaurant.franchiseId).select('status').lean(),
+          FranchiseTerritory.findById(restaurant.territoryId).select('status').lean()
+        ]);
+
+        if (franchise?.status === 'ACTIVE' && territory?.status === 'ASSIGNED') {
+          orderFranchiseId = restaurant.franchiseId;
+          orderTerritoryId = restaurant.territoryId;
+        }
+      } catch (err) {
+        // Soft fail
+      }
+    }
+
     const order = new FoodOrder({
       userId: toObjectId(userId, 'User ID'),
       restaurantId: restaurantId,
+      franchiseId: orderFranchiseId,
+      territoryId: orderTerritoryId,
       zoneId: orderZoneId,
       items: (dto.items || []).map(item => ({
         ...item,

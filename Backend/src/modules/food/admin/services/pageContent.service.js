@@ -38,6 +38,9 @@ const normalizeAboutForResponse = (about) => {
 const DEFAULT_PAGES = {
     terms: { title: 'Terms and Conditions', content: '' },
     privacy: { title: 'Privacy Policy', content: '' },
+    restaurant_privacy: { title: 'Restaurant Privacy Policy', content: '' },
+    delivery_privacy: { title: 'Delivery Privacy Policy', content: '' },
+    driver_privacy: { title: 'Driver Privacy Policy', content: '' },
     refund: { title: 'Refund Policy', content: '' },
     shipping: { title: 'Shipping Policy', content: '' },
     cancellation: { title: 'Cancellation Policy', content: 'A cancellation charge will apply as per configured rules once order is confirmed.' }
@@ -64,7 +67,7 @@ export const getAdminPageByKey = async (key) => getPublicPageByKey(key);
 
 export const upsertLegalPage = async (key, payload, updatedBy) => {
     const k = normalizeKey(key);
-    if (!['terms', 'privacy', 'refund', 'shipping', 'cancellation'].includes(k)) {
+    if (!['terms', 'privacy', 'restaurant_privacy', 'delivery_privacy', 'driver_privacy', 'refund', 'shipping', 'cancellation'].includes(k)) {
         throw new ValidationError('Invalid page key');
     }
     const title = String(payload?.title || '').trim();

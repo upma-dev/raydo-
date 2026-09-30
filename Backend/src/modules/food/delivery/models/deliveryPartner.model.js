@@ -154,7 +154,19 @@ const deliveryPartnerSchema = new mongoose.Schema(
             approvedAt: { type: Date, default: null },
             approvedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
             rejectionReason: { type: String, default: '' }
-        }
+        },
+        franchiseId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Franchise',
+            default: null,
+            index: true,
+        },
+        territoryId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'FranchiseTerritory',
+            default: null,
+            index: true,
+        },
     },
     {
         collection: 'food_delivery_partners',

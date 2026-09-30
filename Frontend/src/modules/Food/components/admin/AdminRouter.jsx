@@ -12,6 +12,24 @@ const AdminSettings = lazy(() => import("@food/pages/admin/AdminSettings"));
 const NewRefundRequests = lazy(() => import("@food/pages/admin/refunds/NewRefundRequests"));
 const FoodApproval = lazy(() => import("@food/pages/admin/restaurant/FoodApproval"));
 const OrdersPage = lazy(() => import("@food/pages/admin/orders/OrdersPage"));
+const FranchisesList = lazy(() => import("@food/pages/admin/franchise/FranchisesList"));
+const FranchiseDetail = lazy(() => import("@food/pages/admin/franchise/FranchiseDetail"));
+const FranchiseDashboard = lazy(() => import("@food/pages/admin/franchise/FranchiseDashboard"));
+const FranchiseStaff = lazy(() => import("@food/pages/admin/franchise/FranchiseStaff"));
+const FranchiseDrivers = lazy(() => import("@food/pages/admin/franchise/FranchiseDrivers"));
+const FranchiseRestaurants = lazy(() => import("@food/pages/admin/franchise/FranchiseRestaurants"));
+const FranchiseDeliveryPartners = lazy(() => import("@food/pages/admin/franchise/FranchiseDeliveryPartners"));
+const FranchiseVehicles = lazy(() => import("@food/pages/admin/franchise/FranchiseVehicles"));
+
+// Phase 2C - Franchise Financials
+const FranchiseCommissionRules = lazy(() => import("@food/pages/admin/franchise/FranchiseCommissionRules"));
+const FranchiseWallet = lazy(() => import("@food/pages/admin/franchise/FranchiseWallet"));
+const FranchiseLedger = lazy(() => import("@food/pages/admin/franchise/FranchiseLedger"));
+const FranchiseFinancials = lazy(() => import("@food/pages/admin/franchise/FranchiseFinancials"));
+
+// Phase 2D - Franchise KYC
+const FranchiseKyc = lazy(() => import("@food/pages/admin/franchise/FranchiseKyc"));
+
 const OrderDetectDelivery = lazy(() => import("@food/pages/admin/OrderDetectDelivery"));
 const Category = lazy(() => import("@food/pages/admin/categories/Category"));
 const FeeSettings = lazy(() => import("@food/pages/admin/fee-settings/FeeSettings"));
@@ -170,6 +188,28 @@ export default function AdminRouter() {
             <Route path="profile" element={<AdminProfile />} />
             <Route path="settings" element={<AdminSettings />} />
             
+            <Route path="franchises" element={<FranchisesList />} />
+            <Route path="franchise/:id" element={<FranchiseDetail />} />
+            
+            {/* Franchise Operations (Phase 2A) */}
+            <Route path="franchise/dashboard" element={<FranchiseDashboard />} />
+            <Route path="franchise/staff" element={<FranchiseStaff />} />
+            <Route path="franchise/drivers" element={<FranchiseDrivers />} />
+            
+            {/* Franchise Operations (Phase 2B) */}
+            <Route path="franchise/restaurants" element={<FranchiseRestaurants />} />
+            <Route path="franchise/delivery-partners" element={<FranchiseDeliveryPartners />} />
+            <Route path="franchise/vehicles" element={<FranchiseVehicles />} />
+
+            {/* Franchise Financials (Phase 2C) */}
+            <Route path="franchise/commission-rules" element={<FranchiseCommissionRules />} />
+            <Route path="franchise/financials" element={<FranchiseFinancials />} />
+            <Route path="franchise/wallet" element={<FranchiseWallet />} />
+            <Route path="franchise/ledger" element={<FranchiseLedger />} />
+
+            {/* Franchise KYC (Phase 2D) */}
+            <Route path="franchise/kyc" element={<FranchiseKyc />} />
+
             {/* ORDER MANAGEMENT */}
             <Route path="orders/all" element={<OrdersPage statusKey="all" />} />
             <Route path="orders/scheduled" element={<OrdersPage statusKey="scheduled" />} />

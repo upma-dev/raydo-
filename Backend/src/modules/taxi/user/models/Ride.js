@@ -726,11 +726,42 @@ const rideSchema = new mongoose.Schema(
         default: 'not_applicable',
       },
     },
+    franchiseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Franchise',
+      default: null,
+      index: true
+    },
+    territoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FranchiseTerritory',
+      default: null,
+      index: true
+    },
   },
   { timestamps: true },
 );
 
 rideSchema.index({ userId: 1, createdAt: -1 });
 rideSchema.index({ driverId: 1, createdAt: -1 });
+
+// Phase 2C Immutability Hardening
+rideSchema.pre('save', function (next) {
+    if (!this.isNew && (this.isModified('franchiseId') || this.isModified('territoryId'))) {
+        return next(new Error('Transaction ownership (franchiseId, territoryId) is immutable.'));
+    }
+    next();
+});
+
+rideSchema.pre(['findOneAndUpdate', 'updateOne', 'updateMany', 'findByIdAndUpdate'], function (next) {
+    const update = this.getUpdate();
+    if (update && update.$set) {
+        delete update.$set.franchiseId;
+        delete update.$set.territoryId;
+    }
+    if (update && update.franchiseId) delete update.franchiseId;
+    if (update && update.territoryId) delete update.territoryId;
+    next();
+});
 
 export const Ride = mongoose.models.TaxiRide || mongoose.model('TaxiRide', rideSchema);

@@ -24,6 +24,8 @@ import { taxiRouter } from '../modules/taxi/routes/index.js';
 import { promotionsRouter as taxiPromotionsRouter } from '../modules/taxi/admin/promotions/routes/index.js';
 import { getOrderPublic } from '../modules/food/orders/services/order.service.js';
 import { sendResponse } from '../utils/response.js';
+import franchiseRoutes from '../core/franchise/franchise.routes.js';
+
 
 const router = express.Router();
 
@@ -77,5 +79,6 @@ router.get('/v1/admin/queues', authMiddleware, requireRoles('ADMIN'), getQueuesC
 router.use('/v1', taxiPromotionsRouter);
 
 router.use('/v1/taxi', taxiRouter);
+router.use('/v1/franchise', franchiseRoutes);
 
 export default router;

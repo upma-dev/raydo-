@@ -1359,8 +1359,7 @@ export default function ExploreMore() {
                     className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
                     onClick={(e) => {
                       e.preventDefault()
-                      // Navigate to privacy policy
-                      debugLog("Privacy Policy clicked")
+                      navigate('/food/restaurant/privacy')
                     }}
                   >
                     Privacy Policy

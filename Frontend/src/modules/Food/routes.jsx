@@ -24,6 +24,10 @@ const AdminForgotPassword = lazyWithRetry(() => import("@food/pages/admin/auth/A
 // Delivery Module
 const DeliveryRouter = lazyWithRetry(() => import("../DeliveryV2"))
 
+// Franchise Portal
+const FranchisePortalRouter = lazyWithRetry(() => import("@food/components/franchise/FranchisePortalRouter"))
+
+
 function UserPathRedirect() {
   const location = useLocation()
   // Correctly handle the /food/user -> /food redirect regardless of where it starts
@@ -109,6 +113,12 @@ export default function App() {
           <Route
             path="delivery/*"
             element={<DeliveryRouter />}
+          />
+
+          {/* Franchise Module - mapped to /franchise */}
+          <Route
+            path="franchise/*"
+            element={<FranchisePortalRouter />}
           />
 
           {/* Legacy Redirects & Fallbacks - use absolute path to avoid /user appended in a loop */}
