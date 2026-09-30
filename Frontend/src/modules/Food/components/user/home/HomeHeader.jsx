@@ -21,6 +21,7 @@ import { getVerticalTheme } from "@/shared/constants/superAppVerticalTheme";
 import { syncThemeForPath } from "@/shared/utils/theme.js";
 import { calculateDistanceInKm, extractCoords } from "@food/utils/geoDistance";
 import { loadBusinessSettings } from "@food/utils/businessSettings";
+import GlobalLanguageSelector from "@/shared/components/GlobalLanguageSelector";
 
 const ICON_MAP = {
   CheckCircle2,
@@ -668,30 +669,34 @@ return (
       </div>
 
       {/* Row 2: Service Vertical Toggle (Food / Taxi Switcher - Black/White Treatment) */}
-      <div className="px-4 py-2 flex justify-center">
-        <div className="bg-black/20 p-1 rounded-full flex items-center gap-1 border border-white/25 shadow-inner backdrop-blur-md">
+      <div className="px-3 py-2 flex items-center justify-between relative">
+        <div className="w-[70px] hidden sm:block"></div>
+        <div className="bg-black/20 p-1 rounded-full flex items-center gap-1 border border-white/25 shadow-inner backdrop-blur-md mx-auto">
           <button
             type="button"
             onClick={() => handleVerticalTabClick('food')}
-            className={`flex items-center gap-2 px-6 py-1.5 rounded-full text-[12.5px] font-black transition-all duration-300 ${isFood
+            className={`flex items-center gap-1.5 px-3 sm:px-6 py-1.5 rounded-full text-[12px] sm:text-[12.5px] font-black transition-all duration-300 ${isFood
                 ? 'bg-black text-[#FFC700] shadow-lg border border-amber-400/40 scale-[1.03]'
                 : 'text-white/90 hover:bg-black/10'
               }`}
           >
-            <span className="text-base leading-none">🍔</span>
+            <span className="text-[14px] sm:text-base leading-none">🍔</span>
             <span>Food</span>
           </button>
           <button
             type="button"
             onClick={() => handleVerticalTabClick('taxi')}
-            className={`flex items-center gap-2 px-6 py-1.5 rounded-full text-[12.5px] font-black transition-all duration-300 ${isTaxi
+            className={`flex items-center gap-1.5 px-3 sm:px-6 py-1.5 rounded-full text-[12px] sm:text-[12.5px] font-black transition-all duration-300 ${isTaxi
                 ? 'bg-black text-[#FFC700] shadow-lg border border-amber-400/40 scale-[1.03]'
                 : 'text-white/90 hover:bg-black/10'
               }`}
           >
-            <span className="text-base leading-none">🚕</span>
+            <span className="text-[14px] sm:text-base leading-none">🚕</span>
             <span>Taxi</span>
           </button>
+        </div>
+        <div className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2">
+          <GlobalLanguageSelector />
         </div>
       </div>
 
