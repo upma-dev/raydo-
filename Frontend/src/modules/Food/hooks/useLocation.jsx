@@ -842,8 +842,13 @@ export function useLocation() {
           maximumAge: forceFresh ? 0 : (options.maximumAge || 60000), // If forceFresh, get fresh location
         }
 
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
+        // Add a JS-level timeout fallback for headless emulators/webviews
+        const jsTimeout = setTimeout(() => {
+          debugWarn("?? JS-level geolocation timeout triggered!");
+          handleGeoError({ code: 3, message: "JS Timeout" });
+        }, (options.timeout || 10000) + 1500);
+
+        const handleGeoSuccess = async (pos) => {
             try {
               const { latitude, longitude, accuracy } = pos.coords
               const timestamp = pos.timestamp || Date.now()
@@ -1051,8 +1056,10 @@ export function useLocation() {
               // Don't try to update DB with placeholder
               resolve(fallbackLoc)
             }
-          },
-          async (err) => {
+        };
+
+        const handleGeoError = async (err) => {
+            clearTimeout(jsTimeout);
             // If timeout and we haven't retried yet, try with lower accuracy
             if (err.code === 3 && retryCount === 0 && options.enableHighAccuracy) {
               debugWarn("?? High accuracy timeout, retrying with lower accuracy...")
@@ -1148,9 +1155,13 @@ export function useLocation() {
               if (showLoading) setLoading(false)
               resolve(null)
             }
-          },
+        };
+
+        navigator.geolocation.getCurrentPosition(
+          handleGeoSuccess,
+          handleGeoError,
           options
-        )
+        );
       })
     }
 

@@ -689,12 +689,14 @@ export default function UnifiedOTPFastLogin() {
                 </div>
 
                 <div className="mt-6 pt-2 flex flex-col items-center">
-                  <p className="text-center text-[13px] text-gray-800 mb-5 px-4 font-medium leading-relaxed max-w-[30ch]">
-                    By continuing, you agree to our{" "}
-                    <Link to="/terms" className="font-bold text-slate-900 hover:underline">Terms</Link>
-                    {" "}and{" "}
-                    <Link to="/privacy" className="font-bold text-slate-900 hover:underline">Privacy Policy</Link>.
-                  </p>
+                  <div className="text-center text-[13px] text-gray-800 mb-5 px-4 font-medium leading-relaxed max-w-[30ch]">
+                    <p>By continuing, you agree to our</p>
+                    <div className="mt-1">
+                      <Link to="/terms" className="font-bold text-slate-900 hover:underline">Terms & Conditions</Link>
+                      <span className="text-slate-900 font-bold">, </span>
+                      <Link to="/privacy" className="font-bold text-slate-900 hover:underline">Privacy Policy</Link>
+                    </div>
+                  </div>
 
                   <button
                     type="submit"

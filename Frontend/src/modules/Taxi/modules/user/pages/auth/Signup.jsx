@@ -259,16 +259,18 @@ const Signup = () => {
                 Login
               </Link>
             </p>
-            <p className="text-[12px] text-gray-400 font-medium leading-relaxed px-2">
-              By continuing, you agree to our
-              <Link to="/terms" className="ml-1 text-[#1A1A1A] hover:text-[#F38F24] transition-colors font-semibold">
-                Terms
-              </Link>
-              {' '}and
-              <Link to="/privacy" className="ml-1 text-[#1A1A1A] hover:text-[#F38F24] transition-colors font-semibold">
-                Privacy Policy
-              </Link>
-            </p>
+            <div className="text-[12px] text-gray-400 font-medium leading-relaxed px-2">
+              <p>By continuing, you agree to our</p>
+              <div className="mt-1">
+                <Link to="/terms" className="text-[#1A1A1A] hover:text-[#F38F24] transition-colors font-bold">
+                  Terms & Conditions
+                </Link>
+                <span className="text-[#1A1A1A] font-bold mx-1">,</span>
+                <Link to="/privacy" className="text-[#1A1A1A] hover:text-[#F38F24] transition-colors font-bold">
+                  Privacy Policy
+                </Link>
+              </div>
+            </div>
           </div>
         </form>
       ) : (
@@ -467,16 +469,18 @@ const Signup = () => {
               Login
             </Link>
           </p>
-          <p className="text-[12px] text-gray-400 font-medium leading-relaxed px-2">
-            By creating an account, you agree to our
-            <Link to="/terms" className="ml-1 text-[#1A1A1A] hover:text-[#F38F24] transition-colors font-semibold">
-              Terms
-            </Link>
-            {' '}and
-            <Link to="/privacy" className="ml-1 text-[#1A1A1A] hover:text-[#F38F24] transition-colors font-semibold">
-              Privacy Policy
-            </Link>
-          </p>
+          <div className="text-[12px] text-gray-400 font-medium leading-relaxed px-2">
+            <p>By creating an account, you agree to our</p>
+            <div className="mt-1">
+              <Link to="/terms" className="text-[#1A1A1A] hover:text-[#F38F24] transition-colors font-bold">
+                Terms & Conditions
+              </Link>
+              <span className="text-[#1A1A1A] font-bold mx-1">,</span>
+              <Link to="/privacy" className="text-[#1A1A1A] hover:text-[#F38F24] transition-colors font-bold">
+                Privacy Policy
+              </Link>
+            </div>
+          </div>
         </div>
       </form>
       )}

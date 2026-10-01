@@ -129,11 +129,14 @@ const Login = () => {
           </button>
         </div>
 
-        <p className="text-xs text-gray-400 font-medium text-center leading-relaxed mt-8">
-           By continuing, you agree to our 
-           <Link to="/terms" className="text-[#1A1A1A] hover:text-[#F38F24] transition-colors mx-1 font-semibold">Terms</Link> & 
-           <Link to="/privacy" className="text-[#1A1A1A] hover:text-[#F38F24] transition-colors mx-1 font-semibold">Privacy Policy</Link>
-        </p>
+        <div className="text-xs text-gray-400 font-medium text-center leading-relaxed mt-8">
+           <p>By continuing, you agree to our</p>
+           <div className="mt-1">
+             <Link to="/terms" className="text-[#1A1A1A] hover:text-[#F38F24] transition-colors font-bold">Terms & Conditions</Link>
+             <span className="text-[#1A1A1A] font-bold mx-1">,</span>
+             <Link to="/privacy" className="text-[#1A1A1A] hover:text-[#F38F24] transition-colors font-bold">Privacy Policy</Link>
+           </div>
+        </div>
       </form>
     </AuthLayout>
   );

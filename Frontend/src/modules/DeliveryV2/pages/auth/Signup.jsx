@@ -324,10 +324,14 @@ export default function DeliverySignup() {
               <ArrowLeft className="h-4 w-4" />
               Back to login
             </button>
-            <p className="text-xs text-gray-400 font-medium text-center leading-relaxed">
-              By continuing you agree to the<br />
-              <Link to="/food/delivery/terms" className="text-[#1A1A1A] font-bold">Terms and Conditions</Link>
-            </p>
+            <div className="text-xs text-gray-400 font-medium text-center leading-relaxed">
+              <p>By continuing, you agree to our</p>
+              <div className="mt-1">
+                <Link to="/food/delivery/terms" className="text-[#1A1A1A] font-bold hover:underline">Terms & Conditions</Link>
+                <span className="text-[#1A1A1A] font-bold">, </span>
+                <Link to="/food/delivery/privacy" className="text-[#1A1A1A] font-bold hover:underline">Privacy Policy</Link>
+              </div>
+            </div>
           </div>
         </div>
       </motion.div>

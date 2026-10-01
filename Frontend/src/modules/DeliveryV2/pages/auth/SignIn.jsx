@@ -194,10 +194,14 @@ export default function DeliverySignIn() {
           </div>
 
           <footer className="mt-auto pt-10 text-center">
-            <p className="text-xs text-gray-400 font-medium leading-relaxed">
-              By continuing you agree to the<br />
-              <Link to="/food/delivery/terms" className="text-[#1A1A1A] font-bold">Delivery Charter</Link>
-            </p>
+            <div className="text-xs text-gray-400 font-medium leading-relaxed">
+              <p>By continuing, you agree to our</p>
+              <div className="mt-1">
+                <Link to="/food/delivery/terms" className="text-[#1A1A1A] font-bold hover:underline">Terms & Conditions</Link>
+                <span className="text-[#1A1A1A] font-bold">, </span>
+                <Link to="/food/delivery/privacy" className="text-[#1A1A1A] font-bold hover:underline">Privacy Policy</Link>
+              </div>
+            </div>
           </footer>
         </div>
       </motion.div>

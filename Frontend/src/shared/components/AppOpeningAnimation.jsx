@@ -65,7 +65,7 @@ export default function AppOpeningAnimation() {
     // Phase 2: Trigger split door opening transition (1400ms)
     const openTimer = setTimeout(() => {
       setIsOpening(true);
-    }, 1400);
+    }, 800);
 
     // Phase 3: Unmount opening animation completely (2400ms)
     const dismissTimer = setTimeout(() => {
@@ -75,7 +75,7 @@ export default function AppOpeningAnimation() {
       } catch {
         // ignore
       }
-    }, 2400);
+    }, 1500);
 
     return () => {
       clearTimeout(openTimer);
