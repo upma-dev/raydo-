@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@food/api/axios": ["./src/services/api/axios.js"],
+      "@food/api/config": ["./src/services/api/config.js"],
+      "@food/api": ["./src/services/api"],
+      "@food/*": ["./src/modules/Food/*"]
+    }
+  },
+  "include": ["src"]
+}
