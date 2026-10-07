@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { adminAPI } from "@food/api";
 import {
-  Settings, Plus, Trash2, GripVertical, Toggle3dIcon, Save, CheckCircle2,
+  Settings, Plus, Trash2, GripVertical, Save, CheckCircle2,
   Loader2, ChevronDown, ArrowLeft
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";

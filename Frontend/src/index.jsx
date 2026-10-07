@@ -65,12 +65,14 @@ function resolveNativeInitialRoute() {
   ]
   const isTransient = (r) => TRANSIENT_SEGMENTS.some((s) => r.includes(s))
 
+  if (pathname.startsWith('/login')) return pathname
   if (pathname.startsWith('/taxi/')) return isTransient(pathname) ? '/taxi/user' : pathname
   if (pathname.startsWith('/food/')) return pathname
   if (pathname.startsWith('/restaurant')) return `/food${pathname}`
   if (pathname.startsWith('/delivery')) return `/food${pathname}`
   if (pathname.startsWith('/user')) return `/food${pathname}`
   if (pathname.startsWith('/admin')) return pathname
+  if (storedRoute.startsWith('/login')) return storedRoute
   if (storedRoute.startsWith('/taxi/')) {
     return isTransient(storedRoute) ? '/taxi/user' : storedRoute
   }

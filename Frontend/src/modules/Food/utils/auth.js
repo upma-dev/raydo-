@@ -376,7 +376,10 @@ export function setUnifiedAuthData(data) {
  * @returns {boolean}
  */
 export function isUnifiedAuthenticated() {
-  const foodToken = localStorage.getItem("user_accessToken");
-  const taxiToken = localStorage.getItem("userToken");
-  return !!(foodToken && taxiToken);
+  const token =
+    localStorage.getItem("user_accessToken") ||
+    localStorage.getItem("userToken") ||
+    localStorage.getItem("token");
+  if (!token) return false;
+  return !isTokenExpired(token);
 }

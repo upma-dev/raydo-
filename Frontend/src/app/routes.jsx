@@ -183,7 +183,7 @@ const AppRoutes = () => {
     const isTransient = TRANSIENT_ROUTE_SEGMENTS.some(seg => route.includes(seg))
     if (isTransient) return
 
-    if (route.startsWith('/taxi/') || route.startsWith('/food/') || route.startsWith('/admin')) {
+    if (route.startsWith('/taxi/') || route.startsWith('/food/') || route.startsWith('/admin') || route.startsWith('/login')) {
       localStorage.setItem(NATIVE_LAST_ROUTE_KEY, route)
     }
   }, [location.pathname, location.search])
