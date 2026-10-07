@@ -1,0 +1,16 @@
+# Root gitignore
+node_modules/
+Frontend/node_modules/
+Backend/node_modules/
+Frontend/dist/
+Frontend/dist-ssr/
+Frontend/dev-dist/
+dev-dist/
+.env
+Backend/.env
+Frontend/.env
+*.log
+*.mp4
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
