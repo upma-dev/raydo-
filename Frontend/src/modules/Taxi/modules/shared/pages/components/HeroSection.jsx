@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ArrowRight, ChevronRight, Car, Utensils, Compass, Sparkles } from "lucide-react";
@@ -24,10 +24,13 @@ export default function HeroSection() {
 
   const videoRefs = useRef([]);
   const tabRefs = useRef([]);
+  const tabContainerRef = useRef(null);
   const [activeStageIndex, setActiveStageIndex] = useState(0);
 
+  const hero = config?.hero || {};
+
   // 4 Dynamic Stages using config data
-  const STAGES = [
+  const STAGES = useMemo(() => [
     {
       id: "food_taxi_combo",
       serviceCategory: "FOOD + TAXI",
@@ -40,14 +43,14 @@ export default function HeroSection() {
       gradientOverlay: "linear-gradient(to right, rgba(7,10,31,0.92) 0%, rgba(7,10,31,0.55) 45%, rgba(7,10,31,0.2) 100%), linear-gradient(to bottom, rgba(7,10,31,0.5) 0%, transparent 40%, rgba(7,10,31,0.95) 100%)",
       headline: (
         <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.08]">
-          {config.hero.comboTitleMain}<br />
+          {hero.comboTitleMain || "Move & Order."}<br />
           <span className="bg-gradient-to-r from-[#FF8A00] via-[#FFC400] to-[#315CFF] bg-clip-text text-transparent">
-            {config.hero.comboTitleSub}
+            {hero.comboTitleSub || "One Super App."}
           </span>
         </h1>
       ),
-      subtitle: config.hero.comboSubtitle,
-      badge: config.hero.comboBadge,
+      subtitle: hero.comboSubtitle || "Taxi rides & instant food delivery connected through RAYDO.",
+      badge: hero.comboBadge || "⚡ FOOD + TAXI SUPER-APP",
       badgeBg: "bg-[#FF8A00]/20 border-[#FF8A00]/40 text-[#FFC400]",
       primaryCta: "BOOK TAXI",
       primaryLink: "/taxi/user",
@@ -68,14 +71,14 @@ export default function HeroSection() {
       gradientOverlay: "linear-gradient(to right, rgba(7,10,31,0.92) 0%, rgba(7,10,31,0.55) 45%, rgba(7,10,31,0.2) 100%), linear-gradient(to bottom, rgba(7,10,31,0.5) 0%, transparent 40%, rgba(7,10,31,0.95) 100%)",
       headline: (
         <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.08]">
-          {config.hero.taxiTitleMain}<br />
+          {hero.taxiTitleMain || "Move Fast."}<br />
           <span className="bg-gradient-to-r from-[#315CFF] to-[#6842F5] bg-clip-text text-transparent">
-            {config.hero.taxiTitleSub}
+            {hero.taxiTitleSub || "City Taxi Rides."}
           </span>
         </h1>
       ),
-      subtitle: config.hero.taxiSubtitle,
-      badge: config.hero.taxiBadge,
+      subtitle: hero.taxiSubtitle || "Instant cabs, autos and bikes for comfortable daily city travel.",
+      badge: hero.taxiBadge || "🚕 TAXI & CITY RIDES",
       badgeBg: "bg-[#315CFF]/20 border-[#315CFF]/40 text-blue-300",
       primaryCta: "BOOK A TAXI",
       primaryLink: "/taxi/user",
@@ -96,14 +99,14 @@ export default function HeroSection() {
       gradientOverlay: "linear-gradient(to right, rgba(20,12,3,0.92) 0%, rgba(20,12,3,0.55) 45%, rgba(20,12,3,0.2) 100%), linear-gradient(to bottom, rgba(20,12,3,0.5) 0%, transparent 40%, rgba(20,12,3,0.95) 100%)",
       headline: (
         <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.08]">
-          {config.hero.foodTitleMain}<br />
+          {hero.foodTitleMain || "From Craving"}<br />
           <span className="bg-gradient-to-r from-[#FF8A00] to-[#FFC400] bg-clip-text text-transparent">
-            {config.hero.foodTitleSub}
+            {hero.foodTitleSub || "to Doorstep."}
           </span>
         </h1>
       ),
-      subtitle: config.hero.foodSubtitle,
-      badge: config.hero.foodBadge,
+      subtitle: hero.foodSubtitle || "Hot restaurant meals and daily food essentials delivered fast across your city.",
+      badge: hero.foodBadge || "🍔 FOOD DELIVERY",
       badgeBg: "bg-[#FF8A00]/20 border-[#FF8A00]/40 text-[#FFC400]",
       primaryCta: "ORDER FOOD NOW",
       primaryLink: "/food/user",
@@ -124,14 +127,14 @@ export default function HeroSection() {
       gradientOverlay: "linear-gradient(to right, rgba(9,13,38,0.92) 0%, rgba(9,13,38,0.55) 45%, rgba(9,13,38,0.2) 100%), linear-gradient(to bottom, rgba(9,13,38,0.5) 0%, transparent 40%, rgba(9,13,38,0.95) 100%)",
       headline: (
         <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.08]">
-          {config.hero.outstationTitleMain}<br />
+          {hero.outstationTitleMain || "Go Beyond"}<br />
           <span className="bg-gradient-to-r from-[#315CFF] to-[#6842F5] bg-clip-text text-transparent">
-            {config.hero.outstationTitleSub}
+            {hero.outstationTitleSub || "the City."}
           </span>
         </h1>
       ),
-      subtitle: config.hero.outstationSubtitle,
-      badge: config.hero.outstationBadge,
+      subtitle: hero.outstationSubtitle || "Comfortable highway cabs and outstation travel connecting destinations.",
+      badge: hero.outstationBadge || "🚘 OUTSTATION CAB",
       badgeBg: "bg-[#6842F5]/20 border-[#6842F5]/40 text-purple-300",
       primaryCta: "BOOK OUTSTATION",
       primaryLink: "/taxi/user",
@@ -140,7 +143,7 @@ export default function HeroSection() {
       secondaryLink: "/food/user",
       secondaryStyle: "bg-slate-900/90 text-slate-200 border border-slate-700 hover:border-slate-500"
     }
-  ];
+  ], [hero]);
 
   const handleStageSelect = (index) => {
     setActiveStageIndex(index);
@@ -154,20 +157,34 @@ export default function HeroSection() {
     return () => clearInterval(timer);
   }, [STAGES.length]);
 
-  // Auto-scroll active tab pill into view when tab changes
+  // Horizontally center active tab pill inside tab container ONLY (NEVER scroll the browser window)
   useEffect(() => {
-    if (tabRefs.current[activeStageIndex]) {
-      tabRefs.current[activeStageIndex].scrollIntoView({
+    const el = tabRefs.current[activeStageIndex];
+    const container = tabContainerRef.current;
+    if (el && container) {
+      const elLeft = el.offsetLeft;
+      const elWidth = el.offsetWidth;
+      const containerWidth = container.clientWidth;
+      container.scrollTo({
+        left: elLeft - containerWidth / 2 + elWidth / 2,
         behavior: "smooth",
-        block: "nearest",
-        inline: "center",
       });
     }
   }, [activeStageIndex]);
 
-  const activeStage = STAGES[activeStageIndex];
+  const activeStage = STAGES[activeStageIndex] || STAGES[0];
 
-  // Video autoplay management across all stage elements
+  // Preload all poster images into memory on mount to prevent any slide transition flicker
+  useEffect(() => {
+    STAGES.forEach((stage) => {
+      if (stage.poster) {
+        const img = new Image();
+        img.src = stage.poster;
+      }
+    });
+  }, [STAGES]);
+
+  // Video autoplay management — play active video, pause inactive ones safely without DOM remount
   useEffect(() => {
     videoRefs.current.forEach((vid, idx) => {
       if (!vid) return;
@@ -187,7 +204,7 @@ export default function HeroSection() {
   return (
     <section id="hero" className="relative w-full h-[82vh] min-h-[560px] max-h-[750px] md:h-screen md:min-h-[620px] md:max-h-[900px] overflow-hidden bg-[#070A1F] text-white flex flex-col justify-between">
 
-      {/* Background Stage Layer (Ultra-Smooth Cross-Fade & Slow Parallax Zoom) */}
+      {/* Background Stage Layer (Smooth Cross-Fade without video remount glitch) */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
         {STAGES.map((stage, idx) => {
           const isActive = idx === activeStageIndex;
@@ -197,47 +214,48 @@ export default function HeroSection() {
               initial={false}
               animate={{
                 opacity: isActive ? 1 : 0,
-                scale: isActive ? 1 : 1.08,
-                x: isActive ? "0%" : idx > activeStageIndex ? "3%" : "-3%",
               }}
               transition={{
-                opacity: { duration: 0.8, ease: [0.25, 1, 0.5, 1] },
-                scale: { duration: 1.2, ease: [0.25, 1, 0.5, 1] },
-                x: { duration: 0.8, ease: [0.25, 1, 0.5, 1] },
+                duration: 0.7,
+                ease: [0.25, 1, 0.5, 1],
               }}
-              className={`absolute inset-0 w-full h-full ${isActive ? "z-10" : "z-0"}`}
+              className={`absolute inset-0 w-full h-full ${isActive ? "z-10 pointer-events-auto" : "z-0 pointer-events-none"}`}
             >
+              {/* Poster Image (Always present underneath video) */}
               <img
                 src={stage.poster}
                 alt={`RAYDO ${stage.serviceCategory}`}
+                loading="eager"
+                decoding="async"
                 className="absolute inset-0 w-full h-full object-cover object-center"
               />
+
+              {/* Video Layer (Kept permanently in DOM so buffered frames remain intact) */}
               <video
                 ref={(el) => (videoRefs.current[idx] = el)}
                 src={stage.videoSrc}
                 poster={stage.poster}
-                autoPlay
                 loop
                 muted
                 playsInline
                 preload="auto"
                 className="absolute inset-0 w-full h-full object-cover object-center"
               />
+
+              {/* Dynamic Gradient Overlay (Crossfades smoothly along with poster/video) */}
+              <div
+                className="absolute inset-0 z-20 pointer-events-none"
+                style={{ background: stage.gradientOverlay }}
+              />
             </motion.div>
           );
         })}
-
-        {/* Dynamic Gradient Overlay with Smooth Color Transition */}
-        <div
-          className="absolute inset-0 z-20 transition-all duration-1000 ease-in-out pointer-events-none"
-          style={{ background: activeStage.gradientOverlay }}
-        />
 
         {/* Bottom Flow SVG */}
         <svg className="absolute bottom-0 inset-x-0 w-full h-16 sm:h-28 pointer-events-none z-20 opacity-80" preserveAspectRatio="none" viewBox="0 0 1440 200">
           <defs>
             <linearGradient id="raydoHeroFlowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor={activeStage.themeType === "FOOD" ? "#FF8A00" : "#315CFF"} stopOpacity="0.75" />
+              <stop offset="0%" stopColor={activeStage.themeType === "FOOD" ? "#FF8A00" : "#315CFF"} stopOpacity="0.75" className="transition-colors duration-700" />
               <stop offset="100%" stopColor="#070A1F" stopOpacity="1" />
             </linearGradient>
           </defs>
@@ -256,7 +274,7 @@ export default function HeroSection() {
         <div className="max-w-xl space-y-3.5 sm:space-y-5">
 
           {/* Service Selector Pills Bar (Smooth LayoutId Sliding & Auto-Centering Scroll) */}
-          <div className="w-full max-w-full overflow-x-auto no-scrollbar scrollbar-none rounded-2xl bg-slate-950/80 border border-slate-700/70 backdrop-blur-xl shadow-2xl touch-pan-x p-1.5 scroll-smooth">
+          <div ref={tabContainerRef} className="w-full max-w-full overflow-x-auto no-scrollbar scrollbar-none rounded-2xl bg-slate-950/80 border border-slate-700/70 backdrop-blur-xl shadow-2xl touch-pan-x p-1.5 scroll-smooth">
             <div className="flex items-center gap-2 min-w-max px-1 pr-5">
 
               <button
