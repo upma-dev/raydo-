@@ -670,6 +670,9 @@ const normalizeBusServicePayload = (payload = {}, existing = {}) => {
       payload.commissionValue !== undefined
         ? Math.max(0, Number(payload.commissionValue) || 0)
         : existing.commissionValue ?? Number(existing.adminCommissionPercentage || 0),
+    franchiseId: payload.franchiseId === undefined
+      ? (existing.franchiseId || null)
+      : (mongoose.Types.ObjectId.isValid(String(payload.franchiseId || '')) ? new mongoose.Types.ObjectId(String(payload.franchiseId)) : null),
     rejectionReason: sanitizeBusText(payload.rejectionReason, existing.rejectionReason || ''),
     serviceTaxPercentage: Math.min(
       100,
@@ -786,6 +789,7 @@ const serializeBusService = (item = {}) => ({
     item.commissionValue !== undefined && item.commissionValue !== null
       ? Number(item.commissionValue)
       : Number(item.adminCommissionPercentage || 0),
+  franchiseId: item.franchiseId ? String(item.franchiseId) : '',
   rejectionReason: item.rejectionReason || '',
   status: item.status || 'pending_approval',
   createdAt: item.createdAt,

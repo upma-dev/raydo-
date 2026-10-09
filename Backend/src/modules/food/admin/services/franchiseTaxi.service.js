@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import FranchiseApplication from '../models/franchiseApplication.model.js';
 import FranchiseLedger from '../models/franchiseLedger.model.js';
 import FranchiseFormConfig from '../models/franchiseFormConfig.model.js';
-import { creditTaxiRide, creditBusBooking } from './franchiseLedger.service.js';
+import { creditTaxiRide, creditBooking } from './franchiseLedger.service.js';
 import { getCommissionRate, normalizeModules, roundMoney } from './franchisePlan.js';
 
 /**
@@ -22,20 +22,32 @@ const model = (name) => mongoose.models[name] || null;
  */
 export const DEFAULT_TAXI_SETTINGS = Object.freeze({
     commissionBase: 'platform_commission',
-    services: Object.freeze({ ride: true, intercity: true, parcel: true, bus: true }),
+    services: Object.freeze({ ride: true, intercity: true, parcel: true, bus: true, pooling: false, rental: false }),
+    serviceCommission: Object.freeze({ pooling: 10, rental: 10 }),
 });
 let settingsCache = { at: 0, value: null };
 export const invalidateTaxiSettings = () => { settingsCache = { at: 0, value: null }; };
 
 export async function getTaxiSettings() {
     if (settingsCache.value && Date.now() - settingsCache.at < 30000) return settingsCache.value;
-    let value = { commissionBase: DEFAULT_TAXI_SETTINGS.commissionBase, services: { ...DEFAULT_TAXI_SETTINGS.services } };
+    let value = {
+        commissionBase: DEFAULT_TAXI_SETTINGS.commissionBase,
+        services: { ...DEFAULT_TAXI_SETTINGS.services },
+        serviceCommission: { ...DEFAULT_TAXI_SETTINGS.serviceCommission },
+    };
     try {
         const cfg = await FranchiseFormConfig.findOne().select('taxiSettings').lean();
         const t = cfg?.taxiSettings;
         if (t) {
             if (['platform_commission', 'fare'].includes(t.commissionBase)) value.commissionBase = t.commissionBase;
-            Object.keys(value.services).forEach((k) => { if (t.services && t.services[k] !== undefined) value.services[k] = t.services[k] !== false; });
+            // pooling / rental are opt-in (default off); the others are opt-out (default on)
+            Object.keys(value.services).forEach((k) => {
+                if (t.services && t.services[k] !== undefined) value.services[k] = ['pooling', 'rental'].includes(k) ? t.services[k] === true : t.services[k] !== false;
+            });
+            Object.keys(value.serviceCommission).forEach((k) => {
+                const n = Number(t.serviceCommission?.[k]);
+                if (Number.isFinite(n) && n >= 0 && n <= 100) value.serviceCommission[k] = n;
+            });
         }
     } catch {
         // config unreadable: keep the safe defaults
@@ -67,7 +79,7 @@ async function mustFindTaxiFranchise(franchiseId) {
 }
 
 /** Names an admin / partner understands. `serviceType` on a ride: ride = city taxi, intercity = outstation, parcel = parcel. */
-export const SERVICE_LABEL = { ride: 'City taxi', intercity: 'Outstation', parcel: 'Parcel', bus: 'Bus service' };
+export const SERVICE_LABEL = { ride: 'City taxi', intercity: 'Outstation', parcel: 'Parcel', bus: 'Bus service', pooling: 'Pooling', rental: 'Rental' };
 
 /** Is this application allowed to earn / operate right now? (approved, fee settled, not suspended, not archived) */
 const isOperating = (app) =>
@@ -166,10 +178,11 @@ export async function getTaxiOverview(franchiseId) {
             ])
             : [],
         FranchiseLedger.aggregate([
-            { $match: { franchiseId: fid, module: 'taxi', refType: 'bus' } },
-            { $group: { _id: null, bookings: { $sum: { $cond: [{ $eq: ['$type', 'credit'] }, 1, 0] } }, earned: { $sum: '$amount' } } },
+            { $match: { franchiseId: fid, module: 'taxi', refType: { $in: ['bus', 'pooling', 'rental'] } } },
+            { $group: { _id: '$refType', bookings: { $sum: { $cond: [{ $eq: ['$type', 'credit'] }, 1, 0] } }, earned: { $sum: '$amount' } } },
         ]),
     ]);
+    const bookingStat = (kind) => busAgg.find((r) => r._id === kind) || {};
 
     // Earnings per sub-service so nothing is hidden inside one "taxi" number
     const rideLedger = await FranchiseLedger.aggregate([
@@ -181,7 +194,9 @@ export async function getTaxiOverview(franchiseId) {
             const row = rideByService.find((r) => r._id === k) || {};
             return { key: k, label: SERVICE_LABEL[k], count: row.rides || 0, value: roundMoney(row.gmv || 0) };
         }),
-        { key: 'bus', label: SERVICE_LABEL.bus, count: busAgg[0]?.bookings || 0, value: 0 },
+        ...['bus', 'pooling', 'rental'].map((k) => ({
+            key: k, label: SERVICE_LABEL[k], count: bookingStat(k).bookings || 0, value: 0, earned: roundMoney(bookingStat(k).earned || 0),
+        })),
     ];
 
     return {
@@ -202,7 +217,9 @@ export async function getTaxiOverview(franchiseId) {
         earned: roundMoney(ledgerAgg[0]?.earned || 0),
         rules: await getTaxiSettings(),
         earnedFromRides: roundMoney(rideLedger[0]?.earned || 0),
-        earnedFromBus: roundMoney(busAgg[0]?.earned || 0),
+        earnedFromBus: roundMoney(bookingStat('bus').earned || 0),
+        earnedFromPooling: roundMoney(bookingStat('pooling').earned || 0),
+        earnedFromRental: roundMoney(bookingStat('rental').earned || 0),
         services,
         walletBalance: roundMoney(app.walletBalance || 0),
     };
@@ -300,24 +317,44 @@ export async function listTaxiZonesForFranchise(franchiseId = null) {
 
 /* ------------------------------ BUS SERVICE ------------------------------ */
 
+const APP_FIELDS = 'selectedModules moduleCommissions status franchiseFeeStatus accountStatus archived franchiseFeePaidAt reviewedAt createdAt';
+
+async function operatingFranchise(filter) {
+    const app = await FranchiseApplication.findOne({ ...filter, selectedModules: { $in: ['taxi'] }, status: 'approved' }).select(APP_FIELDS).lean();
+    return app && isOperating(app) ? app : null;
+}
+
+/** Franchise that owns the taxi zone a map point lies in (zones are polygons). */
+async function franchiseForPoint(lat, lng) {
+    const Zone = model('TaxiZone');
+    const la = Number(lat);
+    const lo = Number(lng);
+    if (!Zone || !Number.isFinite(la) || !Number.isFinite(lo) || (la === 0 && lo === 0)) return null;
+    const zone = await Zone.findOne({ geometry: { $geoIntersects: { $geometry: { type: 'Point', coordinates: [lo, la] } } } }).select('_id').lean();
+    return zone ? operatingFranchise({ taxiZoneId: zone._id }) : null;
+}
+
+/** Franchise that owns a taxi zone of this service location. */
+async function franchiseForServiceLocation(serviceLocationId) {
+    const Zone = model('TaxiZone');
+    if (!Zone || !serviceLocationId || !mongoose.Types.ObjectId.isValid(String(serviceLocationId))) return null;
+    const zoneIds = await Zone.find({ service_location_id: serviceLocationId }).distinct('_id');
+    return zoneIds.length ? operatingFranchise({ taxiZoneId: { $in: zoneIds } }) : null;
+}
+
 /**
- * Which franchise owns a bus booking? The operator (Owner) works in a service location; the franchise that owns a taxi zone
- * of that same service location earns on it. Buses without an operator / location earn nobody.
+ * Which franchise owns a bus?
+ *  1) the franchise the admin pinned on the bus (busService.franchiseId). If that franchise is not operating, nobody earns:
+ *     the admin chose it explicitly, so we never silently give the money to someone else.
+ *  2) otherwise the franchise that owns a taxi zone of the operator's service location.
+ * Buses with neither earn nobody.
  */
 async function franchiseForBusService(busService) {
+    if (busService?.franchiseId) return operatingFranchise({ _id: busService.franchiseId });
     const Owner = model('TaxiOwner');
-    const Zone = model('TaxiZone');
-    if (!Owner || !Zone || !busService?.ownerId) return null;
+    if (!Owner || !busService?.ownerId) return null;
     const owner = await Owner.findById(busService.ownerId).select('service_location_id').lean();
-    if (!owner?.service_location_id) return null;
-    const zoneIds = await Zone.find({ service_location_id: owner.service_location_id }).distinct('_id');
-    if (!zoneIds.length) return null;
-    const app = await FranchiseApplication.findOne({
-        taxiZoneId: { $in: zoneIds },
-        selectedModules: { $in: ['taxi'] },
-        status: 'approved',
-    }).select('selectedModules moduleCommissions status franchiseFeeStatus accountStatus archived franchiseFeePaidAt reviewedAt createdAt').lean();
-    return app && isOperating(app) ? app : null;
+    return franchiseForServiceLocation(owner?.service_location_id);
 }
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -346,7 +383,7 @@ export async function creditFranchiseForBusBookings(limit = 100) {
         try {
             const key = String(b.busServiceId);
             if (!serviceCache.has(key)) {
-                const svc = await BusService.findById(b.busServiceId).select('ownerId').lean();
+                const svc = await BusService.findById(b.busServiceId).select('ownerId franchiseId').lean();
                 serviceCache.set(key, svc ? await franchiseForBusService(svc) : null);
             }
             const app = serviceCache.get(key);
@@ -358,7 +395,7 @@ export async function creditFranchiseForBusBookings(limit = 100) {
                 const full = settings.commissionBase === 'fare' ? total : (Number(b.financialSnapshot?.calculatedPlatformEarning) || 0);
                 const base = roundMoney(full * kept);
                 const rate = getCommissionRate(app.selectedModules, app.moduleCommissions, 'taxi');
-                const row = await creditBusBooking({ franchiseId: app._id, bookingId: b._id, base, rate });
+                const row = await creditBooking({ franchiseId: app._id, kind: 'bus', bookingId: b._id, base, rate });
                 if (row) {
                     credited += 1;
                     await BusBooking.updateOne({ _id: b._id }, { $set: { franchiseApplicationId: app._id } });
@@ -402,6 +439,120 @@ export async function listTaxiBusBookings(franchiseId, query = {}) {
             franchiseEarned: roundMoney(earned.get(String(r._id)) || 0),
             status: r.status,
         })),
+        total, page, limit,
+    };
+}
+
+/* --------------------------- POOLING + RENTAL --------------------------- */
+
+const sinceOf = (app) => new Date(app?.franchiseFeePaidAt || app?.reviewedAt || app?.createdAt || 0);
+
+/**
+ * Amount the franchise rate is applied on.
+ *  - base "fare"                : what the customer paid
+ *  - base "platform_commission" : Raydo's commission % for this service (admin-set) of what the customer paid
+ */
+const bookingBase = (settings, kind, total) =>
+    roundMoney(settings.commissionBase === 'fare' ? total : (total * (Number(settings.serviceCommission?.[kind]) || 0)) / 100);
+
+/**
+ * Pooling: credited when the booking is COMPLETED and PAID. The franchise is the one whose taxi zone contains the pickup stop.
+ * Rental : credited when the rental is COMPLETED and PAID. Franchise = the zone of the rental's service location.
+ * Both are stamped once and the ledger row is unique per booking, so running this again never pays twice.
+ * Bookings made before the franchise started earn nothing (no back-dated money).
+ */
+export async function creditFranchiseForPoolingAndRental(limit = 100) {
+    const settings = await getTaxiSettings();
+    let credited = 0;
+
+    if (settings.services.pooling) {
+        const Booking = model('TaxiPoolingBooking');
+        const Route = model('TaxiPoolingRoute');
+        if (Booking && Route) {
+            const rows = await Booking.find({ bookingStatus: 'completed', paymentStatus: 'paid', franchiseCreditCheckedAt: null })
+                .select('route pickupStopId fare createdAt').limit(limit).lean();
+            const routeCache = new Map();
+            for (const b of rows) {
+                try {
+                    const key = String(b.route);
+                    if (!routeCache.has(key)) routeCache.set(key, await Route.findById(b.route).select('stops').lean());
+                    const stop = (routeCache.get(key)?.stops || []).find((x) => String(x.id) === String(b.pickupStopId));
+                    const app = stop ? await franchiseForPoint(stop.latitude, stop.longitude) : null;
+                    if (app && new Date(b.createdAt) >= sinceOf(app)) {
+                        const rate = getCommissionRate(app.selectedModules, app.moduleCommissions, 'taxi');
+                        const row = await creditBooking({ franchiseId: app._id, kind: 'pooling', bookingId: b._id, base: bookingBase(settings, 'pooling', Number(b.fare) || 0), rate });
+                        if (row) { credited += 1; await Booking.updateOne({ _id: b._id }, { $set: { franchiseApplicationId: app._id } }); }
+                    }
+                    await Booking.updateOne({ _id: b._id }, { $set: { franchiseCreditCheckedAt: new Date() } });
+                } catch (err) {
+                    console.error('[Franchise] pooling credit failed for', String(b._id), err?.message || err);
+                }
+            }
+        }
+    }
+
+    if (settings.services.rental) {
+        const Rental = model('TaxiRentalBookingRequest');
+        if (Rental) {
+            const rows = await Rental.find({ status: 'completed', paymentStatus: 'paid', franchiseCreditCheckedAt: null })
+                .select('serviceLocation totalCost createdAt').limit(limit).lean();
+            for (const r of rows) {
+                try {
+                    const loc = r.serviceLocation || {};
+                    const app = (await franchiseForPoint(loc.latitude, loc.longitude)) || (await franchiseForServiceLocation(loc.locationId));
+                    if (app && new Date(r.createdAt) >= sinceOf(app)) {
+                        const rate = getCommissionRate(app.selectedModules, app.moduleCommissions, 'taxi');
+                        const row = await creditBooking({ franchiseId: app._id, kind: 'rental', bookingId: r._id, base: bookingBase(settings, 'rental', Number(r.totalCost) || 0), rate });
+                        if (row) { credited += 1; await Rental.updateOne({ _id: r._id }, { $set: { franchiseApplicationId: app._id } }); }
+                    }
+                    await Rental.updateOne({ _id: r._id }, { $set: { franchiseCreditCheckedAt: new Date() } });
+                } catch (err) {
+                    console.error('[Franchise] rental credit failed for', String(r._id), err?.message || err);
+                }
+            }
+        }
+    }
+    return credited;
+}
+
+/** Bookings of one sub-service (bus / pooling / rental) credited to this franchise, in one common shape. */
+export async function listTaxiBookings(franchiseId, query = {}) {
+    const service = ['pooling', 'rental'].includes(query.service) ? query.service : 'bus';
+    if (service === 'bus') return listTaxiBusBookings(franchiseId, query);
+
+    const app = await mustFindTaxiFranchise(franchiseId);
+    const { page, limit, skip } = paging(query);
+    const Model = model(service === 'pooling' ? 'TaxiPoolingBooking' : 'TaxiRentalBookingRequest');
+    if (!Model) return { items: [], total: 0, page, limit };
+    const match = { franchiseApplicationId: app._id };
+
+    const select = service === 'pooling'
+        ? 'bookingId travelDate seatsBooked fare pickupLabel dropLabel bookingStatus'
+        : 'vehicleName pickupDateTime requestedHours totalCost serviceLocation status';
+    const [rows, total] = await Promise.all([
+        Model.find(match).sort({ createdAt: -1 }).skip(skip).limit(limit).select(select).lean(),
+        Model.countDocuments(match),
+    ]);
+    const credits = await FranchiseLedger.find({ franchiseId: app._id, refType: service, refId: { $in: rows.map((r) => String(r._id)) } })
+        .select('refId amount base').lean();
+    const byId = new Map(credits.map((c) => [c.refId, c]));
+    const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '-');
+
+    return {
+        items: rows.map((r) => {
+            const c = byId.get(String(r._id)) || {};
+            return service === 'pooling'
+                ? {
+                    id: r._id, bookingCode: r.bookingId, route: `${r.pickupLabel || '-'} → ${r.dropLabel || '-'}`, operator: 'Pooling',
+                    travelDate: day(r.travelDate), seats: String(r.seatsBooked || 1), amount: roundMoney(r.fare), platformEarning: roundMoney(c.base),
+                    franchiseEarned: roundMoney(c.amount), status: r.bookingStatus,
+                }
+                : {
+                    id: r._id, bookingCode: `RENT_${String(r._id).slice(-8).toUpperCase()}`, route: r.serviceLocation?.name || r.serviceLocation?.city || '-',
+                    operator: r.vehicleName || 'Rental', travelDate: day(r.pickupDateTime), seats: `${r.requestedHours || 0} h`, amount: roundMoney(r.totalCost),
+                    platformEarning: roundMoney(c.base), franchiseEarned: roundMoney(c.amount), status: r.status,
+                };
+        }),
         total, page, limit,
     };
 }

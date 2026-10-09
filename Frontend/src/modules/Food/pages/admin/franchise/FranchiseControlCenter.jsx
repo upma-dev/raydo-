@@ -20,7 +20,7 @@ const tabsFor = (modules) => [
   ] : []),
   ...(modules.includes("taxi") ? [
     { id: "rides", label: "Taxi rides", icon: Car },
-    { id: "bus", label: "Bus bookings", icon: BusFront },
+    { id: "bus", label: "Bus, pooling & rental", icon: BusFront },
     { id: "drivers", label: "Taxi drivers", icon: Users },
   ] : []),
   { id: "money", label: "Money", icon: Wallet },
@@ -111,7 +111,8 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
   const [rideService, setRideService] = useState("");
   const [rides, loadRides] = usePaged(adminAPI.getFranchiseTaxiRides, id, tab === "rides", { service: rideService || undefined });
   const [drivers, loadDrivers] = usePaged(adminAPI.getFranchiseTaxiDrivers, id, tab === "drivers", {});
-  const [busRows, loadBus] = usePaged(adminAPI.getFranchiseTaxiBus, id, tab === "bus", {});
+  const [bookingService, setBookingService] = useState("bus");
+  const [busRows, loadBus] = usePaged(adminAPI.getFranchiseTaxiBus, id, tab === "bus", { service: bookingService });
 
   const run = async (fn, okMsg) => {
     setBusy(true);
@@ -231,8 +232,8 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
                 {(ov.taxi?.services || []).map((s) => (
                   <div key={s.key} className="p-3 rounded-xl border border-blue-100 bg-blue-50/50">
                     <div className="text-[10px] font-bold text-blue-700 uppercase">{s.label}</div>
-                    <div className="text-lg font-black text-slate-900 mt-0.5">{s.count} <span className="text-[11px] font-semibold text-slate-400">{s.key === "bus" ? "trips" : "rides"}</span></div>
-                    <div className="text-[11px] text-slate-500">{s.key === "bus" ? `Earned ${inr(ov.taxi?.earnedFromBus)}` : s.value ? `Value ${inr(s.value)}` : "-"}</div>
+                    <div className="text-lg font-black text-slate-900 mt-0.5">{s.count} <span className="text-[11px] font-semibold text-slate-400">{["bus", "pooling", "rental"].includes(s.key) ? "bookings" : "rides"}</span></div>
+                    <div className="text-[11px] text-slate-500">{["bus", "pooling", "rental"].includes(s.key) ? `Earned ${inr(s.earned)}` : s.value ? `Value ${inr(s.value)}` : "-"}</div>
                   </div>
                 ))}
               </div>
@@ -378,11 +379,21 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
 
       {tab === "bus" && (
         <div>
-          <p className="text-[11px] text-slate-500 mb-3">Bus trips of operators in this franchise's service location. Money is credited once the travel date has passed.</p>
+          <select className={`${inputCls} max-w-[200px] mb-2`} value={bookingService} onChange={(e) => setBookingService(e.target.value)}>
+            <option value="bus">Bus service</option>
+            <option value="pooling">Pooling</option>
+            <option value="rental">Rental</option>
+          </select>
+          <p className="text-[11px] text-slate-500 mb-3">
+            {bookingService === "bus" && "Bus trips of buses pinned to this franchise or of operators in its service location. Credited once the travel date has passed."}
+            {bookingService === "pooling" && "Completed, paid pooling bookings whose pickup stop lies in this franchise's taxi zone."}
+            {bookingService === "rental" && "Completed, paid rentals in this franchise's taxi zone."}
+            {" "}Only works if the service is switched on in Franchise → Module Fees.
+          </p>
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px]">
-                <tr><th className="py-2.5 px-3">Booking</th><th className="py-2.5 px-3">Route</th><th className="py-2.5 px-3">Operator</th><th className="py-2.5 px-3">Travel date</th><th className="py-2.5 px-3">Seats</th><th className="py-2.5 px-3 text-right">Fare</th><th className="py-2.5 px-3 text-right">Platform earned</th><th className="py-2.5 px-3 text-right">Franchise earned</th></tr>
+                <tr><th className="py-2.5 px-3">Booking</th><th className="py-2.5 px-3">Route</th><th className="py-2.5 px-3">Operator</th><th className="py-2.5 px-3">Travel date</th><th className="py-2.5 px-3">Seats</th><th className="py-2.5 px-3 text-right">Fare</th><th className="py-2.5 px-3 text-right">Commission base</th><th className="py-2.5 px-3 text-right">Franchise earned</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {busRows.loading ? <tr><td colSpan={8} className="py-8 text-center text-slate-400"><Loader2 className="w-4 h-4 animate-spin inline" /></td></tr>

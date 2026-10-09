@@ -44,6 +44,7 @@ import {
   deleteLanguage,
   deleteOngoingRide,
   refundRide,
+  getFranchiseOptions,
   deleteOwner,
   deleteOwnerBooking,
   deleteOwnerNeededDocument,
@@ -410,6 +411,7 @@ adminRouter.get('/admin/ongoing-rides', getOngoingRides);
 adminRouter.get('/admin/ride-requests', getRideRequests);
 adminRouter.delete('/admin/ongoing-rides/:id', deleteOngoingRide);
 adminRouter.post('/admin/rides/:id/refund', refundRide);
+adminRouter.get('/admin/franchise-options', getFranchiseOptions);
 adminRouter.get('/admin/deliveries', getDeliveries);
 adminRouter.get('/admin/trips', getIntercityTrips);
 

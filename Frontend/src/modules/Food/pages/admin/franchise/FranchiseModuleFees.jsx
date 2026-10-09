@@ -7,7 +7,7 @@ export default function FranchiseModuleFees() {
   const [moduleFees, setModuleFees] = useState({ food: 50000, taxi: 50000, both: 80000 });
   const [moduleComms, setModuleComms] = useState({ food: 10, taxi: 10, both: 10 });
   const [paymentDetails, setPaymentDetails] = useState({ upiId: '', bankName: '', accountNumber: '', ifscCode: '', accountHolderName: '', qrCodeUrl: '' });
-  const [taxiSettings, setTaxiSettings] = useState({ commissionBase: 'platform_commission', services: { ride: true, intercity: true, parcel: true, bus: true } });
+  const [taxiSettings, setTaxiSettings] = useState({ commissionBase: 'platform_commission', services: { ride: true, intercity: true, parcel: true, bus: true, pooling: false, rental: false }, serviceCommission: { pooling: 10, rental: 10 } });
   const [loading, setLoading] = useState(true);
   const [savingConfig, setSavingConfig] = useState(false);
 
@@ -23,7 +23,8 @@ export default function FranchiseModuleFees() {
         if (cfg.taxiSettings) {
           setTaxiSettings({
             commissionBase: cfg.taxiSettings.commissionBase || 'platform_commission',
-            services: { ride: true, intercity: true, parcel: true, bus: true, ...(cfg.taxiSettings.services || {}) },
+            services: { ride: true, intercity: true, parcel: true, bus: true, pooling: false, rental: false, ...(cfg.taxiSettings.services || {}) },
+            serviceCommission: { pooling: 10, rental: 10, ...(cfg.taxiSettings.serviceCommission || {}) },
           });
         }
       }
@@ -179,7 +180,7 @@ export default function FranchiseModuleFees() {
             <div>
               <label className="block font-bold text-slate-700 mb-1.5">Franchises earn on</label>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {[['ride', 'City taxi'], ['intercity', 'Outstation'], ['parcel', 'Parcel'], ['bus', 'Bus service']].map(([key, label]) => (
+                {[['ride', 'City taxi'], ['intercity', 'Outstation'], ['parcel', 'Parcel'], ['bus', 'Bus service'], ['pooling', 'Pooling'], ['rental', 'Rental']].map(([key, label]) => (
                   <label key={key} className={`flex items-center gap-2.5 p-3 rounded-xl border cursor-pointer ${taxiSettings.services[key] ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
                     <input type="checkbox" checked={Boolean(taxiSettings.services[key])}
                       onChange={(e) => setTaxiSettings({ ...taxiSettings, services: { ...taxiSettings.services, [key]: e.target.checked } })} />
@@ -187,7 +188,21 @@ export default function FranchiseModuleFees() {
                   </label>
                 ))}
               </div>
-              <p className="text-[11px] font-semibold text-slate-400 mt-2">Pooling and rental are not available here: Raydo does not record a commission for them yet.</p>
+              <p className="text-[11px] font-semibold text-slate-400 mt-2">Pooling and rental are OFF by default: switch them on only after you have set Raydo's commission for them below.</p>
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1.5">Raydo's commission on pooling / rental (%)</label>
+              <div className="grid grid-cols-2 gap-3 max-w-md">
+                {[['pooling', 'Pooling'], ['rental', 'Rental']].map(([key, label]) => (
+                  <div key={key}>
+                    <span className="block text-[11px] font-bold text-slate-500 mb-1">{label}</span>
+                    <input type="number" min={0} max={100} value={taxiSettings.serviceCommission[key] ?? 0}
+                      onChange={(e) => setTaxiSettings({ ...taxiSettings, serviceCommission: { ...taxiSettings.serviceCommission, [key]: Number(e.target.value) } })}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-extrabold bg-white text-slate-900" />
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] font-semibold text-slate-400 mt-2">Owners of pooling and rental are paid outside the app, so this % does not change anyone's payout. It is only the amount the franchise share is calculated on, when "What the platform earns" is selected above. Example: ride value 1000, Raydo commission 10% = 100, franchise rate 20% = franchise gets 20.</p>
             </div>
           </div>
 

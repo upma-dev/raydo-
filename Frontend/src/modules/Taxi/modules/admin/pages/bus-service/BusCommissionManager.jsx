@@ -3,6 +3,7 @@ import { Bus, Percent, Receipt, RefreshCcw, Save, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getAdminBuses, upsertAdminBus } from '../../services/busService';
+import { adminService } from '../../services/adminService';
 
 const inputClass =
   'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-400/5';
@@ -14,6 +15,7 @@ const BusCommissionManager = () => {
   const [search, setSearch] = useState('');
   const [buses, setBuses] = useState([]);
   const [drafts, setDrafts] = useState({});
+  const [franchises, setFranchises] = useState([]);
 
   const loadBuses = async () => {
     setLoading(true);
@@ -25,6 +27,7 @@ const BusCommissionManager = () => {
           accumulator[bus.id] = {
             adminCommissionPercentage: String(bus.adminCommissionPercentage ?? '0'),
             serviceTaxPercentage: String(bus.serviceTaxPercentage ?? '0'),
+            franchiseId: bus.franchiseId || '',
           };
           return accumulator;
         }, {}),
@@ -38,6 +41,9 @@ const BusCommissionManager = () => {
 
   useEffect(() => {
     loadBuses();
+    adminService.getFranchiseOptions()
+      .then((res) => setFranchises(res?.data?.data?.results || res?.data?.results || []))
+      .catch(() => setFranchises([]));
   }, []);
 
   const filteredBuses = useMemo(() => {
@@ -79,7 +85,11 @@ const BusCommissionManager = () => {
       const payload = {
         ...bus,
         adminCommissionPercentage: Math.min(100, Math.max(0, Number(draft.adminCommissionPercentage || 0))),
+        // The booking uses commissionValue first; without this the % typed here was silently ignored
+        commissionType: 'percentage',
+        commissionValue: Math.min(100, Math.max(0, Number(draft.adminCommissionPercentage || 0))),
         serviceTaxPercentage: Math.min(100, Math.max(0, Number(draft.serviceTaxPercentage || 0))),
+        franchiseId: draft.franchiseId || null,
       };
 
       const updated = await upsertAdminBus(payload);
@@ -89,6 +99,7 @@ const BusCommissionManager = () => {
         [updated.id]: {
           adminCommissionPercentage: String(updated.adminCommissionPercentage ?? '0'),
           serviceTaxPercentage: String(updated.serviceTaxPercentage ?? '0'),
+          franchiseId: updated.franchiseId || '',
         },
       }));
       toast.success(`Updated ${updated.busName || 'bus'} pricing settings`);
@@ -136,12 +147,13 @@ const BusCommissionManager = () => {
         </div>
 
         <div className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
-          <div className="grid gap-4 bg-slate-100 px-6 py-5 text-sm font-black text-slate-700" style={{ gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr) 140px 200px 200px 150px' }}>
+          <div className="grid gap-4 bg-slate-100 px-6 py-5 text-sm font-black text-slate-700" style={{ gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr) 120px 150px 150px 220px 130px' }}>
             <p>Bus</p>
             <p>Route</p>
             <p>Seat Fare</p>
             <p>Commission %</p>
             <p>Service Tax %</p>
+            <p>Franchise</p>
             <p>Action</p>
           </div>
 
@@ -159,7 +171,7 @@ const BusCommissionManager = () => {
                   <div
                     key={bus.id}
                     className="grid gap-4 px-6 py-5"
-                    style={{ gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr) 140px 200px 200px 150px' }}
+                    style={{ gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr) 120px 150px 150px 220px 130px' }}
                   >
                     <div className="min-w-0">
                       <p className="truncate text-base font-black text-slate-900">{bus.busName || 'Untitled Bus'}</p>
@@ -209,6 +221,20 @@ const BusCommissionManager = () => {
                           onChange={(event) => updateDraft(bus.id, 'serviceTaxPercentage', event.target.value)}
                         />
                       </div>
+                    </div>
+
+                    <div>
+                      <select
+                        className={inputClass}
+                        value={draft.franchiseId || ''}
+                        onChange={(event) => updateDraft(bus.id, 'franchiseId', event.target.value)}
+                      >
+                        <option value="">Auto (operator's location)</option>
+                        {franchises.map((f) => (
+                          <option key={f.id} value={f.id}>{f.name}{f.city ? ` - ${f.city}` : ''}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-400">This franchise earns on the bus</p>
                     </div>
 
                     <div className="flex items-center">

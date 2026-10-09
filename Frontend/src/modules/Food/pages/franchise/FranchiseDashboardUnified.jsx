@@ -140,7 +140,7 @@ export default function FranchiseDashboardUnified() {
           <div className="space-y-1 mt-4 pt-2 border-t border-white/5">
             <Section title="TAXI" />
             <SidebarItem id="rides" to="rides" label="Rides (city, outstation, parcel)" icon={Car} />
-            <SidebarItem id="bus" to="bus" label="Bus service" icon={BusFront} />
+            <SidebarItem id="bus" to="bus" label="Bus, pooling & rental" icon={BusFront} />
             <SidebarItem id="drivers" to="drivers" label="Drivers" icon={Users} />
           </div>
           <div className="space-y-1 mt-4 pt-2 border-t border-white/5">

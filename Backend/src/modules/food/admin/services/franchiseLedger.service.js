@@ -63,15 +63,20 @@ export async function creditTaxiRide({ franchiseId, rideId, base, rate }) {
     });
 }
 
-/** Credit the franchise for a finished bus trip booking. `base` = the platform's earning on the booking. */
-export async function creditBusBooking({ franchiseId, bookingId, base, rate }) {
+const BOOKING_NOTE = { bus: 'Bus booking', pooling: 'Pooling booking', rental: 'Rental booking' };
+
+/** Credit the franchise for a finished bus / pooling / rental booking. `base` = the amount the rate is applied on. */
+export async function creditBooking({ franchiseId, kind, bookingId, base, rate }) {
     const amount = roundMoney((Number(base) * Number(rate)) / 100);
-    if (!franchiseId || amount <= 0) return null;
+    if (!franchiseId || !BOOKING_NOTE[kind] || amount <= 0) return null;
     return postEntry({
         franchiseId, module: 'taxi', type: 'credit', amount, base: Number(base), rate: Number(rate),
-        refType: 'bus', refId: String(bookingId), note: `Bus booking ${bookingId}`,
+        refType: kind, refId: String(bookingId), note: `${BOOKING_NOTE[kind]} ${bookingId}`,
     });
 }
+
+export const creditBusBooking = ({ franchiseId, bookingId, base, rate }) =>
+    creditBooking({ franchiseId, kind: 'bus', bookingId, base, rate });
 
 /** A fully refunded ride must not keep paying the franchise. Idempotent. */
 export async function reverseTaxiRide(rideId) {

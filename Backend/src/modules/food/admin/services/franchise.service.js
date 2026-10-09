@@ -472,10 +472,18 @@ export async function updateFormConfig({ fields, requiredDocuments, moduleFranch
         const base = taxiSettings.commissionBase;
         if (base !== undefined && !['platform_commission', 'fare'].includes(base)) throw new Error('Commission base must be "platform_commission" or "fare"');
         const services = { ...(cur.services || {}) };
-        ['ride', 'intercity', 'parcel', 'bus'].forEach((k) => {
+        ['ride', 'intercity', 'parcel', 'bus', 'pooling', 'rental'].forEach((k) => {
             if (taxiSettings.services && taxiSettings.services[k] !== undefined) services[k] = Boolean(taxiSettings.services[k]);
         });
-        config.taxiSettings = { commissionBase: base || cur.commissionBase || 'platform_commission', services };
+        const serviceCommission = { ...(cur.serviceCommission || {}) };
+        ['pooling', 'rental'].forEach((k) => {
+            const v = taxiSettings.serviceCommission?.[k];
+            if (v === undefined) return;
+            const n = Number(v);
+            if (!Number.isFinite(n) || n < 0 || n > 100) throw new Error(`Raydo commission for ${k} must be between 0 and 100`);
+            serviceCommission[k] = n;
+        });
+        config.taxiSettings = { commissionBase: base || cur.commissionBase || 'platform_commission', services, serviceCommission };
         config.markModified('taxiSettings');
         invalidateTaxiSettings();
     }

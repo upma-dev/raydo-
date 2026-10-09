@@ -150,7 +150,7 @@ const partnerTaxi = (fn, message) => async (req, res, next) => {
 export const getPartnerTaxiOverviewController = partnerTaxi((id) => taxiService.getTaxiOverview(id), 'Taxi overview fetched');
 export const getPartnerTaxiRidesController = partnerTaxi((id, q) => taxiService.listTaxiRides(id, q), 'Taxi rides fetched');
 export const getPartnerTaxiDriversController = partnerTaxi((id, q) => taxiService.listTaxiDrivers(id, q), 'Taxi drivers fetched');
-export const getPartnerTaxiBusController = partnerTaxi((id, q) => taxiService.listTaxiBusBookings(id, q), 'Bus bookings fetched');
+export const getPartnerTaxiBusController = partnerTaxi((id, q) => taxiService.listTaxiBookings(id, q), 'Bookings fetched');
 
 export async function getPartnerDashboardController(req, res, next) {
     try {

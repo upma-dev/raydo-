@@ -114,17 +114,17 @@ export function TaxiDashboardPage() {
         <StatCard label="Your taxi earnings" value={inr(data.earned)} sub={`${data.commissionRate}% commission${data.zone?.name ? ` · ${data.zone.name}` : ""}`} icon={TrendingUp} tone="emerald" />
       </div>
       <Card title="Earnings by service" icon={TrendingUp}>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           {(data.services || []).map((s) => (
             <div key={s.key} className="p-4 rounded-2xl border border-slate-200 bg-slate-50">
               <div className="text-[11px] font-bold text-indigo-600 uppercase">{s.label}</div>
               <div className="text-2xl font-black text-slate-900 mt-1">{s.count}</div>
-              <div className="text-[11px] font-semibold text-slate-400">{s.key === "bus" ? "finished trips" : "completed rides"}</div>
-              <div className="text-xs font-bold text-slate-600 mt-1">{s.key === "bus" ? `Earned ${inr(data.earnedFromBus)}` : s.value ? `Ride value ${inr(s.value)}` : "-"}</div>
+              <div className="text-[11px] font-semibold text-slate-400">{["bus", "pooling", "rental"].includes(s.key) ? "credited bookings" : "completed rides"}</div>
+              <div className="text-xs font-bold text-slate-600 mt-1">{["bus", "pooling", "rental"].includes(s.key) ? `Earned ${inr(s.earned)}` : s.value ? `Ride value ${inr(s.value)}` : "-"}</div>
             </div>
           ))}
         </div>
-        <p className="text-[11px] font-semibold text-slate-400 mt-3">Pooling and rental bookings are not part of the franchise commission.</p>
+        <p className="text-[11px] font-semibold text-slate-400 mt-3">Which services earn for franchises, and on what base, is set by the admin ({data.rules?.commissionBase === "fare" ? "on what the customer paid" : "on the platform's commission"}). Services that are switched off show 0.</p>
       </Card>
     </div>
   );
@@ -161,11 +161,21 @@ export function TaxiRidesPage() {
 }
 
 export function TaxiBusPage() {
-  const [rows, load] = usePagedTaxi(franchiseAPI.getTaxiBus, {});
+  const [service, setService] = useState("bus");
+  const [rows, load] = usePagedTaxi(franchiseAPI.getTaxiBus, { service });
+  const note = {
+    bus: "Buses pinned to your franchise or run by operators in your service location. Your share is credited after the travel date has passed.",
+    pooling: "Completed and paid pooling bookings that start inside your taxi zone.",
+    rental: "Completed and paid rentals inside your taxi zone.",
+  }[service];
   return (
-    <Card title="Bus bookings in your area" icon={BusFront}>
-      <p className="text-[11px] font-semibold text-slate-400 mb-4">Bus operators working in your service location. Your share is credited after the travel date has passed.</p>
-      <Table head={["Booking", "Route", "Operator", "Travel date", "Seats", "Fare", "Platform earned", "You earned"]} colSpan={8} loading={rows.loading} error={rows.error} empty={rows.items.length === 0 ? "No finished bus trips yet." : ""}>
+    <Card title="Bus, pooling & rental" icon={BusFront} right={
+      <select value={service} onChange={(e) => setService(e.target.value)} className={`${inputCls} !w-44 !py-2`}>
+        <option value="bus">Bus service</option><option value="pooling">Pooling</option><option value="rental">Rental</option>
+      </select>
+    }>
+      <p className="text-[11px] font-semibold text-slate-400 mb-4">{note}</p>
+      <Table head={["Booking", "Route", "Operator", "Date", "Seats / hours", "Fare", "Commission base", "You earned"]} colSpan={8} loading={rows.loading} error={rows.error} empty={rows.items.length === 0 ? "Nothing credited yet. The admin decides which services earn for franchises." : ""}>
         {rows.items.map((b) => (
           <tr key={b.id} className="hover:bg-slate-50">
             <td className="py-3 px-4 font-bold text-slate-900">{b.bookingCode}</td>

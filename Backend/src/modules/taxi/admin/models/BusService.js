@@ -209,6 +209,13 @@ const busServiceSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    // Admin override: this bus belongs to this franchise (otherwise it follows the operator's service location)
+    franchiseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FranchiseApplication',
+      default: null,
+      index: true,
+    },
     ownerDriverId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Driver',

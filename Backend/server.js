@@ -207,6 +207,8 @@ const startServer = async () => {
                 await settlePaidOnlineRides();
                 const { creditFranchiseForBusBookings } = await import('./src/modules/food/admin/services/franchiseTaxi.service.js');
                 await creditFranchiseForBusBookings();
+                const { creditFranchiseForPoolingAndRental } = await import('./src/modules/food/admin/services/franchiseTaxi.service.js');
+                await creditFranchiseForPoolingAndRental();
             } catch (err) {
                 logger.error(`Taxi settlement check error: ${err.message}`);
             }

@@ -609,6 +609,12 @@ const rentalBookingRequestSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Franchise that was credited for this rental (see franchiseTaxi.service.js)
+rentalBookingRequestSchema.add({
+  franchiseApplicationId: { type: mongoose.Schema.Types.ObjectId, ref: 'FranchiseApplication', default: null, index: true },
+  franchiseCreditCheckedAt: { type: Date, default: null },
+});
+
 rentalBookingRequestSchema.index({ status: 1, createdAt: -1 });
 rentalBookingRequestSchema.index({ userId: 1, createdAt: -1 });
 rentalBookingRequestSchema.index({ vehicleTypeId: 1, createdAt: -1 });

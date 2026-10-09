@@ -202,7 +202,7 @@ const wrap = (fn, message) => async (req, res, next) => {
 export const getTaxiZonesController = wrap((req) => taxiService.listTaxiZonesForFranchise(req.query.franchiseId || null), 'Taxi zones fetched');
 export const getTaxiOverviewController = wrap((req) => taxiService.getTaxiOverview(req.params.id), 'Taxi overview fetched');
 export const getTaxiRidesController = wrap((req) => taxiService.listTaxiRides(req.params.id, req.query), 'Taxi rides fetched');
-export const getTaxiBusController = wrap((req) => taxiService.listTaxiBusBookings(req.params.id, req.query), 'Bus bookings fetched');
+export const getTaxiBusController = wrap((req) => taxiService.listTaxiBookings(req.params.id, req.query), 'Bookings fetched');
 export const getTaxiDriversController = wrap((req) => taxiService.listTaxiDrivers(req.params.id, req.query), 'Taxi drivers fetched');
 export const getOverviewController = wrap((req) => overviewService.getFranchiseOverview(req.params.id), 'Franchise overview fetched');
 export const getFranchiseRestaurantsController = wrap((req) => overviewService.listFranchiseRestaurants(req.params.id, req.query), 'Restaurants fetched');

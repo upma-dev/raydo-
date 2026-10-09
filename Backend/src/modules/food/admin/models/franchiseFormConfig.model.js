@@ -56,6 +56,15 @@ const franchiseFormConfigSchema = new mongoose.Schema({
             intercity: { type: Boolean, default: true },  // outstation
             parcel: { type: Boolean, default: true },
             bus: { type: Boolean, default: true },
+            // Raydo does not record a commission for these two, so they are OFF until the admin switches them on
+            pooling: { type: Boolean, default: false },
+            rental: { type: Boolean, default: false },
+        },
+        // "Raydo's commission % on this service". Pooling / rental owners are paid outside the app, so this number is only the
+        // base the franchise share is calculated on (used when the base above is "platform_commission").
+        serviceCommission: {
+            pooling: { type: Number, default: 10, min: 0, max: 100 },
+            rental: { type: Number, default: 10, min: 0, max: 100 },
         },
     },
     paymentDetails: {

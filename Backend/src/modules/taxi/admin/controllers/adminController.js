@@ -658,6 +658,17 @@ export const refundRide = asyncHandler(async (req, res) => {
   });
   ok(res, result);
 });
+/** Approved taxi franchises (for the "Franchise" dropdown on a bus) */
+export const getFranchiseOptions = asyncHandler(async (_req, res) => {
+  const FranchiseApplication = mongoose.models.FranchiseApplication;
+  const rows = FranchiseApplication
+    ? await FranchiseApplication.find({ status: 'approved', archived: { $ne: true }, selectedModules: { $in: ['taxi'] } })
+      .select('applicantName companyName applicationId city').sort({ applicantName: 1 }).lean()
+    : [];
+  ok(res, {
+    results: rows.map((f) => ({ id: String(f._id), name: f.companyName || f.applicantName, applicationId: f.applicationId, city: f.city })),
+  });
+});
 export const deleteOngoingRide = asyncHandler(async (req, res) =>
   ok(res, await adminService.deleteOngoingRide(req.params.id)),
 );

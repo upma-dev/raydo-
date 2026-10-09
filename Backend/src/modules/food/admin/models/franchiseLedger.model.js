@@ -12,7 +12,7 @@ const franchiseLedgerSchema = new mongoose.Schema({
     amount: { type: Number, required: true },
     base: { type: Number, default: 0 },          // amount the rate was applied on
     rate: { type: Number, default: 0 },          // commission % snapshot
-    refType: { type: String, enum: ['order', 'ride', 'bus', 'payout', 'manual'], default: 'manual' },
+    refType: { type: String, enum: ['order', 'ride', 'bus', 'pooling', 'rental', 'payout', 'manual'], default: 'manual' },
     refId: { type: String, default: '' },
     note: { type: String, default: '' },
 }, { timestamps: { createdAt: true, updatedAt: false }, collection: 'franchise_ledger' });

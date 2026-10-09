@@ -129,6 +129,12 @@ const poolingBookingSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Franchise that was credited for this booking (see franchiseTaxi.service.js)
+poolingBookingSchema.add({
+  franchiseApplicationId: { type: mongoose.Schema.Types.ObjectId, ref: 'FranchiseApplication', default: null, index: true },
+  franchiseCreditCheckedAt: { type: Date, default: null },
+});
+
 poolingBookingSchema.index({ user: 1 });
 poolingBookingSchema.index({ route: 1 });
 poolingBookingSchema.index({ travelDate: 1 });
