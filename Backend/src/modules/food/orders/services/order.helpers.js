@@ -348,6 +348,16 @@ export async function notifyRestaurantNewOrder(orderDoc) {
       io.to(rooms.restaurant(targetRestaurantId)).emit("new_order", payload);
     }
 
+    // Start the "restaurant must accept in time" clock (first notification only)
+    try {
+      await mongoose.model('FoodOrder').updateOne(
+        { _id: orderDoc._id, restaurantNotifiedAt: null },
+        { $set: { restaurantNotifiedAt: new Date() } },
+      );
+    } catch (stampErr) {
+      logger.warn(`notifyRestaurantNewOrder: could not stamp restaurantNotifiedAt: ${stampErr?.message || stampErr}`);
+    }
+
     await notifyOwnersSafely(
       [{ ownerType: "RESTAURANT", ownerId: targetRestaurantId }],
       {

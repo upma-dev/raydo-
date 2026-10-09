@@ -3433,16 +3433,9 @@ export default function Home() {
                 {/* Category sticky anchor sentinel — must be before any sticky elements */}
                 <div ref={categoryAnchorRef} className="h-px w-full" aria-hidden="true" />
 
-                {/* Category Rail Header — sticky right below search bar */}
-                <div className="sticky top-[52px] z-[50] bg-white dark:bg-[#0a0a0a] pt-4 pb-2 px-4">
+                {/* Category Rail Header & Rail Section — Sticky together right under sticky search bar */}
+                <div className="sticky top-[54px] z-[90] bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md pt-3 pb-2 px-4 border-b border-gray-100/80 dark:border-gray-900 shadow-sm transition-all duration-300">
                   {CategoryRailHeader}
-                </div>
-
-                {/* Category Rail — permanently sticky using native CSS for 0 latency. */}
-                <div
-                  className={`sticky top-[100px] z-[50] bg-white dark:bg-[#0a0a0a] pb-4 px-4 transition-shadow duration-300 ${isCategoryStuck ? 'shadow-[0_12px_30px_rgba(0,0,0,0.08)] rounded-b-[1.75rem]' : ''
-                    }`}
-                >
                   {CategoryRailSection}
                 </div>
 

@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, MapPin, FileText, CheckCircle2, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
+import { Building2, MapPin, FileText, CheckCircle2, ArrowRight, ArrowLeft, Loader2, CreditCard } from "lucide-react";
 import FranchiseStep1 from "./FranchiseStep1";
 import FranchiseStep2 from "./FranchiseStep2";
 import FranchiseStep3 from "./FranchiseStep3";
+import FranchiseStep4Payment from "./FranchiseStep4Payment";
 import { franchiseAPI } from "@food/api";
 
 const STEPS = [
   { id: 1, label: "Business Info", icon: Building2, desc: "Tell us about you" },
   { id: 2, label: "Location", icon: MapPin, desc: "State, City & Area" },
   { id: 3, label: "Documents", icon: FileText, desc: "KYC & Proof" },
+  { id: 4, label: "Payment", icon: CreditCard, desc: "Pay franchise fee" },
 ];
 
 export default function FranchiseApplyPage() {
@@ -23,6 +25,8 @@ export default function FranchiseApplyPage() {
   const [step1Data, setStep1Data] = useState({});
   const [step2Data, setStep2Data] = useState({});
   const [step3Data, setStep3Data] = useState({ documents: [] });
+  // Set once the application is saved (end of step 3); step 4 pays against it
+  const [created, setCreated] = useState(null);
 
   useEffect(() => {
     franchiseAPI.getFormConfig()
@@ -55,7 +59,9 @@ export default function FranchiseApplyPage() {
       };
       const res = await franchiseAPI.submitApplication(payload);
       const applicationId = res?.data?.data?.applicationId;
-      navigate("/food/franchise/success", { state: { applicationId, phone: step1Data.phone } });
+      setCreated({ applicationId, phone: step1Data.phone });
+      setCurrentStep(4);
+      window.scrollTo?.({ top: 0, behavior: 'smooth' });
     } catch (err) {
       console.error("Submit error:", err);
       alert("Something went wrong. Please try again.");
@@ -65,6 +71,15 @@ export default function FranchiseApplyPage() {
   };
 
   const progress = ((currentStep - 1) / (STEPS.length - 1)) * 100;
+  const goToStatus = () => navigate('/food/franchise/success', { state: { applicationId: created?.applicationId, phone: created?.phone } });
+
+  // Plan + fee chosen in step 1 (fees come from the server config)
+  const chosenModules = step1Data.selectedModules || ['food'];
+  const chosenPlanKey = chosenModules.length === 2 ? 'both' : chosenModules[0];
+  const planSummary = {
+    title: chosenPlanKey === 'both' ? '\uD83E\uDD1D Food + Taxi (Combined)' : chosenPlanKey === 'taxi' ? '\uD83D\uDE95 Taxi Franchise' : '\uD83C\uDF54 Food Delivery Franchise',
+    fee: formConfig?.moduleFranchiseFees?.[chosenPlanKey] ?? 0,
+  };
 
   return (
     <div className="min-h-screen bg-[#070A1F] text-white" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -111,6 +126,13 @@ export default function FranchiseApplyPage() {
           <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.5)', fontWeight: 400, margin: 0 }}>
             Become the exclusive Raydo operator in your city
           </p>
+          <button
+            type="button"
+            onClick={() => navigate('/food/franchise/success')}
+            style={{ marginTop: 14, background: 'none', border: 'none', color: '#6895FF', fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            Already applied? Track status & pay fee
+          </button>
         </div>
 
         {/* Step Indicator */}
@@ -165,9 +187,19 @@ export default function FranchiseApplyPage() {
               )}
               {currentStep === 2 && (
                 <FranchiseStep2
-                  defaultValues={step2Data}
+                  defaultValues={{ ...step1Data, ...step2Data }}
                   onNext={handleNext}
                   onBack={handleBack}
+                />
+              )}
+              {currentStep === 4 && created && (
+                <FranchiseStep4Payment
+                  applicationId={created.applicationId}
+                  phone={created.phone}
+                  planTitle={planSummary.title}
+                  fee={planSummary.fee}
+                  onPaid={goToStatus}
+                  onPayLater={goToStatus}
                 />
               )}
               {currentStep === 3 && (
@@ -177,6 +209,7 @@ export default function FranchiseApplyPage() {
                   onSubmit={handleSubmit}
                   onBack={handleBack}
                   submitting={submitting}
+                  planSummary={planSummary}
                 />
               )}
             </>

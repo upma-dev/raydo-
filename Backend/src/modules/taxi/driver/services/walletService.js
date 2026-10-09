@@ -297,7 +297,21 @@ export const topUpDriverWallet = async ({ driverId, amount, metadata = {} }) => 
   }
 };
 
+const PAID_COLLECTION_STATUSES = new Set(['paid', 'captured', 'completed']);
+
+/** Proof that the rider really paid online (confirmed with Razorpay / the in-app wallet), not just the driver's word. */
+const isOnlineFarePaid = (ride = {}) =>
+  Boolean(ride?.driverPaymentCollection?.paidAt) ||
+  PAID_COLLECTION_STATUSES.has(String(ride?.driverPaymentCollection?.status || '').trim().toLowerCase());
+
 export const settleCompletedRideWallet = async ({ rideId }) => {
+  // An ONLINE ride must not credit the driver before the rider has actually paid. Otherwise a driver can end a ride as
+  // "online", collect cash, and still be credited from the platform. Such a ride stays unsettled and is settled the moment
+  // the payment is confirmed (see settlePaidOnlineRides, which also runs on a timer as a safety net).
+  const pre = await Ride.findById(rideId).select('paymentMethod driverPaymentCollection walletSettledAt driverId').lean();
+  if (!pre || pre.walletSettledAt || !pre.driverId) return null;
+  if (normalizePaymentMethod(pre.paymentMethod) === 'online' && !isOnlineFarePaid(pre)) return null;
+
   const session = await mongoose.startSession();
 
   try {
@@ -385,6 +399,12 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
     });
 
     await session.commitTransaction();
+
+    // Franchise that owns the driver's taxi zone earns its share (best effort, never blocks the ride)
+    import('../../../food/admin/services/franchiseTaxi.service.js')
+      .then((m) => m.creditFranchiseForRide(ride._id))
+      .catch((e) => console.error('[Franchise] taxi credit hook failed:', e?.message || e));
+
     return {
       ...result,
       ride,
@@ -395,4 +415,32 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
   } finally {
     session.endSession();
   }
+};
+
+/**
+ * Credit drivers for completed ONLINE rides whose payment has now been confirmed. Safe to run any time:
+ * settleCompletedRideWallet claims each ride atomically, so a ride is never credited twice.
+ */
+export const settlePaidOnlineRides = async (limit = 50) => {
+  const rides = await Ride.find({
+    status: 'completed',
+    paymentMethod: 'online',
+    walletSettledAt: null,
+    driverId: { $ne: null },
+    $or: [
+      { 'driverPaymentCollection.paidAt': { $ne: null } },
+      { 'driverPaymentCollection.status': { $in: ['paid', 'captured', 'completed'] } },
+    ],
+  }).select('_id').limit(limit).lean();
+
+  let settled = 0;
+  for (const ride of rides) {
+    try {
+      const result = await settleCompletedRideWallet({ rideId: ride._id });
+      if (result) settled += 1;
+    } catch (err) {
+      console.error(`[Taxi] Could not settle paid online ride ${ride._id}:`, err?.message || err);
+    }
+  }
+  return settled;
 };

@@ -99,7 +99,7 @@ const getRoleFromPathname = () => {
 
   const pathname = String(window.location.pathname || '').toLowerCase();
 
-  if (pathname.includes('/admin')) {
+  if (pathname.includes('/admin') || pathname.includes('/franchise')) {
     return 'admin';
   }
 

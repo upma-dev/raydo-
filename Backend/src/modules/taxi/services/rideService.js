@@ -22,6 +22,7 @@ import { getBidRideSettings } from './transportSettingsService.js';
 import { emitToDriver, emitToRoom, getDriverRoom, getRideRoom, getUserRoom } from './dispatchService.js';
 import { sendPushNotificationToEntities } from './pushNotificationService.js';
 import { Notification } from '../admin/promotions/models/Notification.js';
+import { creditFranchiseCommission } from '../admin/services/taxiFranchiseService.js';
 
 export { getRideRoom } from './dispatchService.js';
 
@@ -1808,6 +1809,19 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
 
     await processCompletedRideReferralReward(ride);
     await processCompletedDriverReferralReward(ride);
+
+    // Franchise commission for the driver's zone (idempotent per ride; must never fail the ride)
+    try {
+      const rideDriver = await Driver.findById(driverId).select('zoneId').lean();
+      await creditFranchiseCommission({
+        zoneId: rideDriver?.zoneId,
+        rideId: ride._id,
+        driverId,
+        rideAmount: Number(ride.fare) || 0,
+      });
+    } catch (franchiseError) {
+      console.error('[Franchise] Taxi commission credit failed:', franchiseError?.message || franchiseError);
+    }
 
   }
 

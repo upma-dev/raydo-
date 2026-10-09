@@ -66,6 +66,11 @@ export const validateGatewayConfiguration = (gatewayKey, gatewayValue = {}) => {
     return normalized;
   }
 
+  // Razorpay keys may live in the server .env (shared with Food), so Admin does not have to type them again
+  if (gatewayKey === 'razor_pay' && normalizeString(env.razorpayKeyId) && normalizeString(env.razorpayKeySecret)) {
+    return normalized;
+  }
+
   const environment = normalizeString(normalized[spec.environmentKey] || '').toLowerCase();
   const requiredFields = spec.credentialsByEnvironment[environment] || [];
   const missingField = requiredFields.find((field) => !normalizeString(normalized[field]));
@@ -170,19 +175,12 @@ export const resolveConfiguredGatewayCredentials = async (gatewayKey) => {
     let keyId = normalizeString(isLive ? validatedGateway.live_api_key : validatedGateway.test_api_key);
     let keySecret = normalizeString(isLive ? validatedGateway.live_secret_key : validatedGateway.test_secret_key);
 
-    const hasInvalidConfiguredKeys =
-      !keyId ||
-      !keySecret ||
-      isDemoLikeValue(keyId) ||
-      isDemoLikeValue(keySecret);
-
-    if (hasInvalidConfiguredKeys) {
-      const envKeyId = normalizeString(env.razorpayKeyId);
-      const envKeySecret = normalizeString(env.razorpayKeySecret);
-      if (envKeyId && envKeySecret) {
-        keyId = envKeyId;
-        keySecret = envKeySecret;
-      }
+    // Food and Taxi must use the SAME Razorpay account, so the server .env keys always win when they are set.
+    const envKeyId = normalizeString(env.razorpayKeyId);
+    const envKeySecret = normalizeString(env.razorpayKeySecret);
+    if (envKeyId && envKeySecret) {
+      keyId = envKeyId;
+      keySecret = envKeySecret;
     }
 
     if (!keyId || !keySecret || isDemoLikeValue(keyId) || isDemoLikeValue(keySecret)) {

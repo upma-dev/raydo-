@@ -1,5 +1,6 @@
 import express from 'express';
-import { AuthError } from '../../../../core/auth/errors.js';
+import { AuthError, ForbiddenError } from '../../../../core/auth/errors.js';
+import { isSuperAdminLike } from '../../../../core/admin/adminHierarchy.service.js';
 import * as adminController from '../controllers/admin.controller.js';
 import * as foodApprovalController from '../controllers/foodApproval.controller.js';
 import * as addonsApprovalController from '../controllers/addonsApproval.controller.js';
@@ -22,7 +23,8 @@ router.get('/business-settings/public', businessSettingsController.getBusinessSe
 
 const requireAdmin = (req, _res, next) => {
     const user = req.user;
-    if (!user || user.role !== 'ADMIN') {
+    const roleUpper = String(user?.role || '').toUpperCase();
+    if (!user || (!['ADMIN', 'SUBADMIN', 'SUPERADMIN', 'SUPER_ADMIN'].includes(roleUpper))) {
         return next(new AuthError('Admin access required'));
     }
     return next();
@@ -83,6 +85,7 @@ router.patch('/restaurants/:id/zone-featured-rank', requireFoodResourceAccess('r
 router.patch('/restaurants/:id/menu', requireFoodResourceAccess('restaurants', 'restaurants'), adminController.updateRestaurantMenuById);
 router.patch('/restaurants/:id/approve', requireFoodResourceAccess('restaurants', 'restaurants'), adminController.approveRestaurant);
 router.patch('/restaurants/:id/reject', requireFoodResourceAccess('restaurants', 'restaurants'), adminController.rejectRestaurant);
+router.delete('/restaurants/:id', requireFoodResourceAccess('restaurants', 'restaurants'), adminController.deleteRestaurant);
 
 // ----- Restaurant Commission -----
 router.get('/restaurant-commissions/bootstrap', requireFoodResourceAccess('fee_settings', 'fee_settings'), adminController.getRestaurantCommissionBootstrap);
@@ -181,6 +184,8 @@ router.delete('/feedback-experiences/:id', requireFoodResourceAccess('reports', 
 
 // ----- Fee Settings -----
 router.get('/fee-settings', requireFoodResourceAccess('fee_settings', 'fee_settings'), adminController.getFeeSettings);
+router.get('/order-cancellation-settings', requireFoodResourceAccess('fee_settings', 'fee_settings'), adminController.getOrderCancellationSettings);
+router.put('/order-cancellation-settings', requireFoodResourceAccess('fee_settings', 'fee_settings'), adminController.updateOrderCancellationSettings);
 router.put('/fee-settings', requireFoodResourceAccess('fee_settings', 'fee_settings'), adminController.createOrUpdateFeeSettings);
 
 // ----- Referral Settings -----
@@ -275,16 +280,44 @@ router.post('/orders/:orderId/handover/approve', orderController.approveOrderHan
 router.post('/orders/:orderId/handover/reject', orderController.rejectOrderHandoverAdminController);
 router.get('/orders/:orderId/available-partners', requireFoodResourceAccess('orders', 'orders'), orderController.listAvailableDeliveryPartnersForOrderController);
 router.delete('/orders/:orderId', requireFoodResourceAccess('orders', 'orders'), orderController.deleteOrderAdminController);
+router.post('/orders/:orderId/cancel', requireFoodResourceAccess('orders', 'orders'), orderController.cancelOrderAdminController);
+// Refunds move real money: super admins only (a franchise login must never refund)
+router.post('/orders/:orderId/refund', requireFoodResourceAccess('orders', 'orders'), (req, _res, next) => (isSuperAdminLike(req.adminContext) ? next() : next(new ForbiddenError('Only super admins can refund orders'))), adminController.processRefund);
 
 // ----- CMS Pages (About + legal) -----
 // ----- Franchise Management -----
+// Only platform / module super admins may manage franchises. A franchise login (or any sub-admin)
+// must never reach these routes - they control commissions, fees and payouts.
+router.use('/franchise', (req, _res, next) =>
+    (isSuperAdminLike(req.adminContext)
+        ? next()
+        : next(new ForbiddenError('Only super admins can manage franchises'))));
 router.get('/franchise/applications/stats', franchiseAdminController.getStatsController);
 router.get('/franchise/applications', franchiseAdminController.getApplicationsController);
+router.post('/franchise/applications', franchiseAdminController.createApplicationController);
 router.get('/franchise/applications/:id', franchiseAdminController.getApplicationByIdController);
 router.get('/franchise/applications/:id/analytics', franchiseAdminController.getAnalyticsController);
+router.get('/franchise/applications/:id/overview', franchiseAdminController.getOverviewController);
+router.get('/franchise/taxi-zones', franchiseAdminController.getTaxiZonesController);
+router.get('/franchise/applications/:id/taxi/overview', franchiseAdminController.getTaxiOverviewController);
+router.get('/franchise/applications/:id/taxi/rides', franchiseAdminController.getTaxiRidesController);
+router.get('/franchise/applications/:id/taxi/drivers', franchiseAdminController.getTaxiDriversController);
+router.get('/franchise/applications/:id/taxi/bus', franchiseAdminController.getTaxiBusController);
+router.get('/franchise/applications/:id/restaurants', franchiseAdminController.getFranchiseRestaurantsController);
+router.get('/franchise/applications/:id/orders', franchiseAdminController.getFranchiseOrdersController);
+router.get('/franchise/applications/:id/ledger', franchiseAdminController.getFranchiseLedgerController);
+router.patch('/franchise/applications/:id/profile', franchiseAdminController.updateFranchiseProfileController);
+router.post('/franchise/applications/:id/suspend', franchiseAdminController.suspendFranchiseController);
+router.post('/franchise/applications/:id/activate', franchiseAdminController.activateFranchiseController);
+router.post('/franchise/applications/:id/restore', franchiseAdminController.restoreFranchiseController);
 router.patch('/franchise/applications/:id/status', franchiseAdminController.updateStatusController);
+router.post('/franchise/applications/:id/subadmin', franchiseAdminController.syncSubAdminController);
 router.patch('/franchise/applications/:id/commission', franchiseAdminController.updateCommissionController);
+router.post('/franchise/applications/:id/support-messages/:messageId/reply', franchiseAdminController.replySupportMessageController);
+router.patch('/franchise/applications/:id/payout-requests/:requestId', franchiseAdminController.updatePayoutRequestStatusController);
+router.patch('/franchise/applications/:id/refund-requests/:refundId', franchiseAdminController.updateRefundClaimStatusController);
 router.delete('/franchise/applications/:id', franchiseAdminController.deleteApplicationController);
+
 router.get('/franchise/form-config', franchiseAdminController.getFormConfigController);
 router.put('/franchise/form-config', franchiseAdminController.updateFormConfigController);
 

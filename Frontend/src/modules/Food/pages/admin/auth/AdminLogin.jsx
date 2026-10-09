@@ -115,7 +115,18 @@ export default function AdminLogin() {
       const normalizedAdmin = normalizeFoodAdminProfile(adminUser)
       setAuthData("admin", accessToken, normalizedAdmin, refreshToken)
       setUnifiedAdminSession({ token: accessToken, user: normalizedAdmin, refreshToken })
-      navigate("/admin/food", { replace: true })
+      // Franchise Partner ya subadmin -> franchise dashboard
+      if (
+        normalizedAdmin?.admin_type === 'franchise' ||
+        normalizedAdmin?.admin_type === 'subadmin' ||
+        normalizedAdmin?.role === 'franchise' ||
+        normalizedAdmin?.role === 'subadmin' ||
+        normalizedAdmin?.franchiseId
+      ) {
+        navigate("/food/franchise/dashboard", { replace: true })
+      } else {
+        navigate("/admin/food", { replace: true })
+      }
     } catch (err) {
       console.error("[AdminLogin Submit Error]", err)
       const rawMessage =
@@ -133,6 +144,8 @@ export default function AdminLogin() {
       submittingRef.current = false
     }
   }
+
+  const isFranchiseMode = location.pathname.includes('franchise') || location.search.includes('type=franchise');
 
   return (
     <div className="min-h-screen bg-linear-to-br from-neutral-50 via-gray-100 to-white relative">
@@ -160,9 +173,11 @@ export default function AdminLogin() {
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <CardTitle className="text-3xl leading-tight text-gray-900">Admin Login</CardTitle>
+                <CardTitle className="text-3xl leading-tight text-gray-900">
+                  {isFranchiseMode ? "Franchise Partner Login" : "Admin Login"}
+                </CardTitle>
                 <CardDescription className="text-base text-gray-600">
-                  Sign in to access the admin dashboard.
+                  {isFranchiseMode ? "Sign in to access your Franchise Partner portal." : "Sign in to access the admin dashboard."}
                 </CardDescription>
               </div>
             </div>

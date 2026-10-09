@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { Building2, Info, Tag, Upload, Calendar, FileText, MapPin, CheckCircle2, X, Image as ImageIcon, Clock, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@food/components/ui/dialog"
 import { Input } from "@food/components/ui/input"
@@ -156,6 +156,7 @@ const clearAllFilesFromDB = async () => {
 
 export default function AddRestaurant() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showSuccessDialog, setShowSuccessDialog] = useState(false)
@@ -613,7 +614,11 @@ export default function AddRestaurant() {
         toast.success("Restaurant created successfully!")
         setShowSuccessDialog(true)
         setTimeout(() => {
-          navigate("/admin/food/restaurants")
+          if (location.pathname.includes('/food/franchise/dashboard')) {
+            navigate("/food/franchise/dashboard/food/restaurants/list")
+          } else {
+            navigate("/admin/food/restaurants")
+          }
         }, 2000)
       } else {
         throw new Error(response?.data?.message || "Failed to create restaurant")

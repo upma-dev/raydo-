@@ -131,7 +131,7 @@ function isTokenForModule(token, module) {
   const hasUserId = Boolean(payload.userId || payload.sub);
 
   if (module === "user") return role === "user" && hasUserId;
-  if (module === "admin") return role === "admin" && hasUserId;
+  if (module === "admin" || module === "franchise") return ["admin", "subadmin", "superadmin", "super_admin", "franchise", "franchise_partner"].includes(role) && hasUserId;
   if (module === "restaurant") return role === "restaurant" && hasUserId;
   if (module === "delivery") return ["delivery_partner", "delivery"].includes(role) && hasUserId;
 
@@ -140,16 +140,17 @@ function isTokenForModule(token, module) {
 
 function getAccessToken(config) {
   const module = getModuleFromConfig(config);
-  const key = `${module}_accessToken`;
+  const targetModule = module === "franchise" ? "admin" : module;
+  const key = `${targetModule}_accessToken`;
   try {
-    // 1. Try module-specific token first
-    const moduleToken = localStorage.getItem(key);
-    if (moduleToken && isTokenForModule(moduleToken, module)) return moduleToken;
+    // 1. Try target module token first
+    const moduleToken = localStorage.getItem(key) || (module === "franchise" ? localStorage.getItem("admin_accessToken") : null);
+    if (moduleToken && isTokenForModule(moduleToken, targetModule)) return moduleToken;
 
     // 2. Fallback to generic token only if it matches this Food module shape.
-    if (module !== "admin") {
+    if (targetModule !== "admin") {
       const genericToken = localStorage.getItem("accessToken");
-      return genericToken && isTokenForModule(genericToken, module) ? genericToken : null;
+      return genericToken && isTokenForModule(genericToken, targetModule) ? genericToken : null;
     }
     return null;
   } catch {
@@ -158,13 +159,14 @@ function getAccessToken(config) {
 }
 
 function getRefreshToken(module) {
+  const targetModule = module === "franchise" ? "admin" : module;
   try {
     // 1. Try module-specific refresh token
-    const moduleRefreshToken = localStorage.getItem(`${module}_refreshToken`);
+    const moduleRefreshToken = localStorage.getItem(`${targetModule}_refreshToken`);
     if (moduleRefreshToken) return moduleRefreshToken;
 
     // 2. Fallback to generic refresh token only for non-admin modules
-    if (module !== "admin") {
+    if (targetModule !== "admin") {
       return localStorage.getItem("refreshToken") || null;
     }
     return null;
@@ -174,11 +176,12 @@ function getRefreshToken(module) {
 }
 
 function clearModuleAuth(module) {
+  const targetModule = module === "franchise" ? "admin" : module;
   try {
-    localStorage.removeItem(`${module}_accessToken`);
-    localStorage.removeItem(`${module}_refreshToken`);
-    localStorage.removeItem(`${module}_authenticated`);
-    localStorage.removeItem(`${module}_user`);
+    localStorage.removeItem(`${targetModule}_accessToken`);
+    localStorage.removeItem(`${targetModule}_refreshToken`);
+    localStorage.removeItem(`${targetModule}_authenticated`);
+    localStorage.removeItem(`${targetModule}_user`);
   } catch (_) { }
 }
 
@@ -195,20 +198,34 @@ function onRefreshed(newToken, module) {
 }
 
 function onRefreshFailed(module) {
-  clearModuleAuth(module);
+  const targetModule = module === "franchise" ? "admin" : module;
+  clearModuleAuth(targetModule);
   // Fail any queued requests that were waiting for this refresh
-  refreshSubscribers.forEach((cb) => cb(null, module));
+  refreshSubscribers.forEach((cb) => cb(null, targetModule));
   refreshSubscribers = [];
 
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("authRefreshFailed", { detail: { module } }));
-    window.dispatchEvent(new CustomEvent("app:auth-stale", { detail: { role: module || 'user' } }));
+    window.dispatchEvent(new CustomEvent("authRefreshFailed", { detail: { module: targetModule } }));
+    if (window.location.pathname.includes("/franchise")) {
+      window.location.href = "/food/franchise/login";
+    } else {
+      window.dispatchEvent(new CustomEvent("app:auth-stale", { detail: { role: targetModule || 'user' } }));
+    }
   }
 }
 
 apiClient.interceptors.request.use(
   (config) => {
     config.contextModule = getModuleFromConfig(config);
+
+    if (typeof window !== "undefined" && window.location.pathname.includes("/franchise")) {
+      config.headers["x-portal-context"] = "franchise";
+      const params = new URLSearchParams(window.location.search);
+      const urlAppId = params.get("appId") || params.get("franchiseId");
+      if (urlAppId && !config.headers["x-franchise-id"]) {
+        config.headers["x-franchise-id"] = urlAppId;
+      }
+    }
 
     // If sending FormData, let the browser set proper multipart boundary.
     if (config.data instanceof FormData) {
@@ -238,6 +255,14 @@ apiClient.interceptors.response.use(
 
     if (isNetworkError) {
       err.isOffline = true;
+      return Promise.reject(err);
+    }
+
+    if (err?.response?.status === 503) {
+      if (typeof window !== "undefined") {
+        const msg = err?.response?.data?.message || "Service is currently under maintenance. Please try again later.";
+        window.dispatchEvent(new CustomEvent("app:maintenance-503", { detail: { message: msg } }));
+      }
       return Promise.reject(err);
     }
 

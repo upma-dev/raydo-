@@ -1,3 +1,4 @@
+import { ProcessedPayment } from '../models/ProcessedPayment.js';
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import { ApiError } from '../../../../utils/ApiError.js';
@@ -331,6 +332,43 @@ const resolveBusSeatPrice = (busService = {}, seat = {}) => {
   const resolvedPrice = variantPricing?.[variantKey] ?? variantPricing?.seat ?? defaultPrice;
 
   return Number.isFinite(Number(resolvedPrice)) ? Number(resolvedPrice) : defaultPrice;
+};
+
+/**
+ * Boarding / dropping point chosen by the passenger. The operator decides the points on the route (stops):
+ *  - a stop of type pickup / both can be a boarding point, drop / both a dropping point
+ *  - when the route offers any boarding (dropping) points the passenger MUST choose one
+ *  - the boarding point must come before the dropping point on the route
+ * A route with no stops configured needs no points at all.
+ */
+export const resolveBusPoints = (busService, boardingPointId, droppingPointId) => {
+  const stops = Array.isArray(busService?.route?.stops) ? busService.route.stops : [];
+  const typeOf = (s) => String(s?.stopType || 'pickup').toLowerCase();
+  const boardingOptions = stops.filter((s) => ['pickup', 'both'].includes(typeOf(s)));
+  const droppingOptions = stops.filter((s) => ['drop', 'both'].includes(typeOf(s)));
+
+  const pick = (list, id, label) => {
+    if (list.length === 0) return null;
+    const wanted = toCleanString(id);
+    if (!wanted) throw new ApiError(400, `Please choose your ${label} point`);
+    const found = list.find((s) => String(s.id) === wanted);
+    if (!found) throw new ApiError(400, `The selected ${label} point is not available on this bus`);
+    return found;
+  };
+  const boarding = pick(boardingOptions, boardingPointId, 'boarding');
+  const dropping = pick(droppingOptions, droppingPointId, 'dropping');
+
+  if (boarding && dropping && stops.indexOf(boarding) >= stops.indexOf(dropping)) {
+    throw new ApiError(400, 'The dropping point must come after the boarding point on the route');
+  }
+
+  const snap = (stop, timeKeys) => (stop ? {
+    stopId: String(stop.id),
+    city: toCleanString(stop.city),
+    pointName: toCleanString(stop.pointName),
+    time: timeKeys.map((k) => toCleanString(stop[k])).find(Boolean) || '',
+  } : null);
+  return { boardingPoint: snap(boarding, ['departureTime', 'arrivalTime']), droppingPoint: snap(dropping, ['arrivalTime', 'departureTime']) };
 };
 
 const findBusSchedule = (busService, scheduleId) =>
@@ -770,6 +808,8 @@ const serializeBusBooking = (booking, busService = null) => {
     amount: Number(booking.amount || 0),
     currency: booking.currency || 'INR',
     passenger: booking.passenger || {},
+    boardingPoint: booking.boardingPoint || null,
+    droppingPoint: booking.droppingPoint || null,
     notes: booking.notes || '',
     payment: {
       provider: booking.payment?.provider || 'razorpay',
@@ -842,8 +882,12 @@ const serializeBusBooking = (booking, busService = null) => {
       registrationNumber: booking.routeSnapshot?.registrationNumber || busService?.registrationNumber || '',
       driverName: booking.routeSnapshot?.driverName || busService?.driverName || '',
       driverPhone: booking.routeSnapshot?.driverPhone || busService?.driverPhone || '',
-      pickupLocation: formatBusStopLabel(primaryPickupStop, booking.routeSnapshot?.originCity || ''),
-      dropLocation: formatBusStopLabel(primaryDropStop, booking.routeSnapshot?.destinationCity || ''),
+      pickupLocation: booking.boardingPoint?.pointName
+        ? [booking.boardingPoint.pointName, booking.boardingPoint.city].filter(Boolean).join(', ')
+        : formatBusStopLabel(primaryPickupStop, booking.routeSnapshot?.originCity || ''),
+      dropLocation: booking.droppingPoint?.pointName
+        ? [booking.droppingPoint.pointName, booking.droppingPoint.city].filter(Boolean).join(', ')
+        : formatBusStopLabel(primaryDropStop, booking.routeSnapshot?.destinationCity || ''),
       routeStops: Array.isArray(busService?.route?.stops) ? busService.route.stops : [],
     },
     createdAt: booking.createdAt || null,
@@ -2119,16 +2163,24 @@ export const verifyRazorpayWalletTopup = async (req, res) => {
   const amount = Math.round(amountPaise) / 100;
   const userId = req.auth?.sub;
 
+  // The Razorpay order must be a wallet top-up created by THIS user (no using someone else's payment)
+  if (String(order?.notes?.userId || '') !== String(userId) || !String(order?.receipt || '').startsWith('uwal_')) {
+    throw new ApiError(403, 'This top-up order was not created by your account');
+  }
+
   await ensureUserWallet(userId);
 
-  const alreadyCredited = await UserWallet.findOne({
-    userId,
-    'transactions.providerPaymentId': paymentId,
-  })
-    .select('_id')
-    .lean();
+  // One payment can be credited exactly once, ever. The unique index decides, so a repeat call
+  // (even weeks later, after the wallet's 50-entry history has moved on) is simply ignored.
+  let firstTime = true;
+  try {
+    await ProcessedPayment.create({ paymentId, kind: 'wallet_topup', userId, amount });
+  } catch (err) {
+    if (err?.code === 11000) firstTime = false;
+    else throw err;
+  }
 
-  if (!alreadyCredited) {
+  if (firstTime) {
     const tx = {
       kind: 'credit',
       amount,
@@ -2138,13 +2190,18 @@ export const verifyRazorpayWalletTopup = async (req, res) => {
       providerPaymentId: paymentId,
     };
 
-    await UserWallet.updateOne(
-      { userId },
-      {
-        $inc: { balance: amount },
-        $push: { transactions: { $each: [tx], $slice: -50 } },
-      },
-    );
+    try {
+      await UserWallet.updateOne(
+        { userId },
+        {
+          $inc: { balance: amount },
+          $push: { transactions: { $each: [tx], $slice: -50 } },
+        },
+      );
+    } catch (creditErr) {
+      await ProcessedPayment.deleteOne({ paymentId }).catch(() => {});   // not credited, so allow a retry
+      throw creditErr;
+    }
   }
 
   const wallet = await UserWallet.findOne({ userId }).select('balance refundWallet transactions').slice('transactions', -10).lean();
@@ -2699,6 +2756,8 @@ export const createBusBookingOrder = async (req, res) => {
     throw new ApiError(404, 'Bus schedule not found for the selected date');
   }
 
+  const busPoints = resolveBusPoints(busService, req.body?.boardingPointId, req.body?.droppingPointId);
+
   const trip = await ensureTripInstance({ busService, scheduleId, travelDate });
   if (trip.status === 'cancelled') {
     throw new ApiError(409, 'This trip has been cancelled by the operator');
@@ -2819,6 +2878,8 @@ export const createBusBookingOrder = async (req, res) => {
     },
     busSnapshot: trip.busSnapshot || {},
     blueprintSnapshot: trip.blueprintSnapshot || {},
+    boardingPoint: busPoints.boardingPoint,
+    droppingPoint: busPoints.droppingPoint,
     payment: {
       provider: 'razorpay',
       orderId: order.id,

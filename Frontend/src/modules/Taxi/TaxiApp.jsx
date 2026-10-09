@@ -299,6 +299,7 @@ const AdminMailSettings = lazy(() => import('./modules/admin/pages/settings/Mail
 const AdminNotificationChannels = lazy(() => import('./modules/admin/pages/settings/NotificationChannels'));
 const AdminDispatcherAddons = lazy(() => import('./modules/admin/pages/settings/DispatcherAddons'));
 const AdminCountryManagement = lazy(() => import('./modules/admin/pages/masters/CountryManagement'));
+const TaxiFranchiseDashboard = lazy(() => import('./modules/admin/pages/franchise/TaxiFranchiseDashboard'));
 const AdminSupportTicketTitle = lazy(() => import('./modules/admin/pages/support/TicketTitle'));
 const AdminSupportTickets = lazy(() => import('./modules/admin/pages/support/SupportTickets'));
 
@@ -1345,6 +1346,9 @@ function TaxiApp() {
                   element={<AdminAdminCreate />}
                 />
 
+                {/* Taxi Franchise Partners (super-admin view) */}
+                <Route path="franchise" element={<TaxiFranchiseDashboard superAdmin />} />
+
                 {/* Owner Management */}
                 <Route
                   path="owners/dashboard"
@@ -1713,6 +1717,10 @@ function TaxiApp() {
                   element={<AdminReportPlaceholder title="CMS Management" />}
                 />
               </Route>
+
+              {/* Taxi Franchise Partner Portal (standalone login + dashboard) */}
+              <Route path="franchise-portal" element={<TaxiFranchiseDashboard />} />
+              <Route path="franchise-portal/*" element={<TaxiFranchiseDashboard />} />
 
               {/* Removed catch-all to allow parent routing to handle 404s */}
             </Routes>

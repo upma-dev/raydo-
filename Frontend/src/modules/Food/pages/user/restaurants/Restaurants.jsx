@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { ArrowLeft, Clock, MapPin, Heart, Star } from "lucide-react"
 import AnimatedPage from "@food/components/user/AnimatedPage"
 import Footer from "@food/components/user/Footer"
@@ -14,6 +14,7 @@ import { useLocation } from "@food/hooks/useLocation"
 import { restaurantAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
+import { calculateDistanceInKm, extractCoords } from "@food/utils/geoDistance"
 
 const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "")
 
@@ -42,12 +43,13 @@ const pickRestaurantImage = (restaurant) => {
 }
 
 export default function Restaurants() {
+  const navigate = useNavigate()
   const { addFavorite, removeFavorite, isFavorite } = useProfile()
   const { location: userLocation } = useLocation()
-  const { zoneId } = useZone(userLocation)
+  const { zoneId, loading: zoneLoading } = useZone(userLocation)
   const [restaurants, setRestaurants] = useState([])
   const [loading, setLoading] = useState(true)
-  const showRestaurantsSkeleton = useDelayedLoading(loading)
+  const showRestaurantsSkeleton = useDelayedLoading(loading || zoneLoading)
 
   useEffect(() => {
     let cancelled = false
@@ -56,9 +58,29 @@ export default function Restaurants() {
       try {
         setLoading(true)
         const params = { limit: 300, _ts: Date.now(), isRestaurant: "true" }
+        const userCoords = extractCoords(userLocation)
+
         if (zoneId) {
           params.zoneId = zoneId
         }
+        if (userCoords?.latitude && userCoords?.longitude) {
+          params.lat = userCoords.latitude
+          params.lng = userCoords.longitude
+          params.radiusKm = 35
+        } else if (userLocation?.city) {
+          params.city = userLocation.city
+        }
+
+        // If neither zoneId nor location coordinates/city are available, wait for zoneLoading
+        if (!zoneId && !userCoords && !userLocation?.city) {
+          if (zoneLoading) return
+          if (!cancelled) {
+            setRestaurants([])
+            setLoading(false)
+          }
+          return
+        }
+
         const response = await restaurantAPI.getRestaurants(params, { noCache: true })
         const list =
           response?.data?.data?.restaurants ||
@@ -69,21 +91,31 @@ export default function Restaurants() {
         const transformed = list.map((restaurant) => {
           const slug =
             restaurant?.slug ||
-            String(restaurant?.name || "")
+            String(restaurant?.name || restaurant?.restaurantName || "")
               .toLowerCase()
               .trim()
               .replace(/\s+/g, "-")
           const cuisine = Array.isArray(restaurant?.cuisines) && restaurant.cuisines.length > 0
             ? restaurant.cuisines[0]
             : "Multi-cuisine"
+
+          let calculatedDistance = "1.2 km"
+          const restCoords = extractCoords(restaurant) || extractCoords(restaurant?.location)
+          if (userCoords && restCoords) {
+            const km = calculateDistanceInKm(userCoords.latitude, userCoords.longitude, restCoords.latitude, restCoords.longitude)
+            calculatedDistance = km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(km * 1000)} m`
+          } else if (restaurant?.distance) {
+            calculatedDistance = typeof restaurant.distance === 'number' ? `${restaurant.distance.toFixed(1)} km` : restaurant.distance
+          }
+
           return {
             id: restaurant?._id || restaurant?.restaurantId || slug,
             slug,
-            name: restaurant?.name || "Unknown Restaurant",
+            name: restaurant?.name || restaurant?.restaurantName || "Unknown Restaurant",
             cuisine,
             rating: Number(restaurant?.rating || 0),
             deliveryTime: restaurant?.estimatedDeliveryTime || (restaurant?.estimatedDeliveryTimeMinutes ? `${restaurant.estimatedDeliveryTimeMinutes} mins` : "25-30 mins"),
-            distance: restaurant?.distance ? (typeof restaurant.distance === 'number' ? `${restaurant.distance.toFixed(1)} km` : restaurant.distance) : "1.2 km",
+            distance: calculatedDistance,
             priceRange: restaurant?.priceRange || "$$",
             image: pickRestaurantImage(restaurant),
             isSponsored: restaurant?.isSponsored === true || restaurant?.isSponsored === "true",
@@ -111,7 +143,7 @@ export default function Restaurants() {
     return () => {
       cancelled = true
     }
-  }, [zoneId])
+  }, [zoneId, zoneLoading, userLocation])
 
   const hasRestaurants = useMemo(() => restaurants.length > 0, [restaurants.length])
 
@@ -120,11 +152,13 @@ export default function Restaurants() {
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 py-4 sm:py-6 md:py-8 lg:py-10 space-y-4 sm:space-y-6 lg:space-y-8">
         <ScrollReveal>
           <div className="flex items-center gap-3 sm:gap-4 lg:gap-5 mb-4 lg:mb-6">
-            <Link to="/">
-              <Button variant="ghost" size="icon" className="rounded-full h-8 w-8 sm:h-10 sm:w-10 lg:h-12 lg:w-12 hover:bg-gray-100 dark:hover:bg-gray-800">
-                <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-gray-900 dark:text-gray-100" />
-              </Button>
-            </Link>
+            <button
+              type="button"
+              onClick={() => navigate("/food/user")}
+              className="rounded-full h-8 w-8 sm:h-10 sm:w-10 lg:h-12 lg:w-12 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-gray-900 dark:text-gray-100" />
+            </button>
             <TextReveal className="flex items-center gap-2 sm:gap-3 lg:gap-4">
               <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold text-gray-900 dark:text-white">
                 All Restaurants

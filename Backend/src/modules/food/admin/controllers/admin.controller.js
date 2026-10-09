@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import * as adminService from '../services/admin.service.js';
+import { resolveFranchiseScopeId } from '../middlewares/foodAdmin.middleware.js';
 import { validateCategoryListQuery, validateCategoryRejectDto, validateCategoryUpsertDto } from '../validators/category.validator.js';
 import { validateCreateOfferDto, validateUpdateOfferCartVisibilityDto } from '../validators/offer.validator.js';
 import { validateAddDeliveryBonusDto } from '../validators/deliveryBonus.validator.js';
@@ -126,9 +127,43 @@ export async function globalSearch(req, res, next) {
     }
 }
 
+async function resolveFranchiseQueryFilter(req) {
+    const isFranchiseContext = req.headers['x-portal-context'] === 'franchise' || req.query?.portalContext === 'franchise';
+    const isFranchiseUser = req.adminContext?.admin_type === 'subadmin' || req.adminContext?.admin_type === 'franchise' || req.adminContext?.admin_type === 'franchise_partner' || req.adminContext?.franchiseId;
+
+    if (!isFranchiseContext && !isFranchiseUser) {
+        return null;
+    }
+
+    const explicitFid = resolveFranchiseScopeId(req);
+    if (explicitFid) {
+        return explicitFid;
+    }
+
+    if (isFranchiseUser && req.adminContext?.id) {
+        const { default: FranchiseApplication } = await import('../models/franchiseApplication.model.js');
+        const franchise = await FranchiseApplication.findOne({ subAdminId: req.adminContext.id }).select('_id').lean();
+        if (franchise) {
+            return String(franchise._id);
+        }
+    }
+
+    // Return empty ObjectId placeholder to enforce empty data scoping in franchise portal context
+    return '000000000000000000000000';
+}
+
 export async function getRestaurants(req, res, next) {
     try {
-        const data = await adminService.getRestaurants(req.query);
+        const query = req.query || {};
+        const franchiseId = await resolveFranchiseQueryFilter(req);
+        if (franchiseId) {
+            query.franchiseId = franchiseId;
+        }
+        if (req.adminContext?.food_zone_ids && req.adminContext.food_zone_ids.length > 0) {
+            query.zoneId = req.adminContext.food_zone_ids[0];
+        }
+        console.log("getRestaurants query:", JSON.stringify(query));
+        const data = await adminService.getRestaurants(query);
         res.status(200).json({
             success: true,
             message: 'Restaurants fetched successfully',
@@ -154,7 +189,12 @@ export async function getRestaurantReport(req, res, next) {
 
 export async function getDashboardStats(req, res, next) {
     try {
-        const data = await adminService.getDashboardStats(req.query || {});
+        const query = { ...(req.query || {}) };
+        const franchiseId = await resolveFranchiseQueryFilter(req);
+        if (franchiseId) {
+            query.franchiseId = franchiseId;
+        }
+        const data = await adminService.getDashboardStats(query);
         res.status(200).json({
             success: true,
             message: 'Dashboard stats fetched successfully',
@@ -358,10 +398,34 @@ export async function updateRestaurantZoneFeaturedRank(req, res, next) {
     }
 }
 
+export async function deleteRestaurant(req, res, next) {
+    try {
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
+        }
+        const result = await adminService.deleteRestaurant(id);
+        if (!result) {
+            return res.status(404).json({ success: false, message: 'Restaurant not found' });
+        }
+        res.status(200).json({ success: true, message: 'Restaurant deleted successfully', data: result });
+    } catch (error) {
+        next(error);
+    }
+}
+
 // ----- Foods -----
 export async function getFoods(req, res, next) {
     try {
-        const data = await adminService.getFoods(req.query || {});
+        const query = req.query || {};
+        const franchiseId = await resolveFranchiseQueryFilter(req);
+        if (franchiseId) {
+            query.franchiseId = franchiseId;
+        }
+        if (req.adminContext?.food_zone_ids && req.adminContext.food_zone_ids.length > 0) {
+            query.zoneId = req.adminContext.food_zone_ids[0];
+        }
+        const data = await adminService.getFoods(query);
         res.status(200).json({ success: true, message: 'Foods fetched successfully', data });
     } catch (error) {
         next(error);
@@ -413,6 +477,10 @@ export async function deleteFood(req, res, next) {
 export async function getCategories(req, res, next) {
     try {
         const query = validateCategoryListQuery(req.query || {});
+        const franchiseId = await resolveFranchiseQueryFilter(req);
+        if (franchiseId) {
+            query.franchiseId = franchiseId;
+        }
         const data = await adminService.getCategories(query);
         res.status(200).json({ success: true, message: 'Categories fetched successfully', data });
     } catch (error) {
@@ -423,6 +491,9 @@ export async function getCategories(req, res, next) {
 export async function createCategory(req, res, next) {
     try {
         const body = validateCategoryUpsertDto(req.body || {});
+        if ((req.adminContext?.admin_type === 'subadmin' || req.adminContext?.admin_type === 'franchise' || req.adminContext?.admin_type === 'franchise_partner' || req.adminContext?.franchiseId) && req.adminContext.franchiseId) {
+            body.franchiseId = req.adminContext.franchiseId;
+        }
         const created = await adminService.createCategory(body);
         res.status(201).json({ success: true, message: 'Category created successfully', data: { category: created } });
     } catch (error) {
@@ -1061,7 +1132,11 @@ export async function approveRestaurant(req, res, next) {
 
 export async function createRestaurant(req, res, next) {
     try {
-        const restaurant = await adminService.createRestaurantByAdmin(req.body || {});
+        const payload = req.body || {};
+        if (req.adminContext?.franchiseId) {
+            payload.franchiseId = req.adminContext.franchiseId;
+        }
+        const restaurant = await adminService.createRestaurantByAdmin(payload);
         res.status(201).json({
             success: true,
             message: 'Restaurant created successfully',
@@ -1261,7 +1336,39 @@ export async function rejectDeliveryPartner(req, res, next) {
 // ----- Zones -----
 export async function getZones(req, res, next) {
     try {
-        const data = await adminService.getZones(req.query);
+        const query = { ...(req.query || {}) };
+        const isFranchiseContext = req.headers['x-portal-context'] === 'franchise' || req.query?.portalContext === 'franchise';
+        const isFranchiseUser = req.adminContext?.admin_type === 'subadmin' || req.adminContext?.admin_type === 'franchise' || req.adminContext?.admin_type === 'franchise_partner' || req.adminContext?.franchiseId;
+
+        if (isFranchiseContext || isFranchiseUser) {
+            let assignedZoneId = null;
+
+            if (req.adminContext?.food_zone_ids && req.adminContext.food_zone_ids.length > 0) {
+                assignedZoneId = String(req.adminContext.food_zone_ids[0]);
+            }
+
+            if (!assignedZoneId) {
+                const fid = resolveFranchiseScopeId(req);
+                const { default: FranchiseApplication } = await import('../models/franchiseApplication.model.js');
+                let franchise = null;
+                if (fid && mongoose.Types.ObjectId.isValid(String(fid))) {
+                    franchise = await FranchiseApplication.findById(fid).select('zoneId').lean();
+                } else if (req.adminContext?.id) {
+                    franchise = await FranchiseApplication.findOne({ subAdminId: req.adminContext.id }).select('zoneId').lean();
+                }
+                if (franchise && franchise.zoneId) {
+                    assignedZoneId = String(franchise.zoneId);
+                }
+            }
+
+            if (assignedZoneId && mongoose.Types.ObjectId.isValid(assignedZoneId)) {
+                query._id = new mongoose.Types.ObjectId(assignedZoneId);
+            } else {
+                query._id = new mongoose.Types.ObjectId('000000000000000000000000');
+            }
+        }
+
+        const data = await adminService.getZones(query);
         res.status(200).json({
             success: true,
             message: 'Zones fetched successfully',
@@ -1351,19 +1458,19 @@ export async function deleteZone(req, res, next) {
 export async function processRefund(req, res, next) {
     try {
         const { orderId } = req.params;
-        const { refundAmount } = req.body;
+        const { refundAmount, deductFromRestaurant } = req.body;
         if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
             return res.status(400).json({ success: false, message: 'Invalid order id' });
         }
-        
+
         // This is a stub for the actual refund logic.
         // We will assume adminService.processRefund exists and handles the refund.
-        const updated = await adminService.processRefund(orderId, refundAmount);
-        
+        const updated = await adminService.processRefund(orderId, refundAmount, { deductFromRestaurant: deductFromRestaurant === true || deductFromRestaurant === 'true' });
+
         // Let's add the push notification here if we have access to the user ID
         // First we need to get the order to find the user ID
         const order = await mongoose.model('FoodOrder').findById(orderId).lean();
-        
+
         if (order && order.userId) {
             const { notifyOwnersSafely } = await import('../../notifications/firebase.service.js');
             await notifyOwnersSafely(
@@ -1380,7 +1487,7 @@ export async function processRefund(req, res, next) {
                 }
             );
         }
-        
+
         res.status(200).json({ success: true, message: 'Refund processed successfully', data: updated });
     } catch (error) {
         next(error);
@@ -1445,7 +1552,7 @@ export async function getCashLimitSettlements(req, res, next) {
 export async function getSidebarBadges(req, res, next) {
     try {
         const counts = await adminService.getSidebarBadges();
-        res.status(200).json({ success: true, counts });
+        res.status(200).json({ success: true, counts, data: counts });
     } catch (error) {
         next(error);
     }
@@ -1533,3 +1640,25 @@ export async function approveEmergencyOfflineController(req, res, next) {
 }
 
 
+
+
+// ----- Order cancellation rules (restaurant accept timeout, customer cancel window) -----
+export async function getOrderCancellationSettings(req, res, next) {
+    try {
+        const { getOrderCancellationRules, DEFAULT_CANCELLATION_RULES } = await import('../../orders/services/order-cancel.service.js');
+        const rules = await getOrderCancellationRules();
+        res.status(200).json({ success: true, message: 'Cancellation rules fetched', data: { rules, defaults: DEFAULT_CANCELLATION_RULES } });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function updateOrderCancellationSettings(req, res, next) {
+    try {
+        const { updateOrderCancellationRules } = await import('../../orders/services/order-cancel.service.js');
+        const rules = await updateOrderCancellationRules(req.body || {}, req.user?.userId || null);
+        res.status(200).json({ success: true, message: 'Cancellation rules saved', data: { rules } });
+    } catch (error) {
+        next(error);
+    }
+}

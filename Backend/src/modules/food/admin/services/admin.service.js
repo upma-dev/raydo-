@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { ValidationError } from '../../../../core/auth/errors.js';
+import { logger } from '../../../../utils/logger.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
 import { DeliverySupportTicket } from '../../delivery/models/supportTicket.model.js';
@@ -289,6 +290,9 @@ export async function getRestaurants(query) {
     if (query.zoneId && mongoose.Types.ObjectId.isValid(query.zoneId)) {
         filter.zoneId = new mongoose.Types.ObjectId(query.zoneId);
     }
+    if (query.franchiseId && mongoose.Types.ObjectId.isValid(query.franchiseId)) {
+        filter.franchiseId = new mongoose.Types.ObjectId(query.franchiseId);
+    }
     const [restaurants, total] = await Promise.all([
         FoodRestaurant.find(filter)
             .sort({ createdAt: -1 })
@@ -449,12 +453,25 @@ export async function getDashboardStats(query = {}) {
         restaurantMatch.zoneId = zoneId;
     }
 
+    if (query.franchiseId && mongoose.Types.ObjectId.isValid(String(query.franchiseId))) {
+        const fid = new mongoose.Types.ObjectId(String(query.franchiseId));
+        restaurantMatch.franchiseId = fid;
+        const franchiseRestaurantIds = await FoodRestaurant.find({ franchiseId: fid }).distinct('_id');
+        orderMatch.restaurantId = { $in: franchiseRestaurantIds };
+    }
+
     const zoneRestaurantIds = zoneId
         ? await FoodRestaurant.find({ zoneId }).distinct('_id')
         : null;
-    const zoneScopedRestaurantMatch = zoneId
+    let zoneScopedRestaurantMatch = zoneId
         ? { restaurantId: { $in: zoneRestaurantIds || [] } }
         : {};
+
+    if (query.franchiseId && mongoose.Types.ObjectId.isValid(String(query.franchiseId))) {
+        const fid = new mongoose.Types.ObjectId(String(query.franchiseId));
+        const franchiseRestaurantIds = await FoodRestaurant.find({ franchiseId: fid }).distinct('_id');
+        zoneScopedRestaurantMatch = { restaurantId: { $in: franchiseRestaurantIds } };
+    }
 
     const [
         orderTotalsAgg,
@@ -846,7 +863,7 @@ export async function getTransactionReport(query = {}) {
 
     for (const tx of transactionRows) {
         // Calculate Summary
-        if (tx.status === 'captured' || tx.status === 'settled' || (tx.orderId && tx.orderId.orderStatus === 'delivered')) {
+        if (!tx.payoutReversed && (tx.status === 'captured' || tx.status === 'settled' || (tx.orderId && tx.orderId.orderStatus === 'delivered'))) {
             completedTransaction += tx.amounts?.totalCustomerPaid || 0;
             adminEarning += tx.amounts?.platformNetProfit || 0;
             restaurantEarning += tx.amounts?.restaurantShare || 0;
@@ -1804,8 +1821,8 @@ export async function upsertFeeSettings(body) {
     }
     // Single active doc pattern: keep only one active record.
     const existing = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 });
-    const nextPlatformFee = body.platformFee !== undefined ? body.platformFee : existing?.platformFee;
-    const nextGstRate = body.gstRate !== undefined ? body.gstRate : existing?.gstRate;
+    const nextPlatformFee = body.platformFee !== undefined ? body.platformFee : (existing?.platformFee ?? 0);
+    const nextGstRate = body.gstRate !== undefined ? body.gstRate : (existing?.gstRate ?? 0);
     if (!Number.isFinite(Number(nextPlatformFee)) || Number(nextPlatformFee) < 0) {
         throw new ValidationError('Platform fee is required and must be 0 or greater');
     }
@@ -2253,6 +2270,7 @@ export async function getRestaurantAnalytics(restaurantId) {
 
     // Money metrics should come from the ledger (FoodTransaction), not FoodOrder.
     const completedTx = (txRows || []).filter((tx) => {
+        if (tx?.payoutReversed) return false;
         const orderStatus = tx?.orderId?.orderStatus;
         if (orderStatus) return orderStatus === 'delivered';
         return tx?.status === 'captured' || tx?.status === 'authorized' || tx?.status === 'settled';
@@ -2603,6 +2621,16 @@ export async function updateRestaurantLocation(id, body = {}) {
     return FoodRestaurant.findById(id).select('-__v').populate('zoneId', 'name zoneName serviceLocation isActive').lean();
 }
 
+export async function deleteRestaurant(id) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) throw new ValidationError('Invalid restaurant id');
+    const restaurant = await FoodRestaurant.findById(id);
+    if (!restaurant) return null;
+
+    const { deleteCurrentRestaurantAccount } = await import('../../restaurant/services/restaurant.service.js');
+    await deleteCurrentRestaurantAccount(id);
+    return { success: true, message: 'Restaurant deleted successfully' };
+}
+
 // ----- Categories -----
 export async function getCategories(query) {
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 100, 1), 1000);
@@ -2625,6 +2653,18 @@ export async function getCategories(query) {
             filter.zoneId = new mongoose.Types.ObjectId(zid);
         }
     }
+    
+    if (query.franchiseId && mongoose.Types.ObjectId.isValid(query.franchiseId)) {
+        const myRestaurants = await FoodRestaurant.find({ franchiseId: new mongoose.Types.ObjectId(query.franchiseId) }).select('_id').lean();
+        const myRestIds = myRestaurants.map(r => r._id);
+        filter.$and = [...(filter.$and || []), {
+            $or: [
+                { restaurantId: { $in: myRestIds } },
+                { createdByRestaurantId: { $in: myRestIds } }
+            ]
+        }];
+    }
+
     if (query.approvalStatus) {
         const approvalStatus = String(query.approvalStatus);
         if (approvalStatus === 'pending') {
@@ -2707,6 +2747,7 @@ export async function createCategory(body) {
                     return new mongoose.Types.ObjectId(zid);
                 })()
                 : undefined,
+        franchiseId: body.franchiseId && mongoose.Types.ObjectId.isValid(String(body.franchiseId)) ? new mongoose.Types.ObjectId(String(body.franchiseId)) : undefined,
         isActive: body.isActive !== false,
         sortOrder: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
         // Admin-created categories are globally available immediately.
@@ -3067,6 +3108,16 @@ export async function getFoods(query) {
         const zoneRestaurantIds = await FoodRestaurant.find({ zoneId: new mongoose.Types.ObjectId(String(query.zoneId)) }).distinct('_id');
         filter.restaurantId = { $in: zoneRestaurantIds };
     }
+    
+    if (query.franchiseId && mongoose.Types.ObjectId.isValid(String(query.franchiseId))) {
+        const franchiseRestaurantIds = await FoodRestaurant.find({ franchiseId: new mongoose.Types.ObjectId(String(query.franchiseId)) }).distinct('_id');
+        if (filter.restaurantId && filter.restaurantId.$in) {
+            const existing = filter.restaurantId.$in.map(String);
+            filter.restaurantId = { $in: franchiseRestaurantIds.filter(id => existing.includes(String(id))) };
+        } else if (!filter.restaurantId) {
+            filter.restaurantId = { $in: franchiseRestaurantIds };
+        }
+    }
     if (query.search && String(query.search).trim()) {
         const term = String(query.search).trim();
         filter.$or = [
@@ -3338,6 +3389,7 @@ export async function createRestaurantByAdmin(body) {
     validateOpeningClosingTimes(normalizedOpeningTime, normalizedClosingTime);
 
     const doc = {
+        franchiseId: body.franchiseId || undefined,
         restaurantName: toStr(body.restaurantName) || toStr(body.name),
         ownerName: toStr(body.ownerName),
         ownerEmail: toStr(body.ownerEmail),
@@ -4937,6 +4989,24 @@ export async function updateWithdrawalStatus(id, { status, adminNote, rejectionR
     if (!id || !mongoose.Types.ObjectId.isValid(id)) throw new ValidationError('Invalid withdrawal ID');
 
     const nextStatus = String(status).toLowerCase();
+
+    // A withdrawal can only move forward: pending -> approved / rejected, approved -> completed / settled.
+    // Once money is sent it must never be "un-approved" (that would free the balance for a second payout).
+    const ALLOWED_MOVES = {
+        pending: ['approved', 'rejected', 'processing'],
+        processing: ['approved', 'completed', 'settled', 'rejected'],
+        approved: ['completed', 'settled'],
+        completed: [],
+        settled: [],
+        rejected: [],
+    };
+    const currentDoc = await FoodRestaurantWithdrawal.findById(id).select('status').lean();
+    if (!currentDoc) throw new ValidationError('Withdrawal request not found');
+    const currentStatus = String(currentDoc.status || 'pending').toLowerCase().trim();
+    if (!(ALLOWED_MOVES[currentStatus] || []).includes(nextStatus)) {
+        throw new ValidationError(`A ${currentStatus} withdrawal cannot be changed to ${nextStatus}.`);
+    }
+
     const update = {
         status: nextStatus,
         adminNote,
@@ -5366,3 +5436,50 @@ export async function bulkApproveFoodItems(restaurantId) {
     };
 }
 
+
+
+/**
+ * Admin refund. This function did not exist, so the admin "Refund" button always failed.
+ * Refunds the customer through the SAME engine the automatic cancellation refund uses:
+ * card/UPI go back through Razorpay, wallet payments go back to the wallet. Retrying a failed refund is allowed.
+ * `refundAmount` is optional (default = the whole order) and can never exceed what the customer paid.
+ */
+export async function processRefund(orderId, refundAmount, options = {}) {
+    const { refundOrderPayment } = await import('../../orders/services/order-cancel.service.js');
+    const foodTransactionService = await import('../../orders/services/foodTransaction.service.js');
+
+    const order = await FoodOrder.findById(orderId).lean();
+    if (!order) throw new ValidationError('Order not found');
+
+    const hasAmount = refundAmount !== undefined && refundAmount !== null && refundAmount !== '';
+    const amount = hasAmount ? Number(refundAmount) : null;
+    if (hasAmount && !(Number.isFinite(amount) && amount > 0)) throw new ValidationError('Refund amount must be a positive number');
+
+    const result = await refundOrderPayment(order._id, { amount, retry: true, reasonText: 'Refund approved by admin' });
+
+    if (result.status === 'not_required') throw new ValidationError('Nothing to refund: this order was not paid online (cash on delivery or unpaid).');
+    if (result.status === 'already_refunded') throw new ValidationError('This order has already been refunded.');
+    if (result.status === 'failed') throw new ValidationError(`The refund could not be completed: ${result.error || 'payment gateway error'}. You can try again.`);
+
+    const fullyRefunded = result.amount >= Number(order.pricing?.total || 0);
+
+    // A cancelled order must not stay payable to the restaurant.
+    if (String(order.orderStatus).startsWith('cancelled') && fullyRefunded) {
+        await foodTransactionService.updateTransactionStatus(order._id, 'refunded_by_admin', { status: 'refunded', note: 'Refunded by admin', recordedByRole: 'ADMIN' }).catch(() => null);
+        await foodTransactionService.reverseWalletsForOrder(order._id).catch(() => null);
+    }
+
+    // A DELIVERED order that is refunded: the restaurant did its job, so by default the platform bears the cost.
+    // If the admin chose "deduct from restaurant" (e.g. wrong / bad food), the restaurant's share for this order is taken back
+    // (the delivery partner keeps theirs, they delivered it). Only a full refund can reverse the payout.
+    if (options.deductFromRestaurant && fullyRefunded && ['delivered', 'completed'].includes(String(order.orderStatus))) {
+        await FoodOrder.updateOne({ _id: order._id }, { $set: { payoutReversed: true } });
+        await FoodTransaction.updateOne(
+            { orderId: order._id },
+            { $set: { payoutReversed: true }, $push: { history: { kind: 'restaurant_payout_reversed', amount: Number(order.pricing?.total || 0), at: new Date(), note: 'Restaurant share taken back after a refund of a delivered order', recordedBy: { role: 'ADMIN' } } } }
+        );
+        await foodTransactionService.reverseWalletsForOrder(order._id, { onlyRestaurant: true }).catch(() => null);
+    }
+
+    return { refund: result, order: await FoodOrder.findById(order._id).lean() };
+}

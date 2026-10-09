@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { createDefaultAdminState } from '../data/defaultAdminState.js';
 import { Admin } from '../models/Admin.js';
+import { OwnerWalletTransaction } from '../models/OwnerWalletTransaction.js';
+import { getTransportRideSettings } from '../../services/transportSettingsService.js';
 import { User } from '../../user/models/User.js';
 import { UserWallet } from '../../user/models/UserWallet.js';
 import { WalletTransaction } from '../../driver/models/WalletTransaction.js';
@@ -2340,6 +2342,7 @@ const DRIVER_LIST_SELECT = [
   'rating',
   'ratingCount',
   'isOnline',
+  'socketId',
   'isOnRide',
   'onlineSelfie',
   'approve',
@@ -2373,7 +2376,7 @@ const serializeDriverListItem = (driver) => ({
       ? Number(driver.rating || 0)
       : 0,
   rating_count: Number(driver.ratingCount || 0),
-  isOnline: Boolean(driver.isOnline),
+  isOnline: Boolean(driver.isOnline && driver.socketId),
   isOnRide: Boolean(driver.isOnRide),
   online_selfie_image: driver.onlineSelfie?.imageUrl || '',
   online_selfie_captured_at: driver.onlineSelfie?.capturedAt || null,
@@ -2857,6 +2860,66 @@ const seedInitialData = async () => {
   // Seed Onboarding Screens
   if (await OnboardingScreen.countDocuments() === 0) {
     await OnboardingScreen.insertMany(defaults.onboardingScreens);
+  }
+
+  await seedAppModules();
+};
+
+export const seedAppModules = async () => {
+  const defaults = [
+    {
+      name: 'Taxi',
+      transport_type: 'taxi',
+      service_type: 'normal',
+      order_by: 1,
+      short_description: 'Fast Cab',
+      active: 1,
+    },
+    {
+      name: 'Bike',
+      transport_type: 'taxi',
+      service_type: 'normal',
+      icon_types_for: 'bike',
+      order_by: 2,
+      short_description: 'Quick Ride',
+      active: 1,
+    },
+    {
+      name: 'Parcel',
+      transport_type: 'delivery',
+      service_type: 'parcel',
+      order_by: 3,
+      short_description: 'Send package',
+      active: 1,
+    },
+    {
+      name: 'Bus',
+      transport_type: 'taxi',
+      service_type: 'bus',
+      order_by: 4,
+      short_description: 'City transit',
+      active: 1,
+    },
+    {
+      name: 'Outstation',
+      transport_type: 'taxi',
+      service_type: 'outstation',
+      order_by: 5,
+      short_description: 'Intercity',
+      active: 1,
+    },
+  ];
+
+  for (const item of defaults) {
+    const existing = await TaxiAppModule.findOne({
+      $or: [
+        { name: new RegExp(`^${item.name}$`, 'i') },
+        { service_type: item.service_type, transport_type: item.transport_type },
+      ],
+    });
+    if (!existing) {
+      await TaxiAppModule.create(item);
+    }
   }
 };
 
@@ -3898,8 +3961,19 @@ export const listDrivers = async ({ page = 1, limit = 50, status, search, approv
     query.approve = approve === 'true' || approve === true || approve === 1;
   }
 
+  await Driver.updateMany(
+    { isOnline: true, socketId: null },
+    { $set: { isOnline: false } },
+  ).catch(() => {});
+
   if (isOnline !== undefined) {
-    query.isOnline = isOnline === 'true' || isOnline === true || isOnline === 1;
+    const wantOnline = isOnline === 'true' || isOnline === true || isOnline === 1;
+    if (wantOnline) {
+      query.isOnline = true;
+      query.socketId = { $ne: null };
+    } else {
+      query.$or = [{ isOnline: false }, { isOnline: { $exists: false } }, { socketId: null }];
+    }
   }
 
   if (search) {
@@ -5430,8 +5504,10 @@ const toAdminRideRow = (ride) => {
     tripStatus,
     rideStatus: ride.status,
     liveStatus: ride.liveStatus,
-    paymentOption: 'CASH',
+    paymentOption: String(ride.paymentMethod || 'cash').toUpperCase(),
     fare: Number(ride.fare || 0),
+    refundStatus: ride.adminRefund?.status || 'none',
+    refundedAmount: Number(ride.adminRefund?.status === 'processed' ? ride.adminRefund?.amount || 0 : 0),
     pickupLabel: formatRidePointLabel(ride.pickupLocation, 'Pickup'),
     dropLabel: formatRidePointLabel(ride.dropLocation, 'Drop'),
     pickupLocation: ride.pickupLocation,
@@ -9675,6 +9751,7 @@ export const buildDriverDutyReport = async (query = {}) => {
   };
 
   export const listAppModules = async (query = {}) => {
+    await seedAppModules();
     const safePage = Number(query.page) || 1;
     const safeLimit = Number(query.limit) || 10;
     const start = (safePage - 1) * safeLimit;

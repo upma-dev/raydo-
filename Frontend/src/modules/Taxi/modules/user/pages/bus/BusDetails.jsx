@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, User, Phone, Mail, ChevronRight, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, User, Phone, Mail, ChevronRight, Check, Loader2, MapPin } from 'lucide-react';
 import userBusService from '../../services/busService';
 import { userAuthService } from '../../services/authService';
 
@@ -52,6 +52,15 @@ const BusDetails = () => {
   const [travellerMode, setTravellerMode] = useState('self');
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileData, setProfileData] = useState(null);
+
+  // Boarding / dropping points come from the stops the operator set on this bus route
+  const stops = Array.isArray(bus?.route?.stops) ? bus.route.stops : [];
+  const stopType = (s) => String(s?.stopType || 'pickup').toLowerCase();
+  const boardingOptions = stops.filter((s) => ['pickup', 'both'].includes(stopType(s)));
+  const droppingOptions = stops.filter((s) => ['drop', 'both'].includes(stopType(s)));
+  const [boardingPointId, setBoardingPointId] = useState(boardingOptions.length === 1 ? String(boardingOptions[0].id) : '');
+  const [droppingPointId, setDroppingPointId] = useState(droppingOptions.length === 1 ? String(droppingOptions[0].id) : '');
+  const stopTime = (s, keys) => keys.map((k) => s?.[k]).find(Boolean) || '';
 
   const unwrapPayload = (response) => response?.data?.data || response?.data || response || {};
 
@@ -159,6 +168,23 @@ const BusDetails = () => {
   const handleContinue = async () => {
     if (isPaying) return;
 
+    if (boardingOptions.length > 0 && !boardingPointId) {
+      setError('Please choose your boarding point.');
+      document.getElementById('bus-points-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (droppingOptions.length > 0 && !droppingPointId) {
+      setError('Please choose your dropping point.');
+      document.getElementById('bus-points-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    const boardingIndex = stops.findIndex((s) => String(s.id) === boardingPointId);
+    const droppingIndex = stops.findIndex((s) => String(s.id) === droppingPointId);
+    if (boardingIndex >= 0 && droppingIndex >= 0 && boardingIndex >= droppingIndex) {
+      setError('Your dropping point must come after your boarding point.');
+      return;
+    }
+
     const trimmedName = String(name || '').trim();
     const parsedAge = Number(age);
     const cleanedPhone = String(phone || '').replace(/\D/g, '');
@@ -207,6 +233,8 @@ const BusDetails = () => {
         travelDate: date,
         seatIds: selectedSeats.map((seat) => seat.id),
         passenger,
+        boardingPointId: boardingPointId || undefined,
+        droppingPointId: droppingPointId || undefined,
       });
       const order = unwrapPayload(orderResponse);
 
@@ -312,6 +340,44 @@ const BusDetails = () => {
             </div>
           </div>
         </div>
+
+        {(boardingOptions.length > 0 || droppingOptions.length > 0) ? (
+          <div id="bus-points-card" className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Boarding & dropping point</h3>
+              <p className="mt-1 text-xs font-semibold text-slate-500">Choose where you get on and where you get off. Be at your boarding point 15 minutes early.</p>
+            </div>
+            {[
+              { title: 'Boarding point', tone: 'emerald', options: boardingOptions, value: boardingPointId, set: setBoardingPointId, keys: ['departureTime', 'arrivalTime'] },
+              { title: 'Dropping point', tone: 'rose', options: droppingOptions, value: droppingPointId, set: setDroppingPointId, keys: ['arrivalTime', 'departureTime'] },
+            ].filter((group) => group.options.length > 0).map((group) => (
+              <div key={group.title}>
+                <p className={`mb-2 text-[10px] font-black uppercase tracking-[0.18em] ${group.tone === 'emerald' ? 'text-emerald-600' : 'text-rose-600'}`}>{group.title}</p>
+                <div className="space-y-2">
+                  {group.options.map((s) => {
+                    const active = group.value === String(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => { group.set(String(s.id)); setError(''); }}
+                        className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
+                      >
+                        <MapPin size={16} className={active ? 'text-white' : 'text-slate-400'} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-black">{s.pointName || s.city}</span>
+                          <span className={`block truncate text-[11px] font-semibold ${active ? 'text-white/70' : 'text-slate-500'}`}>{s.city}</span>
+                        </span>
+                        <span className="shrink-0 text-xs font-black">{stopTime(s, group.keys) || '--:--'}</span>
+                        {active ? <Check size={16} /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-6">
           <div className="flex items-center justify-between gap-3">

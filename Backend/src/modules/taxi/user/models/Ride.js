@@ -512,6 +512,19 @@ const rideSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Admin refund of a COMPLETED ride (see rideRefundService). 'processing' / 'processed' block a second refund.
+    adminRefund: {
+      status: { type: String, enum: ['none', 'processing', 'processed', 'failed'], default: 'none' },
+      amount: { type: Number, default: 0, min: 0 },
+      method: { type: String, default: '' },
+      refundId: { type: String, default: '' },
+      reason: { type: String, default: '' },
+      driverDebited: { type: Number, default: 0 },
+      error: { type: String, default: '' },
+      requestedAt: { type: Date, default: null },
+      processedAt: { type: Date, default: null },
+      processedBy: { type: String, default: '' },
+    },
     promo: {
       code: {
         type: String,
@@ -728,13 +741,20 @@ const rideSchema = new mongoose.Schema(
     },
     franchiseId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Franchise',
+      ref: 'TaxiFranchisePartner',
       default: null,
       index: true
     },
     territoryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'FranchiseTerritory',
+      default: null,
+      index: true
+    },
+    // Franchise application (food+taxi franchise system) that was credited for this ride
+    franchiseApplicationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FranchiseApplication',
       default: null,
       index: true
     },

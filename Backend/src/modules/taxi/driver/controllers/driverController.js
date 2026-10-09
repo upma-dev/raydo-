@@ -32,7 +32,7 @@ import {
   hashPassword,
   signAccessToken,
 } from "../services/authService.js";
-import { cancelScheduledRideByDriver, emitToDriver } from "../../services/dispatchService.js";
+import { cancelScheduledRideByDriver, emitToDriver, emitToAdmins } from "../../services/dispatchService.js";
 import { calculateCancellationBill } from "../../services/cancellationService.js";
 import { notifyLateAvailableDriver, getActivePendingDispatchForDriver } from "../../services/dispatchService.js";
 import { findZoneByPickup } from "../services/locationService.js";
@@ -41,6 +41,7 @@ import {
   applyDriverWalletAdjustment,
   ensureDriverWalletCanAcceptRide,
   serializeDriverWallet,
+  settleCompletedRideWallet,
   topUpDriverWallet,
 } from "../services/walletService.js";
 import {
@@ -1362,6 +1363,13 @@ const refreshDriverPaymentCollection = async (ride) => {
 
   ride.driverPaymentCollection = nextCollection;
   await ride.save();
+
+  // QR / link payment confirmed with Razorpay: credit the driver for an online ride that was waiting for this payment
+  if (isPaid && String(ride.status) === "completed") {
+    await settleCompletedRideWallet({ rideId: ride._id }).catch((e) =>
+      console.error("[Taxi] settle after QR payment failed:", e?.message || e),
+    );
+  }
 
   return serializeDriverPaymentCollection(nextCollection);
 };
@@ -5934,7 +5942,7 @@ export const getOwnerFleetDrivers = async (req, res) => {
 
   const drivers = await Driver.find(query)
     .sort({ createdAt: -1 })
-    .select("name phone email city salary approve status isOnline isOnRide createdAt")
+    .select("name phone email city salary approve status isOnline socketId isOnRide createdAt")
     .lean();
 
   res.json({
@@ -5949,12 +5957,22 @@ export const getOwnerFleetDrivers = async (req, res) => {
         salary: Number(driver.salary || 0),
         approve: driver.approve,
         status: driver.status,
-        isOnline: Boolean(driver.isOnline),
+        isOnline: Boolean(driver.isOnline && driver.socketId),
         isOnRide: Boolean(driver.isOnRide),
         createdAt: driver.createdAt,
       })),
     },
   });
+};
+
+// Same rule the rider app uses to price a bus seat (per seat type, falling back to the base seat price)
+const resolveBusSeatPrice = (busService = {}, seat = {}) => {
+  const variantPricing = busService?.variantPricing || {};
+  const defaultPrice = Number(busService?.seatPrice || 0);
+  const variantKey = String(seat?.variant || "seat").trim().toLowerCase();
+  const resolvedPrice = variantPricing?.[variantKey] ?? variantPricing?.seat ?? defaultPrice;
+
+  return Number.isFinite(Number(resolvedPrice)) ? Number(resolvedPrice) : defaultPrice;
 };
 
 export const createOwnerFleetDriver = async (req, res) => {
@@ -5969,6 +5987,7 @@ export const createOwnerFleetDriver = async (req, res) => {
 
   const name = String(req.body?.name || "").trim();
   const phone = normalizePhone(req.body?.phone || req.body?.mobile);
+  const salaryValue = Math.max(0, Number(req.body?.salary || 0) || 0);
   const email = String(req.body?.email || "")
     .trim()
     .toLowerCase();
@@ -6058,7 +6077,7 @@ export const getOwnerFleetDashboard = async (req, res) => {
         .lean()
       : null,
     Driver.find({ owner_id: owner._id, deletedAt: null })
-      .select("name phone email city approve status isOnline isOnRide createdAt")
+      .select("name phone email city approve status isOnline socketId isOnRide createdAt")
       .sort({ createdAt: -1 })
       .lean(),
     FleetVehicle.find({ owner_id: owner._id, active: true })
@@ -6300,10 +6319,10 @@ export const getOwnerFleetDashboard = async (req, res) => {
       driver.approve === true ||
       String(driver.status || "").toLowerCase() === "approved",
   );
-  const onlineDrivers = approvedDrivers.filter((driver) => driver.isOnline);
+  const onlineDrivers = approvedDrivers.filter((driver) => driver.isOnline && driver.socketId);
   const busyDrivers = approvedDrivers.filter((driver) => driver.isOnRide);
   const availableDrivers = approvedDrivers.filter(
-    (driver) => driver.isOnline && !driver.isOnRide,
+    (driver) => driver.isOnline && driver.socketId && !driver.isOnRide,
   );
 
   const approvedVehicles = vehicles.filter(
@@ -6456,7 +6475,7 @@ export const getOwnerFleetDashboard = async (req, res) => {
         phone: driver.phone || "",
         city: driver.city || "",
         status: driver.status || "pending",
-        isOnline: Boolean(driver.isOnline),
+        isOnline: Boolean(driver.isOnline && driver.socketId),
         isOnRide: Boolean(driver.isOnRide),
         createdAt: driver.createdAt,
       })),

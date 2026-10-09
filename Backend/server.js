@@ -23,6 +23,8 @@ let expireOffersInterval = null;
 let fssaiExpiryInterval = null;
 let gigReminderInterval = null;
 let scheduledOrdersInterval = null;
+let autoCancelInterval = null;
+let taxiSettlementInterval = null;
 
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received, starting graceful shutdown`);
@@ -39,6 +41,8 @@ const gracefulShutdown = async (signal) => {
             if (fssaiExpiryInterval) clearInterval(fssaiExpiryInterval);
             if (gigReminderInterval) clearInterval(gigReminderInterval);
             if (scheduledOrdersInterval) clearInterval(scheduledOrdersInterval);
+            if (autoCancelInterval) clearInterval(autoCancelInterval);
+            if (taxiSettlementInterval) clearInterval(taxiSettlementInterval);
             logger.info('Graceful shutdown complete');
             process.exit(0);
         } catch (err) {
@@ -59,6 +63,26 @@ const startServer = async () => {
 
         // 1. Connect to Database (MongoDB)
         await connectDB();
+
+        // Every franchise login must only reach the modules its franchise bought (repairs older accounts, idempotent)
+        try {
+            // The franchise ledger's unique index is what stops any credit from being paid twice: make sure it exists
+            const { default: FranchiseLedger } = await import('./src/modules/food/admin/models/franchiseLedger.model.js');
+            await FranchiseLedger.init();
+            const { backfillFranchiseAccess } = await import('./src/modules/food/admin/services/franchise.service.js');
+            const fixed = await backfillFranchiseAccess();
+            if (fixed > 0) logger.info(`Franchise access repaired for ${fixed} login(s)`);
+        } catch (err) {
+            logger.error(`Franchise access backfill failed: ${err.message}`);
+        }
+
+        // Food and Taxi share one Razorpay account (uses .env keys, else the keys saved in Admin > Payment Gateways)
+        try {
+            const { startRazorpayCredentialSync } = await import('./src/modules/food/orders/helpers/razorpay.helper.js');
+            startRazorpayCredentialSync();
+        } catch (err) {
+            logger.error(`Razorpay credential sync failed to start: ${err.message}`);
+        }
 
         // 2. Create HTTP server from Express app
         const httpServer = http.createServer(app);
@@ -164,6 +188,30 @@ const startServer = async () => {
         };
         runScheduledOrdersCheck();
         scheduledOrdersInterval = setInterval(runScheduledOrdersCheck, 60 * 1000);
+
+        // Orders the restaurant did not accept within the admin-set time are cancelled and refunded automatically
+        const runAutoCancelCheck = async () => {
+            try {
+                const { autoCancelUnacceptedOrders } = await import('./src/modules/food/orders/services/order-cancel.service.js');
+                await autoCancelUnacceptedOrders();
+            } catch (err) {
+                logger.error(`Auto-cancel check error: ${err.message}`);
+            }
+        };
+        autoCancelInterval = setInterval(runAutoCancelCheck, 60 * 1000);
+
+        // Taxi: credit drivers for completed ONLINE rides whose payment has been confirmed since (safety net)
+        const runTaxiSettlement = async () => {
+            try {
+                const { settlePaidOnlineRides } = await import('./src/modules/taxi/driver/services/walletService.js');
+                await settlePaidOnlineRides();
+                const { creditFranchiseForBusBookings } = await import('./src/modules/food/admin/services/franchiseTaxi.service.js');
+                await creditFranchiseForBusBookings();
+            } catch (err) {
+                logger.error(`Taxi settlement check error: ${err.message}`);
+            }
+        };
+        taxiSettlementInterval = setInterval(runTaxiSettlement, 60 * 1000);
 
         process.on('SIGINT', () => gracefulShutdown('SIGINT'));
         process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

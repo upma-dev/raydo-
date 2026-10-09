@@ -2,6 +2,7 @@ import { MaintenanceSetting } from '../maintenanceSetting.model.js';
 import { FoodZone } from '../../../modules/food/admin/models/zone.model.js';
 import { Zone as TaxiZone } from '../../../modules/taxi/driver/models/Zone.js';
 import { sendResponse } from '../../../utils/response.js';
+import { invalidateMaintenanceCache } from '../maintenanceSetting.middleware.js';
 
 export const getMaintenanceSettings = async (req, res, next) => {
     try {
@@ -62,6 +63,7 @@ export const upsertMaintenanceSetting = async (req, res, next) => {
             update,
             { new: true, upsert: true }
         ).lean();
+        invalidateMaintenanceCache(); // take effect immediately
 
         let populatedZone = null;
         if (setting.zoneId) {
@@ -87,6 +89,7 @@ export const deleteMaintenanceSetting = async (req, res, next) => {
     try {
         const { id } = req.params;
         await MaintenanceSetting.findByIdAndDelete(id);
+        invalidateMaintenanceCache();
         return sendResponse(res, 200, 'Maintenance setting removed');
     } catch (err) {
         next(err);

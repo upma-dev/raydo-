@@ -7,7 +7,7 @@ import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
-import { createRazorpayCheckoutOrder, isRazorpayConfigured, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
+import { createRazorpayCheckoutOrder, isRazorpayConfigured, verifyPaymentSignature, fetchRazorpayOrder, fetchRazorpayPayment } from '../../orders/helpers/razorpay.helper.js';
 
 /**
  * Enhanced wallet fetch for delivery partners.
@@ -94,7 +94,11 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
 
     // Pocket Balance = (Earnings + Bonus) - Total Withdrawn (approved) - Pending Withdrawals
     // Wait, usually pocket balance subtracts pending too so user knows how much is "left" to request.
-    const pocketBalance = Math.max(0, (totalEarned + totalBonus) - (totalWithdrawn + pendingWithdrawals));
+    const grossPocketBalance = Math.max(0, (totalEarned + totalBonus) - (totalWithdrawn + pendingWithdrawals));
+
+    // COD cash the rider is still holding belongs to the platform. It is netted against earnings, so a rider cannot
+    // keep the customers' cash AND withdraw the same orders' earnings. Depositing the cash frees the earnings again.
+    const pocketBalance = Math.max(0, grossPocketBalance - cashInHand);
 
     // Fetch transactions for UI (Orders, Bonuses, Withdrawals)
     const [ordersTx] = await Promise.all([
@@ -153,7 +157,9 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
 
     return {
         totalBalance: totalEarned + totalBonus, // Gross lifetime earnings
-        pocketBalance, // Available to withdraw
+        pocketBalance, // Available to withdraw (earnings minus COD cash still in hand)
+        grossPocketBalance, // Earnings not yet withdrawn, before the COD cash in hand is netted off
+        cashDeductedFromBalance: Math.min(cashInHand, grossPocketBalance),
         cashInHand, // COD to be deposited/deducted
         totalWithdrawn, // Actually paid out
         pendingWithdrawals, // In process
@@ -179,7 +185,11 @@ export const requestDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
         throw new ValidationError(`Minimum withdrawal amount is ₹${wallet.deliveryWithdrawalLimit}`);
     }
     if (amount > wallet.pocketBalance) {
-        throw new ValidationError('Insufficient balance for this withdrawal');
+        throw new ValidationError(
+            wallet.cashInHand > 0 && amount <= wallet.grossPocketBalance
+                ? `You are holding \u20B9${wallet.cashInHand} of COD cash. Deposit it first (or withdraw up to \u20B9${wallet.pocketBalance}).`
+                : 'Insufficient balance for this withdrawal'
+        );
     }
 
     const partner = await FoodDeliveryPartner.findById(deliveryPartnerId).lean();
@@ -236,52 +246,58 @@ export const verifyDeliveryCashDepositPayment = async (deliveryPartnerId, payloa
     const orderId = String(payload?.razorpayOrderId || '').trim();
     const paymentId = String(payload?.razorpayPaymentId || '').trim();
     const signature = String(payload?.razorpaySignature || '').trim();
-    const amount = Number(payload?.amount);
+    // NOTE: the amount sent by the app is deliberately ignored. The deposit is exactly what Razorpay received.
 
     if (!orderId) throw new ValidationError('razorpayOrderId is required');
     if (!paymentId) throw new ValidationError('razorpayPaymentId is required');
     if (!signature) throw new ValidationError('razorpaySignature is required');
-    if (!Number.isFinite(amount) || amount < 1) throw new ValidationError('amount is required');
-
-    const existing = await FoodDeliveryCashDeposit.findOne({
-        deliveryPartnerId,
-        $or: [
-            { razorpayPaymentId: paymentId },
-            { razorpayOrderId: orderId }
-        ]
-    }).lean();
-
-    if (existing?.status === 'Completed') {
-        return { deposit: existing, wallet: await getDeliveryPartnerWalletEnhanced(deliveryPartnerId) };
-    }
-
-    const wallet = await getDeliveryPartnerWalletEnhanced(deliveryPartnerId);
-    if (amount > wallet.cashInHand) {
-        throw new ValidationError('Deposit amount cannot exceed cash in hand');
-    }
 
     if (!isRazorpayConfigured()) {
         throw new ValidationError('Razorpay payment gateway is not configured');
     }
-
-    const isValid = verifyPaymentSignature(orderId, paymentId, signature);
-
-    if (!isValid) {
+    if (!verifyPaymentSignature(orderId, paymentId, signature)) {
         throw new ValidationError('Payment verification failed');
     }
 
+    // One payment can only be credited once, to one partner (checked across ALL partners)
+    const used = await FoodDeliveryCashDeposit.findOne({ razorpayPaymentId: paymentId, status: 'Completed' }).lean();
+    if (used) {
+        if (String(used.deliveryPartnerId) === String(deliveryPartnerId)) {
+            return { deposit: used, wallet: await getDeliveryPartnerWalletEnhanced(deliveryPartnerId) };
+        }
+        throw new ValidationError('This payment has already been used');
+    }
+
+    // Ask Razorpay (source of truth): a real completed payment, for a deposit order created by THIS partner
+    let rzOrder;
+    let rzPayment;
+    try {
+        [rzOrder, rzPayment] = await Promise.all([fetchRazorpayOrder(orderId), fetchRazorpayPayment(paymentId)]);
+    } catch (err) {
+        throw new ValidationError('We could not confirm this payment with the bank yet. If money was deducted, please try again in a minute.');
+    }
+    if (String(rzPayment?.order_id) !== orderId) throw new ValidationError('This payment does not belong to this deposit');
+    if (!['captured', 'authorized'].includes(String(rzPayment?.status))) throw new ValidationError('Payment is not completed yet');
+    if (Number(rzPayment?.amount) !== Number(rzOrder?.amount)) throw new ValidationError('Paid amount does not match the deposit order');
+    if (!String(rzOrder?.receipt || '').startsWith(`cash_deposit_${String(deliveryPartnerId).slice(-8)}_`)) {
+        throw new ValidationError('This deposit order was not created by your account');
+    }
+
+    const amount = Math.round(Number(rzOrder.amount)) / 100;
+    if (!Number.isFinite(amount) || amount < 1) throw new ValidationError('Invalid deposit amount');
+
+    const wallet = await getDeliveryPartnerWalletEnhanced(deliveryPartnerId);
+    if (amount > wallet.cashInHand) {
+        // The partner can only create a deposit order up to their cash in hand, so this should not happen.
+        // Do not over-credit; the payment stays on record at Razorpay for support to refund.
+        throw new ValidationError('Deposit amount cannot exceed cash in hand. Contact support for a refund of this payment.');
+    }
+
+    const existing = await FoodDeliveryCashDeposit.findOne({ deliveryPartnerId, razorpayOrderId: orderId });
     const deposit = existing
         ? await FoodDeliveryCashDeposit.findByIdAndUpdate(
             existing._id,
-            {
-                $set: {
-                    amount,
-                    paymentMethod: 'razorpay',
-                    status: 'Completed',
-                    razorpayOrderId: orderId,
-                    razorpayPaymentId: paymentId
-                }
-            },
+            { $set: { amount, paymentMethod: 'razorpay', status: 'Completed', razorpayOrderId: orderId, razorpayPaymentId: paymentId } },
             { new: true }
         )
         : await FoodDeliveryCashDeposit.create({

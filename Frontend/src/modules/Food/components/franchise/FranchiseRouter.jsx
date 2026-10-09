@@ -3,7 +3,8 @@ import { Routes, Route, Navigate } from "react-router-dom";
 
 const FranchiseApplyPage = lazy(() => import("@food/pages/franchise/FranchiseApplyPage"));
 const FranchiseSuccessPage = lazy(() => import("@food/pages/franchise/FranchiseSuccessPage"));
-const FranchisePartnerDashboard = lazy(() => import("@food/pages/franchise/FranchisePartnerDashboard"));
+const AdminLogin = lazy(() => import("@food/pages/admin/auth/AdminLogin"));
+import FranchiseDashboardUnified from "@food/pages/franchise/FranchiseDashboardUnified";
 
 function Loader() {
   return (
@@ -21,8 +22,9 @@ export default function FranchiseRouter() {
         <Route index element={<Navigate to="apply" replace />} />
         <Route path="apply" element={<FranchiseApplyPage />} />
         <Route path="success" element={<FranchiseSuccessPage />} />
-        <Route path="dashboard" element={<FranchisePartnerDashboard />} />
-        <Route path="partner-dashboard" element={<FranchisePartnerDashboard />} />
+        <Route path="login" element={<AdminLogin />} />
+        <Route path="dashboard/*" element={<FranchiseDashboardUnified />} />
+        <Route path="partner-dashboard/*" element={<FranchiseDashboardUnified />} />
         <Route path="*" element={<Navigate to="apply" replace />} />
       </Routes>
     </Suspense>

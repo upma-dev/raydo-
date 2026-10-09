@@ -10,8 +10,36 @@ try {
 
 import { config } from '../../../../config/env.js';
 
-const KEY_ID = String(config.razorpayKeyId || process.env.RAZORPAY_KEY_ID || '').trim();
-const KEY_SECRET = String(config.razorpayKeySecret || process.env.RAZORPAY_KEY_SECRET || '').trim();
+let KEY_ID = String(config.razorpayKeyId || process.env.RAZORPAY_KEY_ID || '').trim();
+let KEY_SECRET = String(config.razorpayKeySecret || process.env.RAZORPAY_KEY_SECRET || '').trim();
+const ENV_HAS_KEYS = Boolean(KEY_ID && KEY_SECRET);
+
+/**
+ * Food and Taxi share ONE Razorpay account. The server .env keys win; if they are not set, we borrow the keys
+ * saved in Admin > Payment Gateways (Taxi settings, kept in the DB). This helper is synchronous, so the DB keys are
+ * loaded into memory at startup and refreshed every few minutes by startRazorpayCredentialSync().
+ */
+export async function refreshRazorpayCredentials() {
+    if (ENV_HAS_KEYS) return;
+    try {
+        const { resolveConfiguredGatewayCredentials } = await import('../../../taxi/services/paymentGatewayService.js');
+        const creds = await resolveConfiguredGatewayCredentials('razor_pay');
+        if (creds?.keyId && creds?.keySecret) {
+            KEY_ID = String(creds.keyId).trim();
+            KEY_SECRET = String(creds.keySecret).trim();
+        }
+    } catch {
+        // No usable keys in the DB either: Razorpay simply stays "not configured"
+    }
+}
+
+export function startRazorpayCredentialSync(everyMs = 5 * 60 * 1000) {
+    if (ENV_HAS_KEYS) return null;
+    refreshRazorpayCredentials();
+    const timer = setInterval(refreshRazorpayCredentials, everyMs);
+    timer.unref?.();
+    return timer;
+}
 
 function getRazorpayErrorMessage(error) {
     return (
@@ -108,6 +136,19 @@ export async function fetchRazorpayPayment(paymentId) {
     if (!instance) throw new Error('Razorpay not configured');
     if (!paymentId) throw new Error('paymentId is required');
     return instance.payments.fetch(String(paymentId)).catch((error) => {
+        throw new Error(getRazorpayErrorMessage(error));
+    });
+}
+
+/**
+ * Fetch a Razorpay ORDER server-side. Its amount / receipt are the source of truth, never the client's request.
+ * @param {string} razorpayOrderId
+ */
+export async function fetchRazorpayOrder(razorpayOrderId) {
+    const instance = getRazorpayInstance();
+    if (!instance) throw new Error('Razorpay not configured');
+    if (!razorpayOrderId) throw new Error('razorpayOrderId is required');
+    return instance.orders.fetch(String(razorpayOrderId)).catch((error) => {
         throw new Error(getRazorpayErrorMessage(error));
     });
 }

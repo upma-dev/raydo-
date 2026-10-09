@@ -275,6 +275,7 @@ const orderSchema = new mongoose.Schema(
             type: paymentSchema,
             required: false
         },
+        payoutReversed: { type: Boolean, default: false },
         orderStatus: {
             type: String,
             enum: [
@@ -319,6 +320,8 @@ const orderSchema = new mongoose.Schema(
         deliveryFleet: { type: String, default: 'standard', trim: true },
         scheduledAt: { type: Date, default: null },
         scheduledDispatched: { type: Boolean, default: false },
+        /** When the restaurant was first told about this order (starts the "restaurant must accept" timer) */
+        restaurantNotifiedAt: { type: Date, default: null, index: true },
         riderBasePay: { type: Number, default: 0, min: 0 },
         riderSurgePay: { type: Number, default: 0, min: 0 },
         riderDeliveryFeeShare: { type: Number, default: 0, min: 0 },
@@ -339,7 +342,7 @@ const orderSchema = new mongoose.Schema(
         },
         franchiseId: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'Franchise',
+            ref: 'FranchiseApplication',
             default: null,
             index: true
         },
@@ -403,6 +406,8 @@ const settingsSchema = new mongoose.Schema(
     {
         key: { type: String, required: true, unique: true, trim: true },
         dispatchMode: { type: String, enum: ['auto'], default: 'auto' },
+        /** Free-form settings payload for keyed documents (e.g. key: 'order_cancellation') */
+        rules: { type: mongoose.Schema.Types.Mixed, default: {} },
         updatedBy: {
             role: { type: String },
             adminId: { type: mongoose.Schema.Types.ObjectId },

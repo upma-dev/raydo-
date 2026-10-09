@@ -868,6 +868,11 @@ const BusBookingManager = () => {
                         <p className="mt-1 text-[11px] font-semibold text-slate-500">
                           {formatDateLabel(booking.travelDate)}
                         </p>
+                        {(booking.boardingPoint?.pointName || booking.droppingPoint?.pointName) ? (
+                          <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                            {booking.boardingPoint?.pointName || '-'} {booking.boardingPoint?.time ? `(${booking.boardingPoint.time})` : ''} → {booking.droppingPoint?.pointName || '-'}
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="rounded-2xl bg-white px-4 py-3">

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Menu, X, ArrowRight, ChevronRight } from "lucide-react";
 import GooglePlayBadge from "./GooglePlayBadge";
 import { useRaydoLandingData } from "../../services/raydoLandingService";
+import GlobalLanguageSelector from "@/shared/components/GlobalLanguageSelector";
 
 export default function RaydoNavbar() {
   const navigate = useNavigate();
@@ -113,8 +114,9 @@ export default function RaydoNavbar() {
           ))}
         </div>
 
-        {/* Right: Official Google Play Store Badge & GET STARTED (NO LOGIN ROUTES) */}
+        {/* Right: Language Selector & Google Play Store Badge & GET STARTED */}
         <div className="hidden md:flex items-center gap-3.5">
+          <GlobalLanguageSelector variant="dark" />
           <GooglePlayBadge url={config.playStoreUrl} size="compact" />
 
           <button
@@ -128,6 +130,7 @@ export default function RaydoNavbar() {
 
         {/* Mobile Hamburger Toggle */}
         <div className="flex md:hidden items-center gap-2">
+          <GlobalLanguageSelector variant="dark" />
           <GooglePlayBadge url={config.playStoreUrl} size="compact" />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

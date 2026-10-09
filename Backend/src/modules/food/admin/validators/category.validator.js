@@ -14,6 +14,7 @@ const booleanQuerySchema = z.preprocess((value) => {
 const listSchema = z.object({
     search: z.string().optional(),
     zoneId: z.string().optional(),
+    franchiseId: z.string().optional(),
     isApproved: booleanQuerySchema.optional(),
     approvalStatus: z.enum(['pending', 'approved', 'rejected']).optional(),
     page: z.coerce.number().int().min(1).optional(),
@@ -26,6 +27,7 @@ const upsertSchema = z.object({
     type: z.string().max(100).optional(),
     foodTypeScope: z.enum(['Veg', 'Non-Veg', 'Both']).optional(),
     zoneId: z.string().max(100).optional(),
+    franchiseId: z.string().max(100).optional(),
     status: z.boolean().optional(),
     isActive: z.boolean().optional(),
     sortOrder: z.coerce.number().int().optional()
@@ -51,7 +53,7 @@ export const validateCategoryUpsertDto = (body) => {
     const d = result.data;
     // Normalize active flag: frontend uses `status`
     const isActive = d.isActive !== undefined ? d.isActive : (d.status !== undefined ? d.status : undefined);
-    return { ...d, isActive };
+    return { ...d, isActive, franchiseId: body.franchiseId || d.franchiseId };
 };
 
 export const validateCategoryRejectDto = (body) => {

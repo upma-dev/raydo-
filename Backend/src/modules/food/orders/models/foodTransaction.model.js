@@ -21,6 +21,8 @@ const foodTransactionSchema = new mongoose.Schema({
         index: true 
     },
     currency: { type: String, default: 'INR' },
+    // true = the customer was refunded after delivery and the admin took the restaurant's share back (it no longer counts as earnings)
+    payoutReversed: { type: Boolean, default: false, index: true },
 
     // Snapshot of order pricing at the time transaction was created
     pricing: {

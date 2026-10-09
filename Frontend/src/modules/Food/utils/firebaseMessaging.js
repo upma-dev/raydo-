@@ -35,6 +35,7 @@ const pushDebugWarn = (prefix, message, data = {}) => {
 };
 
 function normalizeModuleFromPath(pathname = window.location.pathname) {
+  if (pathname.includes("/franchise")) return "admin";
   if (pathname.includes("/restaurant") && !pathname.includes("/restaurants")) return "restaurant";
   if (pathname.includes("/delivery")) return "delivery";
   if (pathname.includes("/admin")) return "admin";
@@ -551,7 +552,7 @@ async function saveTokenByModule(moduleName, token, platform = "web") {
     await userAPI.saveFcmToken(token, { platform });
     return;
   }
-  if (moduleName === "admin") {
+  if (moduleName === "admin" || moduleName === "franchise") {
     await adminAPI.saveFcmToken(token, platform);
     return;
   }

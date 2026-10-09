@@ -2,7 +2,22 @@ export const ADMIN_LEVELS = {
   PLATFORM_SUPERADMIN: 'platform_superadmin',
   FOOD_SUPERADMIN: 'food_superadmin',
   TAXI_SUPERADMIN: 'taxi_superadmin',
+  FRANCHISE_ADMIN: 'franchise_admin',
   SUBADMIN: 'subadmin',
+};
+
+// Helper to detect franchise partner type
+export const isFranchiseType = (admin = {}) => {
+  const adminType = String(admin.admin_type || '').trim().toLowerCase();
+  const roleLower = String(admin.role || '').trim().toLowerCase();
+  const explicit = String(admin.adminLevel || admin.admin_level || '').trim().toLowerCase();
+  return (
+    adminType === 'franchise' ||
+    adminType === 'franchise_partner' ||
+    roleLower === 'franchise' ||
+    roleLower === 'franchise_partner' ||
+    explicit === 'franchise_admin'
+  );
 };
 
 export const FOOD_PERMISSION_RESOURCES = [
@@ -23,6 +38,7 @@ export const FOOD_PERMISSION_RESOURCES = [
   { key: 'promotions', label: 'Promotions, Banners & Landing Page', group: 'Finance & Reports' },
   { key: 'referrals', label: 'Referral Settings', group: 'Finance & Reports' },
   { key: 'fee_settings', label: 'Fee Settings', group: 'Settings' },
+  { key: 'franchise', label: 'Franchise Management', group: 'Operations' },
   { key: 'settings', label: 'System Settings & Business Setup', group: 'Settings' },
   { key: 'cms', label: 'Pages, CMS & Landing Page', group: 'Settings' },
 ];
@@ -149,6 +165,15 @@ export const resolveAdminLevel = (admin = {}) => {
   const roleLower = String(admin.role || '').trim().toLowerCase();
   const explicit = String(admin.adminLevel || admin.admin_level || '').trim().toLowerCase();
 
+  // Franchise Partner
+  if (
+    adminType === 'franchise' || adminType === 'franchise_partner' ||
+    roleLower === 'franchise' || roleLower === 'franchise_partner' ||
+    explicit === 'franchise_admin'
+  ) {
+    return ADMIN_LEVELS.FRANCHISE_ADMIN;
+  }
+
   if (adminType === 'subadmin' || roleLower === 'subadmin' || explicit === ADMIN_LEVELS.SUBADMIN) {
     return ADMIN_LEVELS.SUBADMIN;
   }
@@ -168,6 +193,15 @@ export const isFoodSuperAdminLike = (admin = {}) => {
   const adminType = String(admin.admin_type || '').trim().toLowerCase();
   const roleLower = String(admin.role || '').trim().toLowerCase();
   const explicit = String(admin.adminLevel || admin.admin_level || '').trim().toLowerCase();
+
+  // Franchise partners are NOT superadmins
+  if (
+    adminType === 'franchise' || adminType === 'franchise_partner' ||
+    roleLower === 'franchise' || roleLower === 'franchise_partner' ||
+    explicit === 'franchise_admin'
+  ) {
+    return false;
+  }
 
   if (adminType === 'subadmin' || roleLower === 'subadmin' || explicit === ADMIN_LEVELS.SUBADMIN) {
     return false;
@@ -263,6 +297,7 @@ const PATH_RESOURCE_RULES = [
   { prefix: '/admin/food/hero-banner-management', resource: 'promotions' },
   { prefix: '/admin/food/referral-settings', resource: 'referrals' },
   { prefix: '/admin/food/fee-settings', resource: 'fee_settings' },
+  { prefix: '/admin/food/franchise-management', resource: 'franchise' },
   { prefix: '/admin/food/dining', resource: 'dining' },
   { prefix: '/admin/food/business-setup', resource: 'settings' },
   { prefix: '/admin/food/settings', resource: 'settings' },
@@ -354,14 +389,27 @@ export const normalizeFoodAdminProfile = (profile = {}) => {
   const source = profile && typeof profile === 'object' ? profile : {};
   const adminLevel = resolveAdminLevel(source);
   const isSuper = isFoodSuperAdminLike(source);
+  const isFranchise = isFranchiseType(source);
   const permissions = normalizePermissions(source.permissions);
+
+  let resolvedAdminType;
+  if (isFranchise) {
+    resolvedAdminType = 'franchise';
+  } else if (isSuper) {
+    resolvedAdminType = 'superadmin';
+  } else {
+    resolvedAdminType = 'subadmin';
+  }
 
   return {
     ...source,
     adminLevel,
     module: source.module || 'food',
-    admin_type: isSuper ? 'superadmin' : 'subadmin',
-    permissions: isSuper ? (permissions.includes('*') ? permissions : ['*', ...permissions]) : expandLegacyPermissions(permissions),
+    admin_type: resolvedAdminType,
+    franchiseId: source.franchiseId || null,
+    permissions: isSuper
+      ? (permissions.includes('*') ? permissions : ['*', ...permissions])
+      : expandLegacyPermissions(permissions),
     food_zone_ids: Array.isArray(source.food_zone_ids) ? source.food_zone_ids : [],
   };
 };

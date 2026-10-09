@@ -10,7 +10,7 @@ try {
     if (dnsServers.length > 0) {
         dns.setServers(dnsServers);
     }
-} catch (_) {}
+} catch (_) { }
 
 // Set up Mongoose connection event listeners once
 mongoose.connection.on('disconnected', () => {

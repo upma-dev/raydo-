@@ -4,10 +4,31 @@ import {
     approveFoodItem,
     rejectFoodItem
 } from '../services/foodApproval.service.js';
+import { resolveFranchiseScopeId } from '../middlewares/foodAdmin.middleware.js';
 
 export async function getPendingFoodApprovals(req, res, next) {
     try {
-        const data = await listPendingFoodApprovals(req.query || {});
+        const query = req.query || {};
+        const isFranchiseContext = req.headers['x-portal-context'] === 'franchise' || req.query?.portalContext === 'franchise';
+        const isFranchiseUser = req.adminContext?.admin_type === 'subadmin' || req.adminContext?.admin_type === 'franchise' || req.adminContext?.admin_type === 'franchise_partner' || req.adminContext?.franchiseId;
+
+        if (isFranchiseContext || isFranchiseUser) {
+            const explicitFid = resolveFranchiseScopeId(req);
+            if (explicitFid) {
+                query.franchiseId = String(explicitFid);
+            } else if (isFranchiseUser) {
+                const { default: FranchiseApplication } = await import('../models/franchiseApplication.model.js');
+                const franchise = await FranchiseApplication.findOne({ subAdminId: req.adminContext.id }).select('_id').lean();
+                if (franchise) {
+                    query.franchiseId = String(franchise._id);
+                } else {
+                    query.franchiseId = '000000000000000000000000';
+                }
+            } else {
+                query.franchiseId = '000000000000000000000000';
+            }
+        }
+        const data = await listPendingFoodApprovals(query);
         return sendResponse(res, 200, 'Pending food approvals fetched successfully', data);
     } catch (error) {
         next(error);

@@ -116,6 +116,10 @@ const AppRoutes = () => {
 
   useEffect(() => {
     const handleGlobalAuthStale = (event) => {
+      if (typeof window !== 'undefined' && window.location.pathname.includes('/franchise')) {
+        navigate('/food/franchise/login', { replace: true })
+        return
+      }
       const role = String(event.detail?.role || 'user').toLowerCase()
       if (role === 'admin') {
         navigate('/admin/login', { replace: true })
@@ -140,6 +144,15 @@ const AppRoutes = () => {
     window.addEventListener('app:auth-stale', handleGlobalAuthStale)
     return () => window.removeEventListener('app:auth-stale', handleGlobalAuthStale)
   }, [navigate])
+
+  useEffect(() => {
+    const handleMaintenance503 = (event) => {
+      const msg = event.detail?.message || 'Service is currently under maintenance. Please try again later.'
+      toast.error(msg, { duration: 8000, id: 'maintenance-503-toast' })
+    }
+    window.addEventListener('app:maintenance-503', handleMaintenance503)
+    return () => window.removeEventListener('app:maintenance-503', handleMaintenance503)
+  }, [])
 
   useEffect(() => {
     syncActiveModule(location.pathname)

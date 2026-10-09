@@ -5,6 +5,12 @@ import { BusBooking } from '../../user/models/BusBooking.js';
 import { BusService } from '../models/BusService.js';
 import { BusSeatHold } from '../../user/models/BusSeatHold.js';
 import { Ride } from '../../user/models/Ride.js';
+import { Admin } from '../models/Admin.js';
+import mongoose from 'mongoose';
+import { ApiError } from '../../../../utils/ApiError.js';
+import { User } from '../../user/models/User.js';
+import { isSuperAdminLike } from '../../../../core/admin/adminHierarchy.service.js';
+import { refundCompletedRide } from '../../services/rideRefundService.js';
 
 const ok = (res, data, extra = {}) =>
   res.json({ success: true, data, ...extra });
@@ -635,6 +641,23 @@ export const getDeliveries = asyncHandler(async (req, res) =>
 export const getIntercityTrips = asyncHandler(async (req, res) =>
   ok(res, await adminService.listIntercityTrips(req.query)),
 );
+/** Refund a completed ride: rider is paid back, driver earning (and franchise commission) is taken back. Super admins only. */
+export const refundRide = asyncHandler(async (req, res) => {
+  const admin = await Admin.findById(req.auth?.sub).lean();
+  if (!admin || !isSuperAdminLike(admin)) {
+    return res.status(403).json({ success: false, message: 'Only super admins can refund a ride' });
+  }
+  const { amount, reason, method, deductFromDriver } = req.body || {};
+  const result = await refundCompletedRide({
+    rideId: req.params.id,
+    amount,
+    reason,
+    method,
+    deductFromDriver: deductFromDriver !== false && deductFromDriver !== 'false',
+    adminId: req.auth.sub,
+  });
+  ok(res, result);
+});
 export const deleteOngoingRide = asyncHandler(async (req, res) =>
   ok(res, await adminService.deleteOngoingRide(req.params.id)),
 );

@@ -49,7 +49,7 @@ const adminSchema = new mongoose.Schema(
         },
         admin_type: {
             type: String,
-            enum: ['superadmin', 'subadmin'],
+            enum: ['superadmin', 'subadmin', 'franchise', 'franchise_partner'],
             default: 'superadmin',
             trim: true,
         },
@@ -113,7 +113,7 @@ const adminSchema = new mongoose.Schema(
         },
         franchiseId: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'Franchise',
+            ref: 'FranchiseApplication',
             default: null,
             index: true,
         },

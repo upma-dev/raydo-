@@ -19,6 +19,7 @@ import * as dispatchService from './order-dispatch.service.js';
 import { isPartnerInActiveZoneSync } from './order-dispatch.service.js';
 import * as paymentService from './order-payment.service.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
+import { creditFoodOrder } from '../../admin/services/franchiseLedger.service.js';
 
 import {
   buildOrderIdentityFilter,
@@ -1009,6 +1010,14 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     recordedById: deliveryPartnerId,
     note: `Delivery completed. Prev status: ${prevPayStatus}`,
   });
+
+  // Franchise commission is credited exactly once per delivered order (idempotent in the ledger).
+  // It must never block or fail the delivery itself.
+  try {
+    await creditFoodOrder(order);
+  } catch (err) {
+    logger.error(`[Franchise] Commission credit failed for order ${order._id}: ${err.message}`);
+  }
 
   emitOrderUpdate(order, deliveryPartnerId);
   enqueueOrderEvent('delivery_completed', {

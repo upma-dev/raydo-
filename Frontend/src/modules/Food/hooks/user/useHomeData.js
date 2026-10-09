@@ -41,13 +41,32 @@ export const useHomeData = (location, zoneId) => {
   const fetchRestaurants = useCallback(async (filters = {}) => {
     try {
       setLoadingRestaurants(true);
+      const userLat = location?.latitude;
+      const userLng = location?.longitude;
       const params = {
         _ts: Date.now(),
         isRestaurant: "true",
         ...(filters.sortBy && { sortBy: filters.sortBy }),
         ...(filters.cuisine && { cuisine: filters.cuisine }),
-        ...(zoneId && { zoneId })
       };
+
+      if (zoneId) {
+        params.zoneId = zoneId;
+      }
+      if (Number.isFinite(userLat) && Number.isFinite(userLng)) {
+        params.lat = userLat;
+        params.lng = userLng;
+        params.radiusKm = 35;
+      } else if (location?.city) {
+        params.city = location.city;
+      }
+
+      if (!zoneId && (!Number.isFinite(userLat) || !Number.isFinite(userLng)) && !location?.city) {
+        setRestaurantsData([]);
+        setLoadingRestaurants(false);
+        return;
+      }
+
       const res = await restaurantAPI.getRestaurants(params);
       if (res.data?.success) {
         const raw = res.data.data.restaurants || [];

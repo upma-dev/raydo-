@@ -167,6 +167,7 @@ const registerTaxiSocketConnectionHandlers = (io) => {
 
       await Driver.findByIdAndUpdate(identity.sub, {
         socketId: socket.id,
+        isOnline: true,
         location: toPoint(normalizedCoords, 'coordinates'),
         zoneId: zone?._id || null,
       });
@@ -282,7 +283,7 @@ const registerTaxiSocketConnectionHandlers = (io) => {
     socket.on('disconnect', async () => {
       if (identity.role === 'driver') {
         clearDriverRoute(identity.sub);
-        await Driver.findByIdAndUpdate(identity.sub, { socketId: null });
+        await Driver.findByIdAndUpdate(identity.sub, { socketId: null, isOnline: false });
       }
     });
   });

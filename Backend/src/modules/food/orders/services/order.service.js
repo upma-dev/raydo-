@@ -22,7 +22,8 @@ import {
   createRazorpayCheckoutOrder,
   verifyPaymentSignature,
   isRazorpayConfigured,
-  initiateRazorpayRefund
+  initiateRazorpayRefund,
+  fetchRazorpayPayment
 } from '../helpers/razorpay.helper.js';
 import { getIO, rooms } from '../../../../config/socket.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
@@ -34,6 +35,15 @@ import { calculateOrderPricing, resolveOrderZoneId } from './order-pricing.servi
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
+import { findFranchiseForZone } from '../../admin/services/franchiseLedger.service.js';
+import {
+  cancelOrderByUser,
+  cancelOrderByRestaurant,
+  cancelOrderByAdmin,
+  computeCancellationState,
+  getOrderCancellationRules,
+} from './order-cancel.service.js';
+import { confirmOrderPaid } from './order-payment-confirm.service.js';
 import {
   enqueueOrderEvent,
   generateFourDigitDeliveryOtp,
@@ -191,6 +201,12 @@ export async function createOrder(userId, dto) {
     const orderZoneId = resolvedOrderZoneId
       ? toObjectId(resolvedOrderZoneId, 'Zone ID')
       : toObjectId(restaurant.zoneId, 'Restaurant Zone ID');
+    // Ownership is stamped once, at creation (the order model makes it immutable afterwards):
+    // the restaurant's franchise, else whichever franchise owns the restaurant's zone.
+    const orderFranchiseId =
+      restaurant.franchiseId ||
+      (await findFranchiseForZone(restaurant.zoneId || orderZoneId, 'food').catch(() => null)) ||
+      null;
     const surgeSnapshot = await getZoneSurgeSnapshot(orderZoneId);
     normalizedPricing.surgeAmount = surgeSnapshot.surgeAmount;
 
@@ -270,6 +286,8 @@ export async function createOrder(userId, dto) {
       userId: toObjectId(userId, 'User ID'),
       restaurantId: restaurantId,
       zoneId: orderZoneId,
+      franchiseId: orderFranchiseId,
+      territoryId: restaurant.territoryId || null,
       items: (dto.items || []).map(item => ({
         ...item,
         itemId: toObjectId(item.itemId, 'Item ID')
@@ -478,68 +496,53 @@ export async function verifyPayment(userId, dto) {
     userId: new mongoose.Types.ObjectId(userId),
   });
   if (!order) throw new NotFoundError("Order not found");
-  if (order.payment.status === "paid")
-    return { order: normalizeOrderForClient(order), payment: order.payment };
 
-  const valid = verifyPaymentSignature(
-    dto.razorpayOrderId,
-    dto.razorpayPaymentId,
-    dto.razorpaySignature,
-  );
+  // Already confirmed (for example by the Razorpay webhook a moment earlier): make sure the order has moved
+  // on, then answer. Never reject a customer whose money has already been received.
+  if (order.payment.status === "paid") {
+    const settled = await confirmOrderPaid(order._id, { paymentId: order.payment?.razorpay?.paymentId || dto.razorpayPaymentId, byRole: "USER", byId: userId, source: "verify" });
+    const fresh = settled || order;
+    return { order: normalizeOrderForClient(fresh), payment: fresh.payment };
+  }
+
+  if (String(order.payment?.method) !== "razorpay") throw new ValidationError("This order is not an online payment order");
+  if (String(order.orderStatus).startsWith("cancelled")) throw new ValidationError("This order was cancelled");
+
+  // The payment MUST belong to THIS order's Razorpay order. A valid signature alone is not enough:
+  // it also proves other (cheaper) payments, which must never be usable for a more expensive order.
+  const expectedRzOrderId = order.payment?.razorpay?.orderId;
+  if (!expectedRzOrderId || String(dto.razorpayOrderId) !== String(expectedRzOrderId)) {
+    throw new ValidationError("This payment does not belong to this order");
+  }
+
+  const valid = verifyPaymentSignature(dto.razorpayOrderId, dto.razorpayPaymentId, dto.razorpaySignature);
   if (!valid) throw new ValidationError("Payment verification failed");
 
-  order.payment.status = "paid";
-  order.payment.razorpay.paymentId = dto.razorpayPaymentId;
-  order.payment.razorpay.signature = dto.razorpaySignature;
+  // Ask Razorpay itself (never trust the app): same order, money actually received, correct amount
+  let rzPayment;
+  try {
+    rzPayment = await fetchRazorpayPayment(dto.razorpayPaymentId);
+  } catch (err) {
+    logger.error(`verifyPayment: could not fetch payment ${dto.razorpayPaymentId}: ${err?.message || err}`);
+    throw new ValidationError("We could not confirm your payment with the bank yet. If money was deducted it will be confirmed automatically in a minute.");
+  }
+  if (String(rzPayment?.order_id) !== String(expectedRzOrderId)) throw new ValidationError("This payment does not belong to this order");
+  if (!["captured", "authorized"].includes(String(rzPayment?.status))) throw new ValidationError("Payment is not completed yet");
+  const expectedPaise = Math.round((Number(order.pricing?.total) || 0) * 100);
+  if (Number(rzPayment?.amount) !== expectedPaise) {
+    logger.error(`verifyPayment: AMOUNT MISMATCH order=${order._id} expected=${expectedPaise} paid=${rzPayment?.amount}`);
+    throw new ValidationError("The paid amount does not match the order total");
+  }
 
-  const from = order.orderStatus;
-  order.orderStatus = "created";
-
-  pushStatusHistory(order, {
+  const confirmed = await confirmOrderPaid(order._id, {
+    paymentId: dto.razorpayPaymentId,
+    signature: dto.razorpaySignature,
     byRole: "USER",
     byId: userId,
-    from: from,
-    to: "created",
-    note: "Payment verified, order confirmed",
+    source: "verify",
   });
-  await order.save();
-
-  await foodTransactionService.updateTransactionStatus(order._id, 'captured', {
-    status: 'captured',
-    razorpayPaymentId: dto.razorpayPaymentId,
-    razorpaySignature: dto.razorpaySignature,
-    recordedByRole: "USER",
-    recordedById: new mongoose.Types.ObjectId(userId)
-  });
-
-  // After online payment is verified, now notify restaurant about the new order.
-  await notifyRestaurantNewOrder(order);
-
-  // Notify Customer about payment success
-  await notifyOwnersSafely([{ ownerType: "USER", ownerId: userId }], {
-    title: "Payment Successful! ✅",
-    body: `We have received your payment of ₹${order.payment.amountDue} for Order #${order._id.toString()}.`,
-    image: "https://i.ibb.co/5GzXz7r/Raydo-Brand-Image.png",
-    data: {
-      type: "payment_success",
-      orderId: String(order._id.toString()),
-      orderMongoId: String(order._id),
-    },
-  });
-
-  emitOrderStatusSocket(
-    { userId },
-    {
-      orderMongoId: order._id.toString(),
-      orderId: order.order_id || order._id.toString(),
-      orderStatus: order.orderStatus,
-      title: "Payment Successful!",
-      message: `We have received your payment for Order #${order._id.toString()}.`,
-    },
-  );
-
-
-  return { order: normalizeOrderForClient(order), payment: order.payment };
+  const fresh = confirmed || (await FoodOrder.findById(order._id));
+  return { order: normalizeOrderForClient(fresh), payment: fresh.payment };
 }
 
 // ----- Auto-assign -----
@@ -645,6 +648,7 @@ export async function getOrderById(
     const drop = orderWithShare.deliveryVerification?.dropOtp || {};
     const secret = String(orderWithShare.deliveryOtp || "").trim();
     const out = normalizeOrderForClient(orderWithShare);
+    out.cancellation = computeCancellationState(orderWithShare, await getOrderCancellationRules());
     delete out.deliveryOtp;
     out.deliveryVerification = {
       ...(orderWithShare.deliveryVerification || {}),
@@ -809,186 +813,28 @@ export async function resyncState(userId, role) {
   return {};
 }
 
+/**
+ * Customer cancels an order. All the work (refund, stock, coupon, wallets, notifications) lives in
+ * order-cancel.service.js so user / restaurant / admin / auto-timeout cancellations behave identically.
+ */
 export async function cancelOrder(orderId, userId, payload = {}) {
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError("Order id required");
 
-  const order = await FoodOrder.findOne({
-    ...identity,
-    userId: new mongoose.Types.ObjectId(userId),
-  });
-  if (!order) throw new NotFoundError("Order not found");
+  const found = await FoodOrder.findOne({ ...identity, userId: new mongoose.Types.ObjectId(userId) }).select("_id").lean();
+  if (!found) throw new NotFoundError("Order not found");
 
-  const allowed = ["created", "placed", "pending", "pending_payment"];
-  if (!allowed.includes(order.orderStatus))
-    throw new ValidationError("Order cannot be cancelled because the restaurant has already accepted or processed it.");
+  const { order } = await cancelOrderByUser(found._id, userId, payload);
+  return order;
+}
 
-  const cancellationReason = typeof payload === 'string' ? payload : (payload.cancellationReason || payload.reason || '');
-  const cancellationComment = typeof payload === 'object' ? (payload.cancellationComment || '') : '';
-  const displayReason = cancellationReason === 'Other' && cancellationComment ? cancellationComment : (cancellationReason || cancellationComment || 'No reason provided');
-
-  const from = order.orderStatus;
-  order.orderStatus = "cancelled_by_user";
-  order.cancellationReason = cancellationReason;
-  order.cancellationComment = cancellationComment;
-  order.cancelledAt = new Date();
-  order.cancelledBy = "USER";
-
-  pushStatusHistory(order, {
-    byRole: "USER",
-    byId: userId,
-    from,
-    to: "cancelled_by_user",
-    note: displayReason,
-  });
-
-  const paymentMethod = String(order.payment?.method || "cash").toLowerCase();
-  const paymentStatus = String(order.payment?.status || "cod_pending").toLowerCase();
-  const hasRefundProcessed =
-    String(order.payment?.refund?.status || "none").toLowerCase() === "processed";
-
-  // ✅ NEW: Automated Razorpay Refund on User Cancel
-  if (
-    paymentStatus === "paid" &&
-    paymentMethod === "razorpay" &&
-    order.payment?.razorpay?.paymentId &&
-    !hasRefundProcessed
-  ) {
-    try {
-      const refundResult = await initiateRazorpayRefund(
-        order.payment.razorpay.paymentId,
-        order.pricing.total
-      );
-
-      if (refundResult.success) {
-        order.payment.status = "refunded";
-        order.payment.refund = {
-          status: "processed",
-          amount: order.pricing.total,
-          refundId: refundResult.refundId,
-          processedAt: new Date()
-        };
-      } else {
-        // Log failure but let order cancellation proceed
-        order.payment.refund = {
-          status: "failed",
-          amount: order.pricing.total
-        };
-      }
-    } catch (err) {
-      console.error(`Refund processing error for Order ${orderId}:`, err);
-      order.payment.refund = { status: "failed", amount: order.pricing.total };
-    }
-  } else if (
-    paymentStatus === "paid" &&
-    paymentMethod === "wallet" &&
-    !hasRefundProcessed
-  ) {
-    try {
-      await userWalletService.refundWalletBalance(userId, order.pricing.total, `Refund for cancelled order #${order.order_id || order._id}`, { orderId: order._id });
-      order.payment.status = "refunded";
-      order.payment.refund = {
-        status: "processed",
-        amount: order.pricing.total,
-        processedAt: new Date()
-      };
-    } catch (err) {
-      console.error(`Wallet refund processing error for Order ${orderId}:`, err);
-      order.payment.refund = { status: "failed", amount: order.pricing.total };
-    }
-  }
-
-  await order.save();
-
-  enqueueOrderEvent("order_cancelled_by_user", {
-    orderMongoId: order._id?.toString?.(),
-    orderId: order._id.toString(),
-    userId,
-    reason: displayReason || cancellationReason || "",
-  });
-
-  // Sync transaction status
-  try {
-    const finalPaymentMethod = String(order.payment?.method || paymentMethod || "cash").toLowerCase();
-    const finalPaymentStatus = String(order.payment?.status || paymentStatus || "cod_pending").toLowerCase();
-    const isOnlinePaid =
-      finalPaymentMethod === "razorpay" &&
-      (finalPaymentStatus === "paid" || finalPaymentStatus === "refunded");
-    await foodTransactionService.updateTransactionStatus(order._id, 'cancelled_by_user', {
-      status: isOnlinePaid ? 'refunded' : 'failed',
-      note: `Order cancelled by user: ${displayReason || cancellationReason || "No reason"}`,
-      recordedByRole: 'USER',
-      recordedById: userId
-    });
-  } catch (err) {
-    logger.warn(`cancelOrder transaction sync failed: ${err?.message || err}`);
-  }
-
-  // Notify User, Restaurant, and Delivery Partner about the cancellation
-  const finalPaymentMethod = String(order.payment?.method || paymentMethod || "cash").toLowerCase();
-  const finalPaymentStatus = String(order.payment?.status || paymentStatus || "cod_pending").toLowerCase();
-  const isOnlinePaid =
-    finalPaymentMethod === "razorpay" &&
-    (finalPaymentStatus === "paid" || finalPaymentStatus === "refunded");
-  const refundDetail = isOnlinePaid ? ` Your refund of ₹${order.pricing?.total} is being processed and will be credited to your original payment method within 5-7 working days.` : "";
-
-  const notificationTargets = [
-    { ownerType: "USER", ownerId: userId },
-    { ownerType: "RESTAURANT", ownerId: order.restaurantId },
-  ];
-  if (order.deliveryPartnerId) {
-    notificationTargets.push({ ownerType: "DELIVERY_PARTNER", ownerId: order.deliveryPartnerId });
-  }
-
-  await notifyOwnersSafely(
-    notificationTargets,
-    {
-      title: "Order Cancelled ❌",
-      body: `Order #${order.order_id || order._id} has been cancelled by customer.${refundDetail}`,
-      image: "https://i.ibb.co/5GzXz7r/Raydo-Brand-Image.png",
-      data: {
-        type: "order_cancelled",
-        orderId: String(order.order_id || order._id),
-        orderMongoId: String(order._id),
-      },
-    },
-  );
-
-  // Real-time: status update via socket
-  try {
-    const io = getIO();
-    if (io) {
-      const payload = {
-        orderMongoId: order._id?.toString?.(),
-        orderId: order.order_id || order._id.toString(),
-        displayId: order.order_id || order._id.toString(),
-        orderStatus: order.orderStatus,
-        status: order.orderStatus,
-        cancelledBy: "user",
-        message: `User cancelled order #${order.order_id || order._id}.${refundDetail}`
-      };
-      io.to(rooms.user(userId)).emit("order_status_update", payload);
-      io.to(rooms.user(userId)).emit("order_cancelled", payload);
-
-      if (order.restaurantId) {
-        io.to(rooms.restaurant(order.restaurantId)).emit("order_status_update", payload);
-        io.to(rooms.restaurant(order.restaurantId)).emit("order_cancelled", payload);
-      }
-
-      if (order.deliveryPartnerId) {
-        io.to(rooms.delivery(order.deliveryPartnerId)).emit("order_status_update", payload);
-        io.to(rooms.delivery(order.deliveryPartnerId)).emit("order_cancelled", payload);
-      }
-
-      // Also broadcast to delivery_partners room so any pending order popup stops ringing for online drivers
-      io.to("delivery_partners").emit("order_cancelled", payload);
-      io.to("delivery_partners").emit("order_status_update", payload);
-    }
-  } catch (err) {
-    logger.warn(`cancelOrder socket emit failed: ${err?.message || err}`);
-  }
-
-  return normalizeOrderForClient(order);
+/** Admin cancels any order that has not been delivered yet (customer is refunded automatically). */
+export async function cancelOrderAdmin(orderId, adminId, reason = "") {
+  const identity = buildOrderIdentityFilter(orderId);
+  if (!identity) throw new ValidationError("Order id required");
+  const found = await FoodOrder.findOne(identity).select("_id").lean();
+  if (!found) throw new NotFoundError("Order not found");
+  return cancelOrderByAdmin(found._id, adminId, reason);
 }
 
 export async function submitOrderRatings(orderId, userId, dto) {
@@ -1204,10 +1050,23 @@ export async function updateOrderStatusRestaurant(
   });
   if (!order) throw new NotFoundError("Order not found");
   const from = order.orderStatus;
+
+  // Rejecting / cancelling: the shared cancel engine (refund, stock, coupon, notifications...)
+  if (String(orderStatus).startsWith("cancel")) {
+    const { order: cancelled } = await cancelOrderByRestaurant(order._id, restaurantId, note);
+    return cancelled;
+  }
+
   if (!isStatusAdvance(from, orderStatus)) {
     throw new ValidationError(
       `Current order status '${from}' is further ahead than '${orderStatus}'. Order cannot be moved backwards.`
     );
+  }
+
+  // Race-safe: if the customer cancelled (or the timer auto-cancelled) a moment ago, this accept must fail
+  const claimed = await FoodOrder.updateOne({ _id: order._id, orderStatus: from }, { $set: { orderStatus } });
+  if (!claimed.modifiedCount) {
+    throw new ValidationError("This order was just cancelled or changed. Please refresh.");
   }
 
   if (['picked_up', 'reached_drop', 'out_for_delivery'].includes(orderStatus) && !order.dispatch?.deliveryPartnerId) {
@@ -1559,23 +1418,52 @@ export async function listOrdersAdmin(query = {}, adminContext = null) {
   const filter = {};
 
   if (adminContext && !isSuperAdminLike(adminContext)) {
-    const rawZoneIds = adminContext.food_zone_ids || adminContext.zone_ids || [];
+    let rawZoneIds = adminContext.food_zone_ids || adminContext.zone_ids || [];
+
+    let franchiseRestaurantIds = [];
+    if (adminContext.franchiseId) {
+      const franchiseRestaurants = await FoodRestaurant.find({ franchiseId: adminContext.franchiseId }).select('_id').lean();
+      franchiseRestaurantIds = franchiseRestaurants.map(r => r._id);
+      if (rawZoneIds.length === 0) {
+        try {
+          const { default: FranchiseApplication } = await import('../../admin/models/franchiseApplication.model.js');
+          const franchise = await FranchiseApplication.findById(adminContext.franchiseId).select('zoneId').lean();
+          if (franchise?.zoneId) {
+            rawZoneIds = [franchise.zoneId];
+          }
+        } catch (e) {
+          logger.warn(`Failed to resolve zoneId for franchiseId ${adminContext.franchiseId}: ${e.message}`);
+        }
+      }
+    }
+
     const zoneObjectIds = normalizeObjectIdList(rawZoneIds).map(id => new mongoose.Types.ObjectId(id));
-    if (zoneObjectIds.length === 0) {
+
+    const zoneRestaurants = zoneObjectIds.length > 0
+      ? await FoodRestaurant.find({ zoneId: { $in: zoneObjectIds } }).select('_id').lean()
+      : [];
+    const zoneRestaurantIds = zoneRestaurants.map(r => r._id);
+
+    const allRestaurantIds = [...new Set([...franchiseRestaurantIds.map(String), ...zoneRestaurantIds.map(String)])].map(id => new mongoose.Types.ObjectId(id));
+
+    filter.$and = filter.$and || [];
+    const orConditions = [];
+    if (adminContext.franchiseId && mongoose.Types.ObjectId.isValid(adminContext.franchiseId)) {
+      orConditions.push({ franchiseId: new mongoose.Types.ObjectId(adminContext.franchiseId) });
+    }
+    if (zoneObjectIds.length > 0) {
+      orConditions.push({ zoneId: { $in: zoneObjectIds } });
+    }
+    if (allRestaurantIds.length > 0) {
+      orConditions.push({ restaurantId: { $in: allRestaurantIds } });
+    }
+
+    if (orConditions.length > 0) {
+      filter.$and.push({ $or: orConditions });
+    } else {
       const emptyPaginated = buildPaginatedResult({ docs: [], total: 0, page, limit });
       return { ...emptyPaginated, orders: [] };
     }
-
-    const zoneRestaurants = await FoodRestaurant.find({ zoneId: { $in: zoneObjectIds } }).select('_id').lean();
-    const zoneRestaurantIds = zoneRestaurants.map(r => r._id);
-
-    filter.$and = filter.$and || [];
-    filter.$and.push({
-      $or: [
-        { zoneId: { $in: zoneObjectIds } },
-        { restaurantId: { $in: zoneRestaurantIds } }
-      ]
-    });
   }
 
   const zoneIdRaw = typeof query.zoneId === 'string' ? query.zoneId.trim() : '';

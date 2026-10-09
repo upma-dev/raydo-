@@ -213,6 +213,11 @@ export default function FoodsList() {
     return `FOOD${lastDigits}`
   }
 
+  const restaurantOptions = useMemo(() => {
+    if (selectedZone === "all") return restaurantsForFilter
+    return restaurantsForFilter.filter((r) => String(r.zoneId) === selectedZone)
+  }, [restaurantsForFilter, selectedZone])
+
   const filteredFoods = useMemo(() => {
     let result = [...foods]
 
@@ -258,11 +263,6 @@ export default function FoodsList() {
       setCurrentPage(totalPages)
     }
   }, [currentPage, totalPages])
-
-  const restaurantOptions = useMemo(() => {
-    if (selectedZone === "all") return restaurantsForFilter
-    return restaurantsForFilter.filter((r) => String(r.zoneId) === selectedZone)
-  }, [restaurantsForFilter, selectedZone])
 
   const openAddFoodModal = () => {
     setFoodFormMode("add")

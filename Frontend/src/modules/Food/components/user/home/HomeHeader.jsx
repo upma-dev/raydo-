@@ -700,96 +700,103 @@ return (
         </div>
       </div>
 
-      {/* Row 3: Search Input Bar + VEG MODE Switch */}
-      {!hideSearchRow && (
-        <div className="px-4 pt-1.5">
-          <div className="flex items-center gap-2">
-            {/* Search Input Bar */}
-            <div
-              className="flex-1 min-w-0 rounded-full flex items-center px-4 py-2.5 bg-white shadow-md cursor-pointer active:scale-[0.99] transition-all duration-200 border border-amber-200/50 hover:border-amber-400"
-              onClick={onSearchFocus}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSearchFocus();
-                }
-              }}
-            >
-              <Search className="h-4 w-4 mr-2.5 text-orange-500 flex-shrink-0" strokeWidth={2.5} />
-              <div className="flex-1 relative h-5 min-w-0">
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={placeholderIndex}
-                    initial={{ y: 10, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: -10, opacity: 0 }}
-                    transition={{ duration: 0.2, ease: 'easeOut' }}
-                    className="absolute inset-0 text-[13px] font-semibold text-gray-500 truncate"
-                  >
-                    {resolvedPlaceholders?.[placeholderIndex] || 'Search "biryani"'}
-                  </motion.span>
-                </AnimatePresence>
-              </div>
-              <div className="h-4 w-px bg-gray-200 mx-2 flex-shrink-0" />
-              <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm">
-                <Mic className="h-3.5 w-3.5" strokeWidth={2.5} />
-              </div>
-            </div>
-
-            {/* VEG MODE Switch (Matching Reference Image next to search input) */}
-            {isFood && (
-              <div className="flex flex-col items-center justify-center flex-shrink-0 px-1">
-                <span className="text-[8.5px] font-black tracking-tight text-white uppercase leading-none mb-1 drop-shadow-xs">
-                  VEG MODE
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextState = !isVegOnly;
-                    setIsVegOnly(nextState);
-                    localStorage.setItem("raydo_veg_mode_only", JSON.stringify(nextState));
-                    window.dispatchEvent(new CustomEvent("vegModeChanged", { detail: { isVegOnly: nextState } }));
-                  }}
-                  className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shadow-md border ${
-                    isVegOnly ? "bg-emerald-500 border-emerald-300" : "bg-white/40 border-white/60"
-                  }`}
-                  title={isVegOnly ? "Pure Veg Mode Active" : "Toggle Pure Veg Mode"}
-                >
-                  <div
-                    className={`w-3.5 h-3.5 rounded-full shadow-xs transform transition-transform ${
-                      isVegOnly ? "translate-x-4 bg-white" : "translate-x-0 bg-white"
-                    }`}
-                  />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Row 4: Clean Full Hero Video Banner */}
+      {/* Row 3: Clean Full Hero Video Banner */}
       {isFood && (
-        <div className="px-3 pt-3">
+        <div className="px-3 pt-2">
           <div
             className="relative w-full rounded-[24px] overflow-hidden shadow-xl border border-amber-400/30 cursor-pointer group bg-black"
             onClick={onSearchFocus}
           >
             <video
+              ref={(el) => {
+                if (el) {
+                  el.muted = true;
+                  const promise = el.play();
+                  if (promise !== undefined) promise.catch(() => {});
+                }
+              }}
               autoPlay
               loop
-              muted={isVideoMuted}
+              muted
               playsInline
               preload="auto"
               poster={cinematicFoodPoster}
-              className="w-full h-[190px] sm:h-[240px] md:h-[280px] object-cover transform group-hover:scale-105 transition-transform duration-700"
+              className="w-full h-[180px] sm:h-[230px] md:h-[270px] object-cover transform group-hover:scale-105 transition-transform duration-700"
               src="/food/cute_video_hero_section_ke_liy.mp4"
             />
           </div>
         </div>
       )}
     </div>
+
+    {/* Row 4: Search Input Bar + VEG MODE Switch (Permanently Sticky at top-0 on Scroll) */}
+    {!hideSearchRow && (
+      <div className="sticky top-0 z-[100] px-4 py-2 bg-gradient-to-r from-[#FFC700] via-[#FF8800] to-[#FF6B00] shadow-md border-b border-amber-500/30 w-full transition-all duration-200">
+        <div className="flex items-center gap-2 max-w-7xl mx-auto">
+          {/* Search Input Bar */}
+          <div
+            className="flex-1 min-w-0 rounded-full flex items-center px-4 py-2.5 bg-white shadow-md cursor-pointer active:scale-[0.99] transition-all duration-200 border border-amber-200/50 hover:border-amber-400"
+            onClick={onSearchFocus}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onSearchFocus();
+              }
+            }}
+          >
+            <Search className="h-4 w-4 mr-2.5 text-orange-500 flex-shrink-0" strokeWidth={2.5} />
+            <div className="flex-1 relative h-5 min-w-0">
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={placeholderIndex}
+                  initial={{ y: 10, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: -10, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className="absolute inset-0 text-[13px] font-semibold text-gray-500 truncate"
+                >
+                  {resolvedPlaceholders?.[placeholderIndex] || 'Search "biryani"'}
+                </motion.span>
+              </AnimatePresence>
+            </div>
+            <div className="h-4 w-px bg-gray-200 mx-2 flex-shrink-0" />
+            <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm">
+              <Mic className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </div>
+          </div>
+
+          {/* VEG MODE Switch */}
+          {isFood && (
+            <div className="flex flex-col items-center justify-center flex-shrink-0 px-1">
+              <span className="text-[8.5px] font-black tracking-tight text-white uppercase leading-none mb-1 drop-shadow-xs">
+                VEG MODE
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextState = !isVegOnly;
+                  setIsVegOnly(nextState);
+                  localStorage.setItem("raydo_veg_mode_only", JSON.stringify(nextState));
+                  window.dispatchEvent(new CustomEvent("vegModeChanged", { detail: { isVegOnly: nextState } }));
+                }}
+                className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center shadow-md border ${
+                  isVegOnly ? "bg-emerald-500 border-emerald-300" : "bg-white/40 border-white/60"
+                }`}
+                title={isVegOnly ? "Pure Veg Mode Active" : "Toggle Pure Veg Mode"}
+              >
+                <div
+                  className={`w-3.5 h-3.5 rounded-full shadow-xs transform transition-transform ${
+                    isVegOnly ? "translate-x-4 bg-white" : "translate-x-0 bg-white"
+                  }`}
+                />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
 
     {/* Selected Address Distance Warning Banner */}
     {selectedAddressDistanceKm > 0.5 && isFood && (

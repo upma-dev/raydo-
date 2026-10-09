@@ -1,4 +1,5 @@
 import { sendResponse } from '../../../../utils/response.js';
+import * as taxiService from '../../admin/services/franchiseTaxi.service.js';
 import * as franchisePublicService from '../services/franchise.public.service.js';
 
 // India states data (static)
@@ -62,8 +63,14 @@ export function getStatesController(req, res) {
  * GET /v1/franchise/cities?state=Maharashtra
  */
 export function getCitiesController(req, res) {
-    const { state } = req.query;
-    const cities = STATE_CITIES[state] || [];
+    const rawState = String(req.query.state || '').trim().toLowerCase();
+    const stateKey = Object.keys(STATE_CITIES).find(k => k.toLowerCase().trim() === rawState);
+    let cities = stateKey ? STATE_CITIES[stateKey] : [];
+    
+    // Fallback default major Indian cities if state not found
+    if (!cities || cities.length === 0) {
+        cities = ['Indore', 'Bhopal', 'Mumbai', 'Pune', 'Delhi', 'Jaipur', 'Lucknow', 'Ahmedabad', 'Bengaluru', 'Hyderabad'];
+    }
     return sendResponse(res, 200, 'Cities fetched', cities);
 }
 
@@ -128,17 +135,140 @@ export async function getApplicationStatusController(req, res, next) {
 }
 
 /**
- * GET /v1/franchise/partner-dashboard?applicationId=FRN-2024-0001&phone=9876543210
+ * GET /v1/franchise/partner-dashboard
+ * Logged-in franchise (Bearer token) -> full dashboard.
+ * applicationId + phone only          -> onboarding view (fee + payment options).
  */
+const partnerTaxi = (fn, message) => async (req, res, next) => {
+    try {
+        // franchiseId always comes from the login, never from the request
+        return sendResponse(res, 200, message, await fn(req.user.franchiseId, req.query));
+    } catch (err) {
+        next(err);
+    }
+};
+export const getPartnerTaxiOverviewController = partnerTaxi((id) => taxiService.getTaxiOverview(id), 'Taxi overview fetched');
+export const getPartnerTaxiRidesController = partnerTaxi((id, q) => taxiService.listTaxiRides(id, q), 'Taxi rides fetched');
+export const getPartnerTaxiDriversController = partnerTaxi((id, q) => taxiService.listTaxiDrivers(id, q), 'Taxi drivers fetched');
+export const getPartnerTaxiBusController = partnerTaxi((id, q) => taxiService.listTaxiBusBookings(id, q), 'Bus bookings fetched');
+
 export async function getPartnerDashboardController(req, res, next) {
     try {
+        const franchiseId = req.user?.franchiseId || null;
         const { applicationId, phone } = req.query;
-        if (!applicationId || !phone) {
+        if (!franchiseId && (!applicationId || !phone)) {
             return sendResponse(res, 400, 'Application ID and Phone number are required', null);
         }
-        const data = await franchisePublicService.getPartnerDashboardData(applicationId, phone);
+        const data = await franchisePublicService.getPartnerDashboardData(applicationId, phone, { franchiseId });
         if (!data) return sendResponse(res, 404, 'Franchise account not found with provided credentials', null);
         return sendResponse(res, 200, 'Partner dashboard data fetched', data);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * POST /v1/franchise/submit-payment
+ */
+export async function submitPaymentDetailsController(req, res, next) {
+    try {
+        const { applicationId, phone, ...paymentData } = req.body;
+        if (!applicationId || !phone) {
+            return sendResponse(res, 400, 'applicationId and phone are required', null);
+        }
+        const data = await franchisePublicService.submitPaymentDetails(applicationId, phone, paymentData);
+        return sendResponse(res, 200, 'Payment details submitted successfully', data);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * POST /v1/franchise/create-razorpay-order
+ */
+export async function createRazorpayOrderController(req, res, next) {
+    try {
+        const { applicationId, phone } = req.body;
+        if (!applicationId || !phone) {
+            return sendResponse(res, 400, 'applicationId and phone are required', null);
+        }
+        const orderInfo = await franchisePublicService.createRazorpayOrderForFranchise(applicationId, phone);
+        return sendResponse(res, 200, 'Razorpay order generated successfully', orderInfo);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * POST /v1/franchise/verify-razorpay-payment
+ */
+export async function verifyRazorpayPaymentController(req, res, next) {
+    try {
+        const { applicationId, phone, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+        if (!applicationId || !phone) {
+            return sendResponse(res, 400, 'applicationId and phone are required', null);
+        }
+        const data = await franchisePublicService.verifyRazorpayPaymentForFranchise(applicationId, phone, {
+            razorpay_order_id,
+            razorpay_payment_id,
+            razorpay_signature,
+        });
+        return sendResponse(res, 200, 'Razorpay payment verified & access granted successfully', data);
+    } catch (err) {
+        next(err);
+    }
+}
+
+// ─── Logged-in franchise only (franchiseId is taken from the verified token) ──
+
+/** POST /v1/franchise/support-message */
+export async function submitPartnerSupportMessageController(req, res, next) {
+    try {
+        const { subject, message, priority } = req.body;
+        const data = await franchisePublicService.submitPartnerSupportMessage(req.user.franchiseId, { subject, message, priority });
+        return sendResponse(res, 200, 'Support message sent to Admin successfully', data);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/** POST /v1/franchise/payout-request */
+export async function submitPartnerPayoutRequestController(req, res, next) {
+    try {
+        const data = await franchisePublicService.submitPartnerPayoutRequest(req.user.franchiseId, req.body || {});
+        return sendResponse(res, 200, 'Payout withdrawal request submitted successfully', data);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/** POST /v1/franchise/refund-request/claim */
+export async function claimRefundFromSuperAdminController(req, res, next) {
+    try {
+        const data = await franchisePublicService.claimRefundFromSuperAdmin(req.user.franchiseId, req.body || {});
+        return sendResponse(res, 200, 'Refund claim request sent to SuperAdmin', data);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/** POST /v1/franchise/refund-request/process */
+export async function processRestaurantRefundController(req, res, next) {
+    try {
+        const { refundId } = req.body;
+        if (!refundId) return sendResponse(res, 400, 'refundId is required', null);
+        const data = await franchisePublicService.processRestaurantRefund(req.user.franchiseId, refundId);
+        return sendResponse(res, 200, 'Refund processed successfully', data);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/** POST /v1/franchise/bank-details */
+export async function updatePartnerBankDetailsController(req, res, next) {
+    try {
+        const data = await franchisePublicService.updatePartnerBankDetails(req.user.franchiseId, req.body || {});
+        return sendResponse(res, 200, 'Bank account details saved successfully', data);
     } catch (err) {
         next(err);
     }

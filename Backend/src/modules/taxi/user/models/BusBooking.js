@@ -264,5 +264,26 @@ const busBookingSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Franchise (food+taxi franchise system) already credited for this booking. See franchiseTaxi.service.js
+// Where the passenger gets on and off (chosen from the bus route's stops at booking time)
+const bookingPointSchema = new mongoose.Schema(
+  {
+    stopId: { type: String, default: '', trim: true },
+    city: { type: String, default: '', trim: true },
+    pointName: { type: String, default: '', trim: true },
+    time: { type: String, default: '', trim: true },
+  },
+  { _id: false },
+);
+busBookingSchema.add({
+  boardingPoint: { type: bookingPointSchema, default: null },
+  droppingPoint: { type: bookingPointSchema, default: null },
+});
+
+busBookingSchema.add({
+  franchiseApplicationId: { type: mongoose.Schema.Types.ObjectId, ref: 'FranchiseApplication', default: null, index: true },
+  franchiseCreditCheckedAt: { type: Date, default: null },
+});
+
 export const BusBooking =
   mongoose.models.TaxiBusBooking || mongoose.model('TaxiBusBooking', busBookingSchema);

@@ -172,10 +172,12 @@ const BusConfirm = () => {
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">Pickup</p>
                   <p className="mt-1 text-sm font-black text-slate-900">{booking.bus?.pickupLocation || booking.bus?.fromCity || fromCity}</p>
+                  {booking.boardingPoint?.time ? <p className="text-[11px] font-bold text-slate-500">Be here by {booking.boardingPoint.time}</p> : null}
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-600">Drop</p>
                   <p className="mt-1 text-sm font-black text-slate-900">{booking.bus?.dropLocation || booking.bus?.toCity || toCity}</p>
+                  {booking.droppingPoint?.time ? <p className="text-[11px] font-bold text-slate-500">Expected at {booking.droppingPoint.time}</p> : null}
                 </div>
               </div>
             </div>

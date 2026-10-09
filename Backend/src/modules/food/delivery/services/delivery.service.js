@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { logger } from '../../../../utils/logger.js';
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { DeliverySupportTicket } from '../models/supportTicket.model.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
@@ -338,7 +339,8 @@ export const updateDeliveryAvailability = async (userId, payload) => {
     const todayKey = new Date().toISOString().slice(0, 10);
 
     if (validStatus === 'online' && !forceBypassForDev) {
-        // Step 1: Enforce Active Gig Check (Online status allowed 15-30 mins before gig start)
+        /*
+        // Step 1: Enforce Active Gig Check (COMMENTED OUT - Direct online mode)
         const { getActiveGigForPartner, getUpcomingGigLoginDetails } = await import('./gig.service.js');
         const activeGig = await getActiveGigForPartner(partner._id);
 
@@ -362,6 +364,7 @@ export const updateDeliveryAvailability = async (userId, payload) => {
             err.code = 'NO_ACTIVE_GIG';
             throw err;
         }
+        */
 
         // Step 2: Enforce Verified Selfie Check for Today
         const onlineSelfie = partner.onlineSelfie || {};
@@ -387,12 +390,14 @@ export const updateDeliveryAvailability = async (userId, payload) => {
             };
         }
 
-        // Step 3: Mark gig booking status to completed
+        /*
+        // Step 3: Mark gig booking status to completed (COMMENTED OUT)
         const { FoodGigBooking } = await import('../models/foodGigBooking.model.js');
         await FoodGigBooking.updateOne(
             { gigId: activeGig._id, deliveryPartnerId: partner._id, status: 'booked' },
             { $set: { status: 'completed', completedAt: new Date() } }
         );
+        */
     }
 
     if (validStatus === 'offline') {
@@ -414,7 +419,8 @@ export const updateDeliveryAvailability = async (userId, payload) => {
             throw err;
         }
 
-        // Guard 2: Active Scheduled Gig Shift Emergency Admin Approval Check
+        /*
+        // Guard 2: Active Scheduled Gig Shift Emergency Admin Approval Check (COMMENTED OUT)
         const { getActiveGigForPartner } = await import('./gig.service.js');
         const activeGig = await getActiveGigForPartner(partner._id);
 
@@ -426,6 +432,7 @@ export const updateDeliveryAvailability = async (userId, payload) => {
             err.canRequestEmergency = true;
             throw err;
         }
+        */
 
         // Reset emergency offline approval flag after successfully turning offline
         if (partner.emergencyOfflineApproved) {

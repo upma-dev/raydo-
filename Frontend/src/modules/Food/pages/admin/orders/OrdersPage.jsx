@@ -732,8 +732,8 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
 
     const reason = prompt(
-      `Enter rejection reason for order ${order.orderId}:`,
-      "Order rejected by admin",
+      `Cancel order ${order.orderId}? The customer is refunded automatically.\n\nEnter the reason (shown to the customer):`,
+      "Order cancelled by admin",
     )
 
     if (reason === null) return
@@ -840,6 +840,13 @@ export default function OrdersPage({ statusKey = "all" }) {
       
       // Include refundAmount in request body if provided (ensure it's a number)
       const requestData = refundAmount !== null ? { refundAmount: parseFloat(refundAmount) } : {}
+      // Delivered order: the restaurant already did its job. Ask who bears the refund.
+      const statusText = String(order.orderStatus || order.status || '').toLowerCase()
+      if (statusText.includes('deliver') || statusText === 'completed') {
+        requestData.deductFromRestaurant = window.confirm(
+          'This order was already delivered.\n\nOK = take this order\'s amount back from the RESTAURANT\'s earnings (full refund only).\nCancel = the PLATFORM bears the refund and the restaurant keeps its payout.'
+        )
+      }
       debugLog('?? Request data being sent:', requestData)
       const response = await adminAPI.processRefund(orderIdToUse, requestData)
       
@@ -979,8 +986,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         onPrintOrder={handlePrintOrder}
         onRefund={handleRefund}
         onDeleteOrder={statusKey === "all" ? handleDeleteOrder : undefined}
-        onAcceptOrder={statusKey === "all" || statusKey === "pending" ? handleAcceptOrder : undefined}
-        onRejectOrder={statusKey === "all" || statusKey === "pending" ? handleRejectOrder : undefined}
+                onRejectOrder={statusKey === "all" || statusKey === "pending" ? handleRejectOrder : undefined}
         actionLoadingOrderId={processingActionOrderId}
         deletingOrderId={deletingOrderId}
       />

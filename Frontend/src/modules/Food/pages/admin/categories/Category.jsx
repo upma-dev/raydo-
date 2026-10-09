@@ -173,9 +173,14 @@ export default function Category() {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
+  const isFranchisePortal = typeof window !== "undefined" && window.location.pathname.includes("/franchise")
+
   const handleAddNew = () => {
     setEditingCategory(null)
-    setFormData(defaultFormData)
+    const initialZone = (isFranchisePortal && zones.length > 0)
+      ? String(zones[0]._id || zones[0].id)
+      : "global"
+    setFormData({ ...defaultFormData, zoneId: initialZone })
     setSelectedImageFile(null)
     setImagePreview(null)
     setIsModalOpen(true)
@@ -650,7 +655,7 @@ export default function Category() {
                             onChange={(event) => setFormData((prev) => ({ ...prev, zoneId: event.target.value }))}
                             className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-slate-900"
                           >
-                            <option value="global">Global (all zones)</option>
+                            {!isFranchisePortal && <option value="global">Global (all zones)</option>}
                             {zonesLoading && <option value="" disabled>Loading zones...</option>}
                             {zones.map((zone) => {
                               const id = String(zone?._id || zone?.id || "")

@@ -97,7 +97,7 @@ const GlobalSettings = () => {
                      <div className="space-y-4">
                         <div>
                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Live Key ID</label>
-                           <input type="password" value="rzp_live_xYzA1234567890" readOnly className="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-4 text-[13px] font-bold text-gray-900 focus:outline-none" />
+                           <input type="password" value="••••••••••••••••" readOnly className="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-4 text-[13px] font-bold text-gray-900 focus:outline-none" />
                         </div>
                         <div>
                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Live Key Secret</label>

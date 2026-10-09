@@ -80,7 +80,8 @@ export async function recordTransaction(payload) {
         entityType, entityId, type, amount,
         description = '', category = 'other',
         orderId = null, paymentId = null,
-        metadata = undefined, module = 'food'
+        metadata = undefined, module = 'food',
+        allowNegative = false   // reversals must always succeed, even if the wallet was already paid out
     } = payload;
 
     if (!['credit', 'debit'].includes(type)) throw new Error('type must be credit or debit');
@@ -115,18 +116,14 @@ export async function recordTransaction(payload) {
             }
         }
 
-        // 2. Compute new balance
+        // 2. Pre-check for a clean error message (the real guard is the atomic update in step 4)
         const currentBalance = Number(wallet.balance) || 0;
-        const newBalance = type === 'credit'
-            ? currentBalance + amount
-            : currentBalance - amount;
-
-        // Debit guard: prevent negative balance (except admin wallet which can go negative)
-        if (type === 'debit' && entityType !== 'admin' && newBalance < 0) {
+        const delta = type === 'credit' ? amount : -amount;
+        if (type === 'debit' && entityType !== 'admin' && !allowNegative && currentBalance < amount) {
             throw new Error(`Insufficient balance. Current: ${currentBalance}, Debit: ${amount}`);
         }
 
-        // 3. Create transaction row
+        // 3. Ledger row FIRST. If its validation fails nothing has touched the wallet yet.
         const entityOid = entityType === 'admin'
             ? ADMIN_ENTITY_OID
             : new mongoose.Types.ObjectId(entityId);
@@ -138,7 +135,7 @@ export async function recordTransaction(payload) {
             entityId: entityOid,
             type,
             amount,
-            balanceAfter: newBalance,
+            balanceAfter: currentBalance + delta,   // informational; the wallet balance itself is changed atomically below
             currency: 'INR',
             status: 'completed',
             description,
@@ -155,24 +152,25 @@ export async function recordTransaction(payload) {
             txn = await Transaction.create(txnPayload);
         }
 
-        // 4. Update wallet balance atomically
+        // 4. Change the balance ATOMICALLY with $inc (never read-modify-write: two credits at the same moment
+        //    used to overwrite each other). A debit is guarded inside the same update so it cannot go negative.
+        const incOps = { balance: delta };
         if (type === 'credit') {
-            if (entityType === 'restaurant' || entityType === 'deliveryBoy') {
-                await Model.updateOne(filter, {
-                    $set: { balance: newBalance },
-                    $inc: { totalEarnings: amount }
-                }, sessionOption);
-            } else if (entityType === 'admin') {
-                await Model.updateOne(filter, {
-                    $set: { balance: newBalance },
-                    $inc: { totalRevenue: amount }
-                }, sessionOption);
-            } else {
-                await Model.updateOne(filter, { $set: { balance: newBalance } }, sessionOption);
-            }
-        } else {
-            await Model.updateOne(filter, { $set: { balance: newBalance } }, sessionOption);
+            if (entityType === 'restaurant' || entityType === 'deliveryBoy') incOps.totalEarnings = amount;
+            else if (entityType === 'admin') incOps.totalRevenue = amount;
         }
+        const guardedFilter = (type === 'debit' && entityType !== 'admin' && !allowNegative)
+            ? { ...filter, balance: { $gte: amount } }
+            : filter;
+
+        const updatedWallet = await Model.findOneAndUpdate(guardedFilter, { $inc: incOps }, { new: true, ...sessionOption });
+        if (!updatedWallet) {
+            if (!(useTransaction && session) && txn?._id) {
+                await Transaction.deleteOne({ _id: txn._id }).catch(() => {});   // no DB transaction to roll back: undo the row
+            }
+            throw new Error(`Insufficient balance for debit of ${amount}`);
+        }
+        const newBalance = Number(updatedWallet.balance) || 0;
 
         if (useTransaction && session) {
             await session.commitTransaction();

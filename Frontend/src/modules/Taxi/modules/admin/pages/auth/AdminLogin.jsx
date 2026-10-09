@@ -36,12 +36,18 @@ const AdminLogin = () => {
 
     try {
       const response = await adminService.login({ email, password });
+      const adminUser = response?.data?.admin || {};
       setUnifiedAdminSession({
         token: response?.data?.token || '',
-        user: response?.data?.admin || {},
+        user: adminUser,
         refreshToken: response?.data?.refreshToken || null,
       });
-      setTimeout(() => navigate('/taxi/admin/dashboard'), 300);
+      const role = adminUser.admin_type || adminUser.role;
+      if (role === 'subadmin' || role === 'franchise' || role === 'franchise_partner' || adminUser.franchiseId) {
+        setTimeout(() => navigate('/food/franchise/dashboard'), 300);
+      } else {
+        setTimeout(() => navigate('/taxi/admin/dashboard'), 300);
+      }
     } catch (err) {
       console.error("[Taxi AdminLogin Submit Error]", err);
       const rawMessage = err.response?.data?.message || err.message || '';

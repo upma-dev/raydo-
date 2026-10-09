@@ -607,9 +607,33 @@ export const sendNotificationToOwners = async (targets = [], payload = {}) => {
     return results;
 };
 
-export const notifyAdminsSafely = async (payload = {}) => {
+export const notifyAdminsSafely = async (payload = {}, options = {}) => {
     try {
-        const admins = await FoodAdmin.find({ isActive: true }).select('_id').lean();
+        const targetFranchiseId = options?.franchiseId || payload?.franchiseId || null;
+
+        let query = { isActive: true };
+
+        if (targetFranchiseId) {
+            // Notify Superadmins AND Subadmins belonging to this specific franchise
+            query.$or = [
+                { admin_type: 'superadmin' },
+                { role: 'ADMIN', franchiseId: { $exists: false } },
+                { franchiseId: null },
+                { franchiseId: targetFranchiseId }
+            ];
+        } else {
+            // General admin alert / Admin personal restaurant alert:
+            // STRICTLY notify ONLY Superadmins, excluding subadmins / franchise partners
+            query.$or = [
+                { admin_type: 'superadmin' },
+                { role: 'SUPER_ADMIN' },
+                { franchiseId: { $exists: false } },
+                { franchiseId: null }
+            ];
+            query.admin_type = { $nin: ['subadmin', 'franchise', 'franchise_partner'] };
+        }
+
+        const admins = await FoodAdmin.find(query).select('_id').lean();
         if (!admins.length) return [];
 
         const targets = admins.map(a => ({

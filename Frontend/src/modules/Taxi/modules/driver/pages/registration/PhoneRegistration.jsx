@@ -150,16 +150,42 @@ const PhoneRegistration = () => {
 
         try {
             clearDriverRegistrationSession();
-            const response = isLoginPage
-                ? await sendDriverLoginOtp({ phone, role })
-                : await sendDriverOtp({ phone, role });
+            let response;
+            let loginModeActive = isLoginPage;
+            try {
+                response = isLoginPage
+                    ? await sendDriverLoginOtp({ phone, role })
+                    : await sendDriverOtp({ phone, role });
+            } catch (firstErr) {
+                const msg = String(
+                    firstErr?.message ||
+                    firstErr?.error ||
+                    firstErr?.data?.error ||
+                    firstErr?.data?.message ||
+                    firstErr?.response?.data?.message ||
+                    '',
+                ).toLowerCase();
+                const isAlreadyRegistered =
+                    firstErr?.status === 409 ||
+                    firstErr?.response?.status === 409 ||
+                    msg.includes('already registered');
+
+                if (!isLoginPage && isAlreadyRegistered) {
+                    // Number is already registered! Seamlessly switch to Login OTP request so driver logs in directly
+                    response = await sendDriverLoginOtp({ phone, role });
+                    loginModeActive = true;
+                } else {
+                    throw firstErr;
+                }
+            }
+
             const sessionData = response?.data?.session || response?.session || {};
             const nextState = saveDriverRegistrationSession({
                 phone,
                 role,
                 registrationId: sessionData.registrationId || '',
                 debugOtp: sessionData.debugOtp || '',
-                loginMode: isLoginPage,
+                loginMode: loginModeActive,
                 referralCode: sharedReferralCode,
             });
 
@@ -172,6 +198,7 @@ const PhoneRegistration = () => {
                 err?.error ||
                 err?.data?.error ||
                 err?.data?.message ||
+                err?.response?.data?.message ||
                 '',
             ).trim();
             if (backendMessage) {

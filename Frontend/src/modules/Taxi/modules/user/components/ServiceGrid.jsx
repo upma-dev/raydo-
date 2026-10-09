@@ -211,10 +211,34 @@ const ServiceGrid = ({ plain = false }) => {
               path,
             };
           });
-          setServiceCards(mapped);
+
+          const finalCards = [...mapped];
+          DEFAULT_SERVICE_CARDS.forEach((defCard) => {
+            const exists = finalCards.some((c) => {
+              const cName = String(c.name || '').toLowerCase();
+              const dName = String(defCard.name || '').toLowerCase();
+              return (
+                cName === dName ||
+                c.id === defCard.id ||
+                (defCard.id === 'cab' && (cName.includes('taxi') || cName.includes('cab'))) ||
+                (defCard.id === 'bike' && cName.includes('bike')) ||
+                (defCard.id === 'parcel' && (cName.includes('parcel') || cName.includes('delivery'))) ||
+                (defCard.id === 'bus' && cName.includes('bus')) ||
+                (defCard.id === 'outstation' && cName.includes('outstation'))
+              );
+            });
+            if (!exists) {
+              finalCards.push(defCard);
+            }
+          });
+
+          setServiceCards(finalCards);
+        } else {
+          setServiceCards(DEFAULT_SERVICE_CARDS);
         }
       } catch (err) {
         console.warn('Using default service cards:', err);
+        setServiceCards(DEFAULT_SERVICE_CARDS);
       } finally {
         setLoading(false);
       }

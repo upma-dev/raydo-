@@ -18,9 +18,9 @@ export default function FeeSettings() {
       minOrderAmount: "0",
       incentivePercent: "0",
     },
-    platformFee: "",
+    platformFee: "0",
     surgeTitle: "Surge Charge",
-    gstRate: "",
+    gstRate: "0",
     codLimit: "",
   })
   const [distanceRules, setDistanceRules] = useState([])
@@ -101,9 +101,9 @@ export default function FeeSettings() {
             minOrderAmount: String(saved.deliveryPartnerIncentiveRule?.minOrderAmount ?? 0),
             incentivePercent: String(saved.deliveryPartnerIncentiveRule?.incentivePercent ?? 0),
           },
-          platformFee: saved.platformFee ?? "",
+          platformFee: String(saved.platformFee ?? 0),
           surgeTitle: saved.surgeTitle || "Surge Charge",
-          gstRate: saved.gstRate ?? "",
+          gstRate: String(saved.gstRate ?? 0),
           codLimit: saved.codLimit ?? "",
         })
       } else {
@@ -115,8 +115,9 @@ export default function FeeSettings() {
             minOrderAmount: "0",
             incentivePercent: "0",
           },
-          platformFee: "",
-          gstRate: "",
+          platformFee: "0",
+          surgeTitle: "Surge Charge",
+          gstRate: "0",
           codLimit: "",
         })
       }
@@ -304,13 +305,13 @@ export default function FeeSettings() {
         toast.error("Incentive percentage must be between 0 and 100")
         return
       }
-      const platformFee = Number(feeSettings.platformFee)
-      if (feeSettings.platformFee === "" || !Number.isFinite(platformFee) || platformFee < 0) {
+      const platformFee = feeSettings.platformFee === "" || feeSettings.platformFee == null ? 0 : Number(feeSettings.platformFee)
+      if (!Number.isFinite(platformFee) || platformFee < 0) {
         toast.error("Platform fee must be 0 or greater")
         return
       }
-      const gstRate = Number(feeSettings.gstRate)
-      if (feeSettings.gstRate === "" || !Number.isFinite(gstRate) || gstRate < 0 || gstRate > 100) {
+      const gstRate = feeSettings.gstRate === "" || feeSettings.gstRate == null ? 0 : Number(feeSettings.gstRate)
+      if (!Number.isFinite(gstRate) || gstRate < 0 || gstRate > 100) {
         toast.error("GST rate must be between 0 and 100")
         return
       }
@@ -408,6 +409,70 @@ export default function FeeSettings() {
             </div>
           ) : (
             <>
+              {/* Platform Fee & Global Settings Section */}
+              <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-5 mb-8">
+                <h3 className="text-lg font-bold text-slate-900 mb-1 flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                  Platform & Billing Charges
+                </h3>
+                <p className="text-xs text-slate-500 mb-4">
+                  Configure platform fee, GST rates, COD limit, and surge display labels applied across all customer orders.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="space-y-1.5 bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                    <label className="block text-sm font-bold text-slate-800">Platform Fee (₹)</label>
+                    <input
+                      type="number"
+                      value={feeSettings.platformFee}
+                      onChange={(e) => setFeeSettings((s) => ({ ...s, platformFee: e.target.value }))}
+                      min="0"
+                      step="1"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none font-semibold text-slate-900"
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-slate-500">Fixed platform fee charged per food order (Set 0 for free)</p>
+                  </div>
+                  <div className="space-y-1.5 bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                    <label className="block text-sm font-bold text-slate-800">GST Rate (%)</label>
+                    <input
+                      type="number"
+                      value={feeSettings.gstRate}
+                      onChange={(e) => setFeeSettings((s) => ({ ...s, gstRate: e.target.value }))}
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none font-semibold text-slate-900"
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-slate-500">Tax rate applied to food orders</p>
+                  </div>
+                  <div className="space-y-1.5 bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                    <label className="block text-sm font-bold text-slate-800">Surge Amount Title (Billing Label)</label>
+                    <input
+                      type="text"
+                      value={feeSettings.surgeTitle || ""}
+                      onChange={(e) => setFeeSettings((s) => ({ ...s, surgeTitle: e.target.value }))}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-900"
+                      placeholder="e.g. Rain Surge / Peak Hours Charge"
+                    />
+                    <p className="text-xs text-slate-500">Custom title shown to customers in bill breakdown</p>
+                  </div>
+                  <div className="space-y-1.5 bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                    <label className="block text-sm font-bold text-slate-800">COD Order Limit (₹)</label>
+                    <input
+                      type="number"
+                      value={feeSettings.codLimit}
+                      onChange={(e) => setFeeSettings((s) => ({ ...s, codLimit: e.target.value }))}
+                      min="0"
+                      step="1"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-900"
+                      placeholder="Leave empty for no limit"
+                    />
+                    <p className="text-xs text-slate-500">Maximum order subtotal allowed for Cash-on-Delivery</p>
+                  </div>
+                </div>
+              </div>
+
               <h3 className="text-lg font-semibold text-slate-900 mb-1">Delivery Fee by Distance Range</h3>
               <p className="text-sm text-slate-500 mb-4">Set different delivery fees based on distance ranges (in km)</p>
 
@@ -494,12 +559,15 @@ export default function FeeSettings() {
                     </label>
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-700 mb-1">User Delivery Fee (Rs.)</label>
+                    <label className="block text-sm text-slate-700 mb-1">User Delivery Fee (Rs./km)</label>
                     <input
-                      type="text"
-                      readOnly
-                      value={`Rs.${toNum(newRange.commissionPerKm, 0)}/km`}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={newRange.commissionPerKm}
+                      onChange={(e) => setNewRange((p) => ({ ...p, commissionPerKm: e.target.value }))}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
+                      placeholder="0"
                     />
                   </div>
                   <div>
@@ -696,57 +764,6 @@ export default function FeeSettings() {
                   </div>
                 </div>
 
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-slate-200 pt-6 mt-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-700">Platform Fee (₹)</label>
-                  <input
-                    type="number"
-                    value={feeSettings.platformFee}
-                    onChange={(e) => setFeeSettings((s) => ({ ...s, platformFee: e.target.value }))}
-                    min="0"
-                    step="1"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
-                    placeholder="0"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-700">Surge Amount Title (Billing Label)</label>
-                  <input
-                    type="text"
-                    value={feeSettings.surgeTitle || ""}
-                    onChange={(e) => setFeeSettings((s) => ({ ...s, surgeTitle: e.target.value }))}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
-                    placeholder="e.g. Rain Surge / Peak Hours Charge"
-                  />
-                  <p className="text-xs text-slate-500">Custom title shown to customers in bill breakdown</p>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-700">GST Rate (%)</label>
-                  <input
-                    type="number"
-                    value={feeSettings.gstRate}
-                    onChange={(e) => setFeeSettings((s) => ({ ...s, gstRate: e.target.value }))}
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
-                    placeholder="5"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-700">COD order limit (₹)</label>
-                  <input
-                    type="number"
-                    value={feeSettings.codLimit}
-                    onChange={(e) => setFeeSettings((s) => ({ ...s, codLimit: e.target.value }))}
-                    min="0"
-                    step="1"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
-                    placeholder="Leave empty for no limit"
-                  />
-                </div>
               </div>
             </>
           )}

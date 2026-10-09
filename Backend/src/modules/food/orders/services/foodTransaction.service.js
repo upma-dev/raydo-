@@ -398,3 +398,47 @@ export async function settleRestaurant(orderId, adminId) {
         recordedById: adminId
     });
 }
+
+/**
+ * Take back the restaurant / delivery-partner wallet credits of an order that was cancelled or refunded.
+ * Credits are posted as soon as an online payment is captured, so a cancelled order must undo them,
+ * otherwise the wallets show money for an order that never happened.
+ * Idempotent: each credit is reversed at most once. Reversals are allowed to push a wallet negative
+ * (the money may already have been withdrawn) so the books always end up correct.
+ */
+export async function reverseWalletsForOrder(orderId, { onlyRestaurant = false } = {}) {
+    const results = [];
+    const credits = await Transaction.find({
+        orderId,
+        type: 'credit',
+        category: { $in: onlyRestaurant ? ['order_payout'] : ['order_payout', 'delivery_payout'] },
+    }).lean();
+
+    for (const credit of credits) {
+        const reversalCategory = `${credit.category}_reversal`;
+        const already = await Transaction.findOne({
+            orderId,
+            entityType: credit.entityType,
+            entityId: credit.entityId,
+            category: reversalCategory,
+        }).lean();
+        if (already) continue;
+
+        try {
+            await recordTransaction({
+                entityType: credit.entityType,
+                entityId: String(credit.entityId),
+                type: 'debit',
+                amount: Number(credit.amount),
+                description: `Reversal: order ${orderId} was cancelled / refunded`,
+                category: reversalCategory,
+                orderId: String(orderId),
+                allowNegative: true,
+            });
+            results.push({ entityType: credit.entityType, amount: credit.amount });
+        } catch (err) {
+            logger.error(`[FoodTransaction] Could not reverse ${credit.category} for order ${orderId}: ${err?.message || err}`);
+        }
+    }
+    return results;
+}

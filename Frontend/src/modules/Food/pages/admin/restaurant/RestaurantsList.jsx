@@ -227,7 +227,7 @@ export default function RestaurantsList() {
           const zoneName =
             (typeof zid === "object" ? (zid?.name || zid?.zoneName) : "") ||
             ""
-          if (zoneName) return zoneName
+          if (zoneName && zoneName.trim().toLowerCase() !== "weather") return zoneName
 
           const zoneIdString =
             typeof zid === "string"
@@ -236,17 +236,26 @@ export default function RestaurantsList() {
           if (zoneIdString && Array.isArray(zones) && zones.length > 0) {
             const match = zones.find((z) => (z?._id || z?.id) === zoneIdString)
             const label = match?.name || match?.zoneName
-            if (label) return label
+            if (label && label.trim().toLowerCase() !== "weather") return label
           }
 
-          return (
-            restaurant?.zone ||
-            restaurant?.location?.area ||
+          const cityOrArea =
             restaurant?.location?.city ||
-            restaurant?.area ||
             restaurant?.city ||
-            "N/A"
-          )
+            restaurant?.location?.area ||
+            restaurant?.area ||
+            ""
+
+          if (cityOrArea && cityOrArea.trim().toLowerCase() !== "weather") {
+            return cityOrArea.trim()
+          }
+
+          const zoneProp = restaurant?.zone
+          if (zoneProp && zoneProp.trim().toLowerCase() !== "weather") {
+            return zoneProp.trim()
+          }
+
+          return cityOrArea || "N/A"
         }
 
         if (rawList.length > 0 || body?.success === true) {
@@ -1198,13 +1207,25 @@ export default function RestaurantsList() {
               <div className="flex flex-col items-center justify-center py-20">
                 <p className="text-lg font-semibold text-red-600 mb-1">Error Loading Data</p>
                 <p className="text-sm text-slate-500 mb-4">{error}</p>
-                <button
-                  type="button"
-                  onClick={() => navigate("/admin/login", { replace: true, state: { from: "/admin/food/restaurants" } })}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Log in as admin
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors font-medium text-sm"
+                  >
+                    Retry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const loginPath = location.pathname.includes('/franchise') ? "/food/franchise/login" : "/admin/login"
+                      navigate(loginPath, { replace: true, state: { from: location.pathname } })
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+                  >
+                    {location.pathname.includes('/franchise') ? "Log in to Franchise Portal" : "Log in as admin"}
+                  </button>
+                </div>
               </div>
             ) : (
               <table className="w-full">

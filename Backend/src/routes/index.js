@@ -26,6 +26,8 @@ import { getOrderPublic } from '../modules/food/orders/services/order.service.js
 import { sendResponse } from '../utils/response.js';
 
 import maintenanceRoutes from '../core/admin/routes/maintenanceSetting.routes.js';
+import { checkMaintenanceMiddleware } from '../core/admin/maintenanceSetting.middleware.js';
+import globalSettingsRoutes from '../core/settings/globalSettings.routes.js';
 import franchisePublicRoutes from '../modules/food/franchise/routes/franchise.routes.js';
 
 const router = express.Router();
@@ -33,6 +35,9 @@ const router = express.Router();
 router.get('/v1/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'Server is healthy' });
 });
+
+// Enforce maintenance mode check for incoming requests
+router.use(checkMaintenanceMiddleware);
 
 router.get('/v1/public/order-track/:shareId', async (req, res, next) => {
     try {
@@ -61,7 +66,7 @@ router.use('/v1/uploads', uploadRoutes);
 // Mark business-settings/public as truly public (must be before protected admin block)
 router.get('/v1/food/admin/business-settings/public', businessSettingsController.getBusinessSettings);
 
-router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN'), restaurantAdminRoutes);
+router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN', 'SUBADMIN', 'SUPERADMIN', 'SUPER_ADMIN'), restaurantAdminRoutes);
 router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);
 // router.use('/v1/food/user', userRoutes);
 
@@ -77,6 +82,8 @@ router.use('/fcm-tokens', fcmRoutes);
 // router.get('/env/public', getPublicEnvController);
 
 router.get('/v1/admin/queues', authMiddleware, requireRoles('ADMIN'), getQueuesController);
+// One place for brand / contact / colours / privacy policy shared by Food and Taxi
+router.use('/v1/admin/global-settings', authMiddleware, requireRoles('ADMIN', 'SUPERADMIN', 'SUPER_ADMIN'), globalSettingsRoutes);
 router.use('/v1', taxiPromotionsRouter);
 
 router.use('/v1/taxi', taxiRouter);

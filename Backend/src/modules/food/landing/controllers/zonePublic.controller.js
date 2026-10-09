@@ -22,16 +22,33 @@ const isPointInPolygon = (lat, lng, polygon) => {
     return inside;
 };
 
+const getDistanceInKm = (lat1, lon1, lat2, lon2) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+};
+
 /** GET /zones/detect?lat=..&lng=.. */
 export const detectZonePublicController = async (req, res, next) => {
     try {
         const lat = toFinite(req.query.lat);
         const lng = toFinite(req.query.lng);
+        const city = req.query.city ? String(req.query.city).trim() : null;
+        const address = req.query.address ? String(req.query.address).trim() : null;
+
         if (lat === null || lng === null) {
             return res.status(400).json({ success: false, message: 'lat and lng are required' });
         }
 
         const zones = await FoodZone.find({ isActive: true }).lean();
+
+        // 1. Ray-casting point-in-polygon check
         for (const zone of zones) {
             const coords = Array.isArray(zone.coordinates) ? zone.coordinates : [];
             if (coords.length < 3) continue;
@@ -41,6 +58,48 @@ export const detectZonePublicController = async (req, res, next) => {
                     message: 'Zone detected',
                     data: { status: 'IN_SERVICE', zoneId: zone._id, zone }
                 });
+            }
+        }
+
+        // 2. Centroid proximity check (30km buffer for user locations near zone boundary)
+        let closestZone = null;
+        let minDistance = Infinity;
+
+        for (const zone of zones) {
+            const coords = Array.isArray(zone.coordinates) ? zone.coordinates : [];
+            if (coords.length === 0) continue;
+            let sumLat = 0, sumLng = 0;
+            coords.forEach(c => { sumLat += c.latitude; sumLng += c.longitude; });
+            const cenLat = sumLat / coords.length;
+            const cenLng = sumLng / coords.length;
+
+            const distKm = getDistanceInKm(lat, lng, cenLat, cenLng);
+            if (distKm <= 35 && distKm < minDistance) {
+                minDistance = distKm;
+                closestZone = zone;
+            }
+        }
+
+        if (closestZone) {
+            return res.status(200).json({
+                success: true,
+                message: 'Zone detected (nearby)',
+                data: { status: 'IN_SERVICE', zoneId: closestZone._id, zone: closestZone }
+            });
+        }
+
+        // 3. City/address text match fallback
+        if (city || address) {
+            const targetText = `${city || ''} ${address || ''}`.toLowerCase();
+            for (const zone of zones) {
+                const zoneLoc = (zone.serviceLocation || zone.name || zone.zoneName || '').toLowerCase();
+                if (zoneLoc && (targetText.includes(zoneLoc) || zoneLoc.split(',').some(part => part.trim() && targetText.includes(part.trim())))) {
+                    return res.status(200).json({
+                        success: true,
+                        message: 'Zone detected (city match)',
+                        data: { status: 'IN_SERVICE', zoneId: zone._id, zone }
+                    });
+                }
             }
         }
 

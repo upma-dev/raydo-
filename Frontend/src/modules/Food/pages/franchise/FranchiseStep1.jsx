@@ -11,6 +11,28 @@ const DEFAULT_FIELDS = [
 export default function FranchiseStep1({ config, defaultValues, onNext, onBack }) {
   const dynamicFields = config?.fields?.filter(f => f.enabled && f.section === 'business_info') || DEFAULT_FIELDS;
 
+  // One plan: 'food' | 'taxi' | 'both'. Prices come from the server (Admin > Franchise Fees).
+  const initialPlan = (() => {
+    const list = defaultValues?.selectedModules || [];
+    const hasFood = list.includes('food');
+    const hasTaxi = list.some(m => String(m).startsWith('taxi'));
+    return hasFood && hasTaxi ? 'both' : hasTaxi ? 'taxi' : 'food';
+  })();
+  const [plan, setPlan] = useState(initialPlan);
+  const selectedModules = plan === 'both' ? ['food', 'taxi'] : [plan];
+  const fees = { food: 0, taxi: 0, both: 0, ...(config?.moduleFranchiseFees || {}) };
+  const inr = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+  const bundleSaving = Math.max(0, Number(fees.food) + Number(fees.taxi) - Number(fees.both));
+
+  const PLANS = [
+    { key: 'food', icon: '🍔', title: 'Food Delivery', tag: null,
+      points: ['Onboard restaurants in your zone', 'Manage food orders & delivery', 'Earn commission on every delivered order'] },
+    { key: 'taxi', icon: '🚕', title: 'Taxi', tag: null,
+      points: ['Cabs, autos, bikes & bus rides', 'Manage drivers & rides in your area', 'Earn commission on every completed ride'] },
+    { key: 'both', icon: '🤝', title: 'Food + Taxi', tag: 'BEST VALUE',
+      points: ['Everything in Food and Taxi', 'One combined franchise fee', 'One combined commission rate'] },
+  ];
+
   const [form, setForm] = useState({
     applicantName: defaultValues?.applicantName || '',
     email: defaultValues?.email || '',
@@ -39,14 +61,109 @@ export default function FranchiseStep1({ config, defaultValues, onNext, onBack }
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (validate()) onNext(form);
+    if (validate()) onNext({ ...form, selectedModules });
   };
 
   return (
     <form onSubmit={handleSubmit} noValidate>
       <div style={{ marginBottom: 28 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 4px', color: 'white' }}>Business Information</h2>
-        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0 }}>Tell us about yourself and your business</p>
+        <h2 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 4px', color: 'white' }}>Choose Plan & Tell Us About You</h2>
+        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0 }}>Pick Food, Taxi or both, then enter your business details</p>
+      </div>
+
+      {/* Plan selection: Food / Taxi / Both */}
+      <div style={{ marginBottom: 24 }}>
+        <label className="label" style={{ fontSize: 13, color: '#FFC400', fontWeight: 800, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          1. Choose your franchise plan <span style={{ color: '#f87171' }}>*</span>
+        </label>
+        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: '0 0 14px' }}>
+          Pick one. The fee is a one-time payment and is shown clearly on each plan.
+        </p>
+
+        <div role="radiogroup" aria-label="Franchise plan" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+          {PLANS.map(p => {
+            const active = plan === p.key;
+            return (
+              <div
+                key={p.key}
+                role="radio"
+                aria-checked={active}
+                tabIndex={0}
+                onClick={() => setPlan(p.key)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPlan(p.key); } }}
+                style={{
+                  position: 'relative', padding: '18px 16px 16px', borderRadius: 16, cursor: 'pointer', userSelect: 'none',
+                  background: active ? 'rgba(255,196,0,0.10)' : 'rgba(255,255,255,0.04)',
+                  border: `2px solid ${active ? '#FFC400' : 'rgba(255,255,255,0.10)'}`,
+                  transition: 'all 0.15s', outline: 'none',
+                }}>
+                {p.tag && (
+                  <span style={{ position: 'absolute', top: -10, right: 12, fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', padding: '3px 10px', borderRadius: 100, background: '#34d399', color: '#052e1c' }}>
+                    {p.tag}
+                  </span>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: 26 }}>{p.icon}</div>
+                  <div style={{
+                    width: 20, height: 20, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: `2px solid ${active ? '#FFC400' : 'rgba(255,255,255,0.3)'}`,
+                  }}>
+                    {active && <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFC400' }} />}
+                  </div>
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: active ? '#FFC400' : 'white', marginTop: 8 }}>{p.title}</div>
+                <div style={{ fontSize: 24, fontWeight: 900, color: 'white', marginTop: 4, lineHeight: 1.1 }}>
+                  {inr(fees[p.key])}
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.45)', marginLeft: 6 }}>one-time</span>
+                </div>
+                {p.key === 'both' && bundleSaving > 0 && (
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#34d399', marginTop: 4 }}>You save {inr(bundleSaving)} vs. taking both separately</div>
+                )}
+                <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0', display: 'grid', gap: 6 }}>
+                  {p.points.map(t => (
+                    <li key={t} style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', display: 'flex', gap: 6 }}>
+                      <span style={{ color: '#34d399' }}>✓</span><span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* When do I pay? */}
+        <div style={{ marginTop: 16, padding: 16, borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#6895FF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
+            How it works - when do I pay?
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+            {[
+              { n: 1, t: 'Fill this form', d: 'Your details, location and documents.' },
+              { n: 2, t: `Pay ${inr(fees[plan])}`, d: 'Last step of the form: pay by UPI / Card / Net banking.', hot: true },
+              { n: 3, t: 'We review', d: 'Our team checks your application within ~48 hours.' },
+              { n: 4, t: 'Start operating', d: 'Once approved, your franchise login is activated.' },
+            ].map(st => (
+              <div key={st.n} style={{ display: 'flex', gap: 10 }}>
+                <div style={{
+                  width: 24, height: 24, borderRadius: '50%', flexShrink: 0, fontSize: 12, fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: st.hot ? '#FFC400' : 'rgba(255,255,255,0.1)', color: st.hot ? '#111827' : 'white',
+                }}>{st.n}</div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: st.hot ? '#FFC400' : 'white' }}>{st.t}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2, lineHeight: 1.4 }}>{st.d}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 12 }}>
+            You can also choose Pay later on the payment step. If your application is not approved, your fee is refunded.
+          </div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, color: '#FFC400', fontWeight: 800, marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        2. Your details
       </div>
 
       {/* Core fields — always shown */}

@@ -126,14 +126,20 @@ export default function UserLayout() {
     normalizedPath === "/profile" ||
     normalizedPath === "/user/profile"
 
-  const showBottomNav = (normalizedPath === "/" ||
+  const showBottomNav = (
+    normalizedPath === "/" ||
     normalizedPath === "/user" ||
     normalizedPath === "/dining" ||
     normalizedPath === "/user/dining" ||
     normalizedPath === "/under-250" ||
     normalizedPath === "/user/under-250" ||
+    normalizedPath.startsWith("/user/restaurants") ||
+    normalizedPath.startsWith("/restaurants") ||
+    normalizedPath.startsWith("/user/categories") ||
+    normalizedPath.startsWith("/categories") ||
     isProfileRoot ||
-    normalizedPath === "")
+    normalizedPath === ""
+  )
 
   const isUnder250 = normalizedPath === "/under-250" || normalizedPath === "/user/under-250"
 

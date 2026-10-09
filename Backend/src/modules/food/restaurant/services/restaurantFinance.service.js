@@ -86,6 +86,8 @@ function resolveTxCommission(tx) {
 
 function isCompletedTx(tx) {
     if (!tx) return false;
+    // Customer refunded after delivery and the admin took the restaurant's share back
+    if (tx.payoutReversed) return false;
     const order = (tx.orderId && typeof tx.orderId === 'object') ? tx.orderId : {};
     const orderStatus = String(order.orderStatus || order.deliveryState?.currentPhase || order.deliveryState?.status || '').toLowerCase();
     if (['delivered', 'completed'].includes(orderStatus)) return true;
@@ -158,7 +160,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         restaurantId: rid
     })
         .populate('orderId', 'pricing orderStatus deliveryState')
-        .select('amounts.restaurantShare amounts.restaurantCommission status payment orderId')
+        .select('amounts.restaurantShare amounts.restaurantCommission status payment orderId payoutReversed')
         .lean();
 
     const allCompletedTx = (rawAllTransactions || []).filter(isCompletedTx);
@@ -171,6 +173,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
     // Backup query: count delivered orders directly from FoodOrder to ensure no delivered order earnings are missed
     const deliveredOrders = await FoodOrder.find({
         restaurantId: rid,
+        payoutReversed: { $ne: true },
         $or: [
             { orderStatus: { $in: ['delivered', 'completed'] } },
             { 'deliveryState.currentPhase': { $in: ['delivered', 'completed'] } }

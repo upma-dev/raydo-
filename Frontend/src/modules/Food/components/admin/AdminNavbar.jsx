@@ -28,6 +28,7 @@ import {
   Globe,
 } from "lucide-react";
 import { useAdminLanguage } from "@food/context/AdminLanguageContext";
+import GlobalLanguageSelector from "@/shared/components/GlobalLanguageSelector";
 import {
   Dialog,
   DialogContent,
@@ -61,7 +62,7 @@ const debugError = (...args) => {}
 
 export default function AdminNavbar({ onMenuClick }) {
   const navigate = useNavigate();
-  const { lang, setLang, LANGUAGES, t } = useAdminLanguage();
+  const { t } = useAdminLanguage();
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedHandoverItem, setSelectedHandoverItem] = useState(null);
@@ -343,44 +344,7 @@ export default function AdminNavbar({ onMenuClick }) {
 
           {/* Right: User Profile & Language Selector */}
           <div className="flex items-center gap-3">
-
-            {/* Language Selector Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="h-10 px-3 rounded-full border border-neutral-200 bg-neutral-50 text-neutral-800 flex items-center gap-2 hover:bg-neutral-100 transition-colors text-xs font-bold shadow-xs cursor-pointer"
-                  title={t('select_language', 'Select Language')}
-                >
-                  <Globe className="w-4 h-4 text-emerald-600" />
-                  <span className="hidden sm:inline-flex items-center gap-1.5">
-                    <span>{LANGUAGES.find(l => l.code === lang)?.flag}</span>
-                    <span>{LANGUAGES.find(l => l.code === lang)?.label}</span>
-                  </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-neutral-500" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44 bg-white border border-neutral-200 rounded-xl shadow-xl p-1 z-50">
-                <div className="px-3 py-1.5 text-[10px] font-black uppercase text-neutral-400 border-b border-neutral-100 mb-1">
-                  🌐 {t('select_language', 'Select Language')}
-                </div>
-                {LANGUAGES.map((l) => (
-                  <DropdownMenuItem
-                    key={l.code}
-                    onClick={() => setLang(l.code)}
-                    className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold cursor-pointer transition-colors ${
-                      lang === l.code ? 'bg-emerald-50 text-emerald-700 font-extrabold' : 'text-neutral-700 hover:bg-neutral-100'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span>{l.flag}</span>
-                      <span>{l.label}</span>
-                    </span>
-                    {lang === l.code && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <GlobalLanguageSelector variant="light" />
 
             <Popover open={notificationsOpen} onOpenChange={setNotificationsOpen}>
               <PopoverTrigger asChild>

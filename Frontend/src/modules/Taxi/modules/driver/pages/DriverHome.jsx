@@ -26,6 +26,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { GoogleMap, Marker } from '@react-google-maps/api';
 import toast from 'react-hot-toast';
 import LowBalanceModal from './LowBalanceModal';
+import GlobalLanguageSelector from '@/shared/components/GlobalLanguageSelector';
 
 
 import MapGrid from '@/assets/raydo-3d-map.jpg';
@@ -2317,10 +2318,10 @@ const DriverHome = () => {
             </AnimatePresence>
 
             {/* --- TOP FLOATING UI --- */}
-            {/* --- TOP FLOATING UI --- */}
-            <div className="fixed top-0 left-0 right-0 z-40 mx-auto max-w-md grid grid-cols-3 items-center p-4 pt-12 pointer-events-none">
-                {/* Left Side: Actions */}
-                <div className="pointer-events-auto flex items-center gap-2">
+            <div className="fixed top-0 left-0 right-0 z-40 mx-auto max-w-md flex items-center justify-between p-3 pt-10 pointer-events-none">
+                {/* Left Side: Language Selector & Calendar */}
+                <div className="pointer-events-auto flex items-center gap-1.5 shrink-0">
+                    <GlobalLanguageSelector variant="light" />
                     <button
                         onClick={() => {
                             loadScheduledRides();
@@ -2335,10 +2336,34 @@ const DriverHome = () => {
                             </span>
                         ) : null}
                     </button>
+                </div>
+
+                {/* Center: Duty Toggle & Notification Bell */}
+                <div className="flex items-center gap-1.5 pointer-events-auto">
+                    <button
+                        disabled={isTogglingDuty}
+                        onClick={handleDutyToggle}
+                        className={`relative flex h-10 w-24 items-center rounded-full p-1 transition-all duration-500 shadow-lg ${
+                            isOnline ? 'bg-emerald-500 shadow-emerald-500/20' : 'bg-slate-200'
+                        }`}
+                    >
+                        <motion.div
+                            animate={{ x: isOnline ? 56 : 0 }}
+                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                            className="absolute left-1 h-8 w-8 rounded-full bg-white shadow-sm flex items-center justify-center"
+                        >
+                            <Power size={14} className={isOnline ? 'text-emerald-500' : 'text-slate-400'} strokeWidth={3} />
+                        </motion.div>
+                        <div className="flex w-full items-center justify-center text-[9px] font-black uppercase tracking-widest pl-1">
+                            <span className={`transition-opacity duration-300 ${isOnline ? 'text-white mr-5' : 'text-slate-400 ml-5'}`}>
+                                {isOnline ? 'Online' : 'Offline'}
+                            </span>
+                        </div>
+                    </button>
 
                     <button 
                         onClick={() => navigate('/taxi/driver/notifications')}
-                        className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-100 bg-white text-slate-900 shadow-md transition-all active:scale-90"
+                        className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-100 bg-white text-slate-900 shadow-md transition-all active:scale-90"
                     >
                         <Bell size={18} />
                         {notificationCount > 0 ? (
@@ -2349,38 +2374,14 @@ const DriverHome = () => {
                     </button>
                 </div>
 
-                {/* Center: Duty Toggle */}
-                <div className="flex justify-center pointer-events-auto">
-                    <button
-                        disabled={isTogglingDuty}
-                        onClick={handleDutyToggle}
-                        className={`relative flex h-10 w-28 items-center rounded-full p-1 transition-all duration-500 shadow-lg ${
-                            isOnline ? 'bg-emerald-500 shadow-emerald-500/20' : 'bg-slate-200'
-                        }`}
-                    >
-                        <motion.div
-                            animate={{ x: isOnline ? 72 : 0 }}
-                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                            className="absolute left-1 h-8 w-8 rounded-full bg-white shadow-sm flex items-center justify-center"
-                        >
-                            <Power size={14} className={isOnline ? 'text-emerald-500' : 'text-slate-400'} strokeWidth={3} />
-                        </motion.div>
-                        <div className="flex w-full items-center justify-center text-[9px] font-black uppercase tracking-widest pl-2">
-                            <span className={`transition-opacity duration-300 ${isOnline ? 'text-white mr-6' : 'text-slate-400 ml-6'}`}>
-                                {isOnline ? 'Online' : 'Offline'}
-                            </span>
-                        </div>
-                    </button>
-                </div>
-
                 {/* Right Side: Wallet */}
-                <div className="flex justify-end pointer-events-auto">
+                <div className="flex justify-end pointer-events-auto shrink-0">
                     <div 
                         onClick={() => navigate('/taxi/driver/wallet')}
-                        className="flex items-center gap-1.5 rounded-full bg-black px-3 py-1.5 text-white shadow-xl shadow-black/10 active:scale-95 transition-all cursor-pointer border border-white/10"
+                        className="flex items-center gap-1 rounded-full bg-black px-2.5 py-1.5 text-white shadow-xl shadow-black/10 active:scale-95 transition-all cursor-pointer border border-white/10"
                     >
                         <IndianRupee size={12} className="text-emerald-400" strokeWidth={3} />
-                        <span className="text-[13px] font-black tracking-tight">
+                        <span className="text-[12px] font-black tracking-tight">
                             {Number(walletSummary.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </span>
                     </div>

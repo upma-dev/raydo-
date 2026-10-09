@@ -13,36 +13,15 @@ import {
   Phone,
   ShieldCheck,
   Ticket,
+  Star,
+  Moon,
+  Ban,
 } from 'lucide-react';
 
+import { formatTravelDate, formatDurationBrief as briefDuration, coachTags, arrivesNextDay, describeCancellationRule } from './busUtils';
+
 const getRoutePrefix = (pathname = '') => (pathname.startsWith('/taxi/user') ? '/taxi/user' : '');
-
-const formatTravelDate = (dateStr) => {
-  if (!dateStr) return '';
-  try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    });
-  } catch {
-    return dateStr;
-  }
-};
-
-const formatDurationBrief = (value = '') => {
-  const raw = String(value || '').trim();
-  if (!raw) return 'Direct';
-  return raw
-    .replace(/days?/gi, 'd')
-    .replace(/hours?/gi, 'h')
-    .replace(/hrs?/gi, 'h')
-    .replace(/minutes?/gi, 'm')
-    .replace(/mins?/gi, 'm')
-    .replace(/\s+/g, ' ')
-    .trim();
-};
+const formatDurationBrief = (value = '') => briefDuration(value) || 'Direct';
 
 const stopBadgeTone = {
   pickup: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -113,10 +92,16 @@ const BusPreview = () => {
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/70">{bus.busName || 'Coach Service'}</p>
                   <h2 className="mt-1 truncate text-[22px] font-black">{bus.operator}</h2>
                   <p className="mt-1 text-sm font-semibold text-white/75">{bus.type} • {bus.routeName || 'Direct route'}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {coachTags(bus).map((tag) => <span key={tag} className="rounded-md bg-white/20 px-2 py-0.5 text-[10px] font-black">{tag}</span>)}
+                    {Number(bus.ratingCount) > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500 px-2 py-0.5 text-[10px] font-black"><Star size={10} className="fill-current" />{Number(bus.rating).toFixed(1)} ({bus.ratingCount})</span>
+                    ) : <span className="rounded-md bg-sky-500 px-2 py-0.5 text-[10px] font-black">NEW</span>}
+                  </div>
                 </div>
                 <div className="rounded-2xl bg-white/12 px-4 py-3 text-right backdrop-blur-sm">
                   <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/70">Starts at</p>
-                  <p className="mt-1 text-2xl font-black">Rs {Number(bus.price || 0)}</p>
+                  <p className="mt-1 text-2xl font-black">₹{Number(bus.price || 0).toLocaleString('en-IN')}</p>
                 </div>
               </div>
             </div>
@@ -151,11 +136,11 @@ const BusPreview = () => {
           </div>
           <div className="rounded-[22px] border border-slate-100 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Arrival</p>
-            <p className="mt-2 text-lg font-black text-slate-900">{bus.arrival || 'NA'}</p>
+            <p className="mt-2 text-lg font-black text-slate-900">{bus.arrival || 'NA'}{arrivesNextDay(bus.departure, bus.arrival) ? <sup className="ml-0.5 text-[10px] text-rose-500">+1</sup> : null}</p>
           </div>
           <div className="rounded-[22px] border border-slate-100 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Seats Left</p>
-            <p className="mt-2 text-lg font-black text-emerald-600">{bus.availableSeats || 0}</p>
+            <p className={`mt-2 text-lg font-black ${(bus.availableSeats || 0) > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{bus.availableSeats || 0}</p>
           </div>
         </div>
 
@@ -188,7 +173,7 @@ const BusPreview = () => {
               </div>
               <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
                 <Ticket size={14} className="text-slate-400" />
-                Rs {Number(bus.price || 0)} per seat
+                ₹{Number(bus.price || 0).toLocaleString('en-IN')} per seat (starting)
               </div>
             </div>
             {(bus.driverName || bus.driverPhone) ? (
@@ -226,6 +211,7 @@ const BusPreview = () => {
                       {stop.stopType === 'both' ? 'BP + DP' : stop.stopType === 'drop' ? 'DP' : 'BP'}
                     </span>
                     <p className="mt-1 text-[11px] font-bold text-slate-500">{stop.arrivalTime || stop.departureTime || '--:--'}</p>
+                    {stop.landmark || stop.address ? <p className="mt-0.5 max-w-[9rem] truncate text-[10px] font-semibold text-slate-400">{stop.landmark || stop.address}</p> : null}
                   </div>
                 </div>
               </div>
@@ -260,10 +246,24 @@ const BusPreview = () => {
                 <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{bus.boardingPolicy}</p>
               </div>
             ) : null}
-            {bus.cancellationPolicy ? (
+            {(Array.isArray(bus.cancellationRules) && bus.cancellationRules.length > 0) || bus.cancellationPolicy ? (
               <div className="rounded-[20px] border border-slate-100 bg-slate-50 px-4 py-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Cancellation Policy</p>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{bus.cancellationPolicy}</p>
+                <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400"><Ban size={12} /> Cancellation & refund</p>
+                {Array.isArray(bus.cancellationRules) && bus.cancellationRules.length > 0 ? (
+                  <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    {bus.cancellationRules.map((rule, i) => {
+                      const d = describeCancellationRule(rule);
+                      return (
+                        <div key={rule.id || i} className={`flex items-center justify-between gap-3 px-4 py-3 text-xs ${i ? 'border-t border-slate-100' : ''}`}>
+                          <span className="font-semibold text-slate-600">{rule.label ? `${rule.label}: ` : ''}{d.when}</span>
+                          <span className={`shrink-0 rounded-full px-2.5 py-1 font-black ${d.full ? 'bg-emerald-50 text-emerald-700' : d.none ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-700'}`}>{d.refund}</span>
+                        </div>
+                      );
+                    })}
+                    <div className="border-t border-slate-100 bg-slate-50 px-4 py-2.5 text-[11px] font-semibold text-slate-500">Cancelling after the last window above (or after departure) gives no refund.</div>
+                  </div>
+                ) : null}
+                {bus.cancellationPolicy ? <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{bus.cancellationPolicy}</p> : null}
               </div>
             ) : null}
             {bus.luggagePolicy ? (

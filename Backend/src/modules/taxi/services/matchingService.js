@@ -164,6 +164,7 @@ const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds, vehicl
 
   const conditions = [
     { isOnline: true },
+    { socketId: { $ne: null } },
     { isOnRide: false },
     { 'wallet.isBlocked': { $ne: true } },
   ];

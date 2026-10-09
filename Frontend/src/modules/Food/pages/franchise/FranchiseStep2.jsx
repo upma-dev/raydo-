@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MapPin, ChevronDown, Loader2, ArrowRight, ArrowLeft } from "lucide-react";
-import { franchiseAPI } from "@food/api";
+import { franchiseAPI, apiClient } from "@food/api";
 
 const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -20,23 +20,43 @@ export default function FranchiseStep2({ defaultValues, onNext, onBack }) {
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
   const [pincodes, setPincodes] = useState([]);
+  const [foodZones, setFoodZones] = useState([]);
   const [loadingStates, setLoadingStates] = useState(true);
   const [loadingCities, setLoadingCities] = useState(false);
   const [loadingPincodes, setLoadingPincodes] = useState(false);
+  const [loadingZones, setLoadingZones] = useState(true);
   const [mapsLoaded, setMapsLoaded] = useState(false);
+  const [isCustomCity, setIsCustomCity] = useState(false);
 
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
+
+  const selectedModules = defaultValues?.selectedModules || ['food'];
+  const hasFood = selectedModules.includes('food');
+  const hasTaxi = selectedModules.some(m => String(m).startsWith('taxi'));
 
   const [form, setForm] = useState({
     state: defaultValues?.state || '',
     city: defaultValues?.city || '',
     area: defaultValues?.area || '',
     pincode: defaultValues?.pincode || '',
+    zoneId: defaultValues?.zoneId || '',
+    taxiTerritory: defaultValues?.taxiTerritory || '',
     coordinates: defaultValues?.coordinates || {},
   });
   const [errors, setErrors] = useState({});
+
+  // Load public food zones
+  useEffect(() => {
+    apiClient.get('/food/landing/zones/public')
+      .then(res => {
+        const list = res?.data?.data?.zones || res?.data?.zones || [];
+        setFoodZones(list);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingZones(false));
+  }, []);
 
   // Load states on mount
   useEffect(() => {
@@ -51,8 +71,25 @@ export default function FranchiseStep2({ defaultValues, onNext, onBack }) {
     if (!form.state) { setCities([]); return; }
     setLoadingCities(true);
     franchiseAPI.getCities(form.state)
-      .then(res => { if (res?.data?.data) setCities(res.data.data); })
-      .catch(() => {})
+      .then(res => {
+        const list = Array.isArray(res?.data?.data) ? res.data.data : Array.isArray(res?.data) ? res.data : [];
+        if (list.length > 0) {
+          setCities(list);
+        } else {
+          // Fallback cities for major states
+          const fallbacks = {
+            'Madhya Pradesh': ['Bhopal', 'Indore', 'Jabalpur', 'Gwalior', 'Ujjain', 'Sagar', 'Dewas', 'Satna', 'Ratlam', 'Rewa'],
+            'Maharashtra': ['Mumbai', 'Pune', 'Nagpur', 'Thane', 'Nashik', 'Aurangabad', 'Solapur', 'Kolhapur'],
+            'Gujarat': ['Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Bhavnagar', 'Gandhinagar'],
+            'Rajasthan': ['Jaipur', 'Jodhpur', 'Udaipur', 'Kota', 'Bikaner', 'Ajmer'],
+            'Uttar Pradesh': ['Lucknow', 'Kanpur', 'Agra', 'Varanasi', 'Ghaziabad', 'Noida'],
+          };
+          setCities(fallbacks[form.state] || ['Bhopal', 'Indore', 'Mumbai', 'Pune', 'Delhi', 'Jaipur']);
+        }
+      })
+      .catch(() => {
+        setCities(['Bhopal', 'Indore', 'Jabalpur', 'Gwalior', 'Ujjain', 'Sagar', 'Dewas']);
+      })
       .finally(() => setLoadingCities(false));
     setForm(prev => ({ ...prev, city: '', pincode: '' }));
     setPincodes([]);
@@ -204,25 +241,56 @@ export default function FranchiseStep2({ defaultValues, onNext, onBack }) {
             {errors.state && <p className="error-text">{errors.state}</p>}
           </div>
 
-          {/* City Dropdown */}
+          {/* City Dropdown / Text Input Fallback */}
           <div>
-            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <MapPin size={13} style={{ color: '#6895FF' }} /> City <span style={{ color: '#f87171' }}>*</span>
-              {loadingCities && <Loader2 size={12} style={{ animation: 'spin 1s linear infinite', color: '#6895FF' }} />}
-            </label>
-            <div style={{ position: 'relative' }}>
-              <select
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                <MapPin size={13} style={{ color: '#6895FF' }} /> City <span style={{ color: '#f87171' }}>*</span>
+                {loadingCities && <Loader2 size={12} style={{ animation: 'spin 1s linear infinite', color: '#6895FF' }} />}
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCustomCity(!isCustomCity);
+                  setForm(prev => ({ ...prev, city: '' }));
+                }}
+                style={{ background: 'none', border: 'none', color: '#6895FF', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+              >
+                {isCustomCity ? '← Choose from list' : '+ Type custom city'}
+              </button>
+            </div>
+
+            {isCustomCity ? (
+              <input
                 className="input-field"
-                style={{ paddingRight: 40, appearance: 'none' }}
+                type="text"
+                placeholder="Enter city name (e.g. Indore, Bhopal)"
                 value={form.city}
                 onChange={e => handleChange('city', e.target.value)}
-                disabled={!form.state || loadingCities}
-              >
-                <option value="">{!form.state ? 'Select state first' : loadingCities ? 'Loading...' : 'Select City'}</option>
-                {cities.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <ChevronDown size={16} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.4)', pointerEvents: 'none' }} />
-            </div>
+              />
+            ) : (
+              <div style={{ position: 'relative' }}>
+                <select
+                  className="input-field"
+                  style={{ paddingRight: 40, appearance: 'none' }}
+                  value={form.city}
+                  onChange={e => {
+                    if (e.target.value === '__custom__') {
+                      setIsCustomCity(true);
+                      setForm(prev => ({ ...prev, city: '' }));
+                    } else {
+                      handleChange('city', e.target.value);
+                    }
+                  }}
+                  disabled={!form.state || loadingCities}
+                >
+                  <option value="">{!form.state ? 'Select state first' : loadingCities ? 'Loading...' : 'Select City'}</option>
+                  {cities.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value="__custom__">➕ Other City (Type manually)</option>
+                </select>
+                <ChevronDown size={16} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.4)', pointerEvents: 'none' }} />
+              </div>
+            )}
             {errors.city && <p className="error-text">{errors.city}</p>}
           </div>
         </div>
@@ -270,6 +338,55 @@ export default function FranchiseStep2({ defaultValues, onNext, onBack }) {
             )}
           </div>
         </div>
+
+        {/* Target Food Zone Dropdown (if Food delivery selected) */}
+        {hasFood && (
+          <div>
+            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <MapPin size={13} style={{ color: '#34d399' }} /> Select Target Food Zone
+              {loadingZones && <Loader2 size={12} style={{ animation: 'spin 1s linear infinite', color: '#6895FF' }} />}
+            </label>
+            <div style={{ position: 'relative' }}>
+              <select
+                className="input-field"
+                style={{ paddingRight: 40, appearance: 'none', borderColor: form.zoneId ? '#34d399' : undefined }}
+                value={form.zoneId || ''}
+                onChange={e => handleChange('zoneId', e.target.value)}
+              >
+                <option value="">-- Select Target Food Zone (Auto-assigned on Approval) --</option>
+                {foodZones.map(z => (
+                  <option key={z._id} value={z._id}>
+                    {z.name || z.zoneName} ({z.serviceLocation || z.country || 'Zone'})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={16} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.4)', pointerEvents: 'none' }} />
+            </div>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+              ⚡ SubAdmin level permissions for this food zone will be granted automatically upon application approval.
+            </p>
+          </div>
+        )}
+
+        {/* Target Taxi Zone / Territory Input (if any Taxi submodule selected) */}
+        {hasTaxi && (
+          <div>
+            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <MapPin size={13} style={{ color: '#FFC400' }} /> Target Taxi Operating Zone / Territory
+            </label>
+            <input
+              className="input-field"
+              type="text"
+              placeholder="e.g. Pune Central, Highway Route A, District West"
+              value={form.taxiTerritory || ''}
+              onChange={e => handleChange('taxiTerritory', e.target.value)}
+              style={{ borderColor: form.taxiTerritory ? '#FFC400' : undefined }}
+            />
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+              🚕 Taxi operator permissions for this zone/territory will be provisioned by admin upon approval.
+            </p>
+          </div>
+        )}
 
         {/* Map */}
         <div>

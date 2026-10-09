@@ -744,8 +744,6 @@ const AdminLayout = () => {
             ],
           },
           { icon: Home, label: 'Dashboard', path: '/taxi/admin/dashboard', permission: 'dashboard.view' },
-          /* Maintenance Mode now requires settings.view permission */
-          { icon: Settings, label: 'Maintenance Mode', path: '/taxi/admin/maintenance-mode', permission: 'settings.view' },
           { icon: IndianRupee, label: 'Admin Earnings', path: '/taxi/admin/earnings', permission: 'earnings.view' },
           { icon: MessageCircle, label: 'Chat', path: '/taxi/admin/chat', permission: 'chat.view' },
           {
@@ -910,7 +908,6 @@ const AdminLayout = () => {
             label: 'Business Settings',
             permission: 'settings.view',
             subItems: [
-              { label: 'Global Branding & Setup', path: '/admin/food/business-setup', permission: 'settings.view' },
               { label: 'General Settings', path: '/taxi/admin/settings/business/general', permission: 'settings.view' },
               { label: 'Customization Settings', path: '/taxi/admin/settings/business/customization', permission: 'settings.view' },
               { label: 'Transport Ride Settings', path: '/taxi/admin/settings/business/transport-ride', permission: 'settings.view' },
@@ -933,10 +930,6 @@ const AdminLayout = () => {
             permission: 'settings.view',
             subItems: [
               { label: 'Payment Gateway Settings', path: '/taxi/admin/settings/third-party/payment', permission: 'settings.view' },
-              { label: 'SMS Gateway Settings', path: '/taxi/admin/settings/third-party/sms', permission: 'settings.view' },
-              { label: 'Firebase Settings', path: '/taxi/admin/settings/third-party/firebase', permission: 'settings.view' },
-              { label: 'Map and Map APIs Settings', path: '/taxi/admin/settings/third-party/map-apis', permission: 'settings.view' },
-              { label: 'Mail Configuration', path: '/taxi/admin/settings/third-party/mail', permission: 'settings.view' },
               // { label: 'Notification Channel', path: '/taxi/admin/settings/third-party/notification-channel' },
             ],
           },
@@ -945,20 +938,6 @@ const AdminLayout = () => {
           //   label: 'Addons',
           //   subItems: [{ label: 'Dispatcher Addons', path: '/taxi/admin/settings/addons/dispatcher' }],
           // },
-          {
-            icon: Monitor,
-            label: 'CMS-Landing Website',
-            permission: 'settings.view',
-            subItems: [
-              { label: 'Header-Footer', path: '/taxi/admin/settings/cms/header-footer', permission: 'settings.view' },
-              { label: 'Home', path: '/taxi/admin/settings/cms/home', permission: 'settings.view' },
-              { label: 'About Us', path: '/taxi/admin/settings/cms/about', permission: 'settings.view' },
-              { label: 'Driver', path: '/taxi/admin/settings/cms/driver', permission: 'settings.view' },
-              { label: 'User', path: '/taxi/admin/settings/cms/user', permission: 'settings.view' },
-              { label: 'Contact', path: '/taxi/admin/settings/cms/contact', permission: 'settings.view' },
-              { label: 'Privacy Policy, T&C and DMV', path: '/taxi/admin/settings/cms/legal', permission: 'settings.view' },
-            ],
-          },
         ],
       },
     ],
@@ -1584,6 +1563,19 @@ const AdminLayout = () => {
                   >
                     <Truck className="w-3.5 h-3.5 text-black" />
                     Taxi
+                  </button>
+                )}
+                {adminProfile.adminLevel === "platform_superadmin" && (
+                  <button
+                    type="button"
+                    onClick={() => switchAdminModule('/admin/food/global-settings')}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                      "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                    )}
+                  >
+                    <Globe className="w-3.5 h-3.5 text-neutral-500" />
+                    Global
                   </button>
                 )}
               </div>

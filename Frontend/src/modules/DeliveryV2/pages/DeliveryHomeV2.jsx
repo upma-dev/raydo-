@@ -813,16 +813,16 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
     setIsTogglingDuty(true);
     try {
-      // Step 1: Check for active booked gig
+      /* Step 1: Active gig check commented out for direct online mode (like taxi driver)
       const gigRes = await deliveryAPI.getActiveGig();
       const activeGig = gigRes.data?.data?.activeGig;
-
       if (!activeGig) {
         toast.error("You don't have an active gig. Please book a gig before going online.");
         setShowBookGigModal(true);
         setIsTogglingDuty(false);
         return;
       }
+      */
 
       // Step 2: Check Selfie Verification
       if (hasSelfieForToday(onlineSelfie)) {
@@ -831,7 +831,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
         setShowSelfieVerificationModal(true);
       }
     } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Error checking gig status';
+      const msg = err.response?.data?.message || err.message || 'Error going online';
       toast.error(msg);
     } finally {
       setIsTogglingDuty(false);
@@ -1086,7 +1086,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     return () => clearInterval(interval);
   }, [isOnline, onlineSelfie]);
 
-  // Periodic active gig check: auto-offline driver if shift has ended with no next gig
+  // Periodic active gig check (COMMENTED OUT - direct online mode enabled)
+  /*
   useEffect(() => {
     if (!isOnline) return;
 
@@ -1109,6 +1110,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     const interval = setInterval(checkGigStatus, 30000);
     return () => clearInterval(interval);
   }, [isOnline, setOnline]);
+  */
 
   // 3.5. Background Ping / Heartbeat
   // If watchPosition stops firing (e.g. app in background or device stationary),
@@ -1528,15 +1530,17 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                       </div>
                       <div>
                         <h3 className="text-white font-black text-[11px] uppercase tracking-widest leading-none mb-1">{isOnline ? 'System Online' : 'System Offline'}</h3>
-                        <p className="text-gray-400 text-[10px] font-bold uppercase tracking-tight">{isOnline ? 'Waiting for order requests' : 'Book a shift to start working'}</p>
+                        <p className="text-gray-400 text-[10px] font-bold uppercase tracking-tight">{isOnline ? 'Waiting for order requests' : 'Ready to accept delivery orders'}</p>
                       </div>
                     </div>
+                    {/* Book Gig button commented out
                     <button
                       onClick={() => setShowBookGigModal(true)}
                       className="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition-all shadow-lg active:scale-95 shrink-0 border border-emerald-400/30"
                     >
                       Book Gig
                     </button>
+                    */}
                   </div>
                 )}
               </motion.div>
@@ -1971,7 +1975,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
         )}
       </AnimatePresence>
 
-      {/* Gig Booking Modal */}
+      {/* Gig Booking Modal (Commented Out) */}
+      {/*
       <BookGigModal
         isOpen={showBookGigModal}
         onClose={() => setShowBookGigModal(false)}
@@ -1980,6 +1985,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
           setShowSelfieVerificationModal(true);
         }}
       />
+      */}
 
       {/* Selfie Verification Modal */}
       <SelfieVerificationModal

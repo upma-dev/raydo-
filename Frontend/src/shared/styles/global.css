@@ -251,3 +251,41 @@ html[data-theme="dark"] {
   background: radial-gradient(circle at 100% 0%, transparent 18px, var(--active-tab-bg, #FF385C) 18.5px);
 }
 
+/* Google Translate Top Banner & Floating Tooltip Suppression */
+body {
+  top: 0px !important;
+  position: static !important;
+}
+
+.goog-te-banner-frame,
+.goog-te-banner-frame.skiptranslate,
+iframe.goog-te-banner-frame,
+iframe.skiptranslate,
+iframe[name*="container"],
+iframe[id*="container"],
+.VIpgJd-ZVi9od-aZ2wEe-wOHMyf,
+.VIpgJd-ZVi9od-ORHb-OEVmcd,
+#goog-gt-tt,
+.goog-te-balloon-frame,
+.goog-te-spinner-pos,
+.goog-tooltip,
+.goog-tooltip:hover {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  height: 0px !important;
+  width: 0px !important;
+}
+
+.goog-te-gadget {
+  color: transparent !important;
+  font-size: 0px !important;
+}
+
+.goog-te-gadget img,
+.goog-logo-link,
+.goog-te-gadget > span > a {
+  display: none !important;
+}
+

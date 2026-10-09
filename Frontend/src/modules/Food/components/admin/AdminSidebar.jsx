@@ -54,7 +54,7 @@ import {
 } from "lucide-react"
 import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
-import { adminSidebarMenu } from "@food/utils/adminSidebarMenu"
+import { adminSidebarMenu, globalSidebarMenu, GLOBAL_ADMIN_HOME, isGlobalAdminPath } from "@food/utils/adminSidebarMenu"
 import { filterFoodSidebarMenu } from "@food/constants/foodAdminAccess"
 import { getCurrentUser } from "@food/utils/auth"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
@@ -133,6 +133,11 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   const showTaxiTab = adminProfile.adminLevel === "platform_superadmin" || 
                        adminProfile.adminLevel === "taxi_superadmin" || 
                        (adminProfile.adminLevel === "subadmin" && adminProfile.module === "taxi");
+
+  // "Global" = settings common to Food and Taxi. Only the platform super admin gets this tab.
+  const showGlobalTab = adminProfile.adminLevel === "platform_superadmin"
+  const isGlobalMode = showGlobalTab && isGlobalAdminPath(location.pathname)
+  const activeMenu = isGlobalMode ? globalSidebarMenu : adminSidebarMenu
 
   useEffect(() => {
     if (showTaxiTab) prefetchTaxiAdmin()
@@ -359,8 +364,8 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   // Filter menu items based on search query and admin permissions
   const permissionFilteredMenu = useMemo(() => {
     const adminProfile = getCurrentUser("admin") || {}
-    return filterFoodSidebarMenu(adminSidebarMenu, adminProfile)
-  }, [])
+    return filterFoodSidebarMenu(activeMenu, adminProfile)
+  }, [activeMenu])
 
   const filteredMenuData = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -837,7 +842,7 @@ const SidebarBadge = ({ count, isActive = false }) => {
                   onClick={() => switchAdminModule(FOOD_ADMIN_HOME)}
                   className={cn(
                     "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
-                    location.pathname.includes("/admin/food") || location.pathname === "/admin" || location.pathname === "/admin/"
+                    !isGlobalMode && (location.pathname.includes("/admin/food") || location.pathname === "/admin" || location.pathname === "/admin/")
                       ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]"
                       : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
                   )}
@@ -845,12 +850,27 @@ const SidebarBadge = ({ count, isActive = false }) => {
                   <UtensilsCrossed
                     className={cn(
                       "w-3.5 h-3.5",
-                      location.pathname.includes("/admin/food") || location.pathname === "/admin" || location.pathname === "/admin/"
+                      !isGlobalMode && (location.pathname.includes("/admin/food") || location.pathname === "/admin" || location.pathname === "/admin/")
                         ? "text-black"
                         : "text-neutral-500"
                     )}
                   />
                   Food
+                </button>
+              )}
+              {showGlobalTab && (
+                <button
+                  type="button"
+                  onClick={() => switchAdminModule(GLOBAL_ADMIN_HOME)}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    isGlobalMode
+                      ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]"
+                      : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                  )}
+                >
+                  <Globe className={cn("w-3.5 h-3.5", isGlobalMode ? "text-black" : "text-neutral-500")} />
+                  Global
                 </button>
               )}
               {showTaxiTab && (

@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react"
 import { Routes, Route, Navigate } from "react-router-dom"
 import ProtectedRoute from "@food/components/ProtectedRoute"
+import AuthRedirect from "@food/components/AuthRedirect"
 import Loader from "@food/components/Loader"
 
 // Lazy Loading Components
@@ -54,11 +55,11 @@ export default function RestaurantRouter() {
   return (
     <Routes>
       {/* Auth Routes */}
-        <Route path="welcome" element={<Welcome />} />
-        <Route path="login" element={<Login />} />
-        <Route path="otp" element={<OTP />} />
-        <Route path="signup" element={<Signup />} />
-        <Route path="forgot-password" element={<ForgotPassword />} />
+        <Route path="welcome" element={<AuthRedirect module="restaurant"><Welcome /></AuthRedirect>} />
+        <Route path="login" element={<AuthRedirect module="restaurant"><Login /></AuthRedirect>} />
+        <Route path="otp" element={<AuthRedirect module="restaurant"><OTP /></AuthRedirect>} />
+        <Route path="signup" element={<AuthRedirect module="restaurant"><Signup /></AuthRedirect>} />
+        <Route path="forgot-password" element={<AuthRedirect module="restaurant"><ForgotPassword /></AuthRedirect>} />
         <Route path="pending-verification" element={<VerificationPending />} />
 
         {/* Protected Routes */}

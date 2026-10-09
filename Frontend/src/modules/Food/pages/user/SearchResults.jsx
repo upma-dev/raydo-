@@ -35,7 +35,7 @@ export default function SearchResults() {
   const query = searchParams.get("q") || ""
   const navigate = useNavigate()
   const { location } = useLocation()
-  const { zoneId, isOutOfService } = useZone(location)
+  const { zoneId, isOutOfService, loading: zoneLoading } = useZone(location)
   const [searchQuery, setSearchQuery] = useState(query)
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [activeFilters, setActiveFilters] = useState(new Set())
@@ -185,13 +185,26 @@ export default function SearchResults() {
     const fetchRestaurants = async () => {
       try {
         setLoadingRestaurants(true)
-        debugLog('?? Fetching restaurants from API...')
-        // Optional: Add zoneId if available (for sorting/filtering, but show all restaurants)
-        const params = {}
+        const userCoords = extractCoords(location)
+        const params = { isRestaurant: "true" }
         if (zoneId) {
           params.zoneId = zoneId
         }
-        params.isRestaurant = "true"
+        if (userCoords?.latitude && userCoords?.longitude) {
+          params.lat = userCoords.latitude
+          params.lng = userCoords.longitude
+          params.radiusKm = 35
+        } else if (location?.city) {
+          params.city = location.city
+        }
+
+        if (!zoneId && !userCoords && !location?.city) {
+          if (zoneLoading) return
+          setRestaurantsData([])
+          setLoadingRestaurants(false)
+          return
+        }
+
         const response = await restaurantAPI.getRestaurants(params)
 
         debugLog('?? Full API Response:', response)
@@ -489,7 +502,7 @@ export default function SearchResults() {
     }
 
     fetchRestaurants()
-  }, [zoneId, isOutOfService])
+  }, [zoneId, zoneLoading, isOutOfService])
 
   // Update search query when URL changes
   useEffect(() => {

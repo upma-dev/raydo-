@@ -18,6 +18,7 @@ const foodCategorySchema = new mongoose.Schema(
          */
         restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodRestaurant', index: true, default: undefined },
         createdByRestaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodRestaurant', index: true, default: undefined },
+        franchiseId: { type: mongoose.Schema.Types.ObjectId, ref: 'FranchiseApplication', index: true, default: undefined },
         approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved', index: true },
         isApproved: { type: Boolean, default: true, index: true },
         rejectionReason: { type: String, trim: true, default: '' },

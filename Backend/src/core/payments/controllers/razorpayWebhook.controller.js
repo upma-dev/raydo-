@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { FoodOrder } from '../../../modules/food/orders/models/order.model.js';
-import * as foodTransactionService from '../../../modules/food/orders/services/foodTransaction.service.js';
+import { confirmOrderPaid } from '../../../modules/food/orders/services/order-payment-confirm.service.js';
 import { config } from '../../../config/env.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -39,36 +39,19 @@ export const handleRazorpayWebhook = async (req, res) => {
             const rzOrderId = paymentObj.order_id;
             const rzPaymentId = paymentObj.id;
 
-            // Atomic update to mark as paid if not already
-            const order = await FoodOrder.findOneAndUpdate(
-                { 
-                    "payment.razorpay.orderId": rzOrderId, 
-                    "payment.status": { $ne: 'paid' } 
-                },
-                { 
-                    $set: { 
-                        "payment.status": 'paid', 
-                        "payment.razorpay.paymentId": rzPaymentId 
-                    } 
-                },
-                { new: true }
-            );
+            // Find the order this Razorpay order belongs to
+            const found = await FoodOrder.findOne({ "payment.razorpay.orderId": rzOrderId }).select('_id pricing.total payment.status orderStatus').lean();
 
-            if (order) {
-                // ✅ UPDATED: Wrapped in try-catch to prevent secondary failures from breaking the webhook response
-                try {
-                    await foodTransactionService.updateTransactionStatus(order._id, 'captured', {
-                        status: 'captured',
-                        razorpayPaymentId: rzPaymentId,
-                        note: 'Payment status synced via Webhook (payment.captured)'
-                    });
-                } catch (ledgerErr) {
-                    logger.error(`Webhook Ledger Error (Order ${order.orderId}): ${ledgerErr.message}`);
-                }
-                logger.info(`Webhook [payment.captured]: Synced Order ${order.orderId} (Status=paid)`);
+            if (!found) {
+                logger.warn(`Webhook [payment.captured]: No food order for RZ-Order: ${rzOrderId}`);
+            } else if (Math.round((Number(found.pricing?.total) || 0) * 100) !== Number(paymentObj.amount)) {
+                // Never confirm an order for a different amount than it costs
+                logger.error(`Webhook [payment.captured]: AMOUNT MISMATCH for order ${found._id}: expected ${Math.round((Number(found.pricing?.total) || 0) * 100)} paise, got ${paymentObj.amount}`);
             } else {
-                // ✅ ADDED: Log warn if order not found but payment was captured
-                logger.warn(`Webhook [payment.captured]: Order not found or already paid for RZ-Order: ${rzOrderId}`);
+                // Same engine as the app's verify call: marks paid, moves the order forward, tells the restaurant.
+                // Runs safely whichever of the two (webhook / app) arrives first, and any number of times.
+                const order = await confirmOrderPaid(found._id, { paymentId: rzPaymentId, byRole: 'SYSTEM', source: 'webhook' });
+                logger.info(`Webhook [payment.captured]: Synced Order ${order?.order_id || found._id} (Status=${order?.orderStatus})`);
             }
         }
 

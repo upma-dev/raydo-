@@ -1422,7 +1422,13 @@ export default function OrderTracking({ isSharedView = false }) {
     // Check if order can be cancelled (only Razorpay orders that aren't delivered/cancelled)
     if (!order) return;
 
-    if (isAdminAccepted && !isEditWindowOpen) {
+    if (order.cancellation) {
+      // The server applies the admin's cancellation rules and tells us whether this order can be cancelled now
+      if (!order.cancellation.canCancel) {
+        toast.error(order.cancellation.reason || 'This order can no longer be cancelled.');
+        return;
+      }
+    } else if (isAdminAccepted && !isEditWindowOpen) {
       toast.error('Cancellation window ended. You can no longer cancel this order.');
       return;
     }
@@ -1849,8 +1855,32 @@ export default function OrderTracking({ isSharedView = false }) {
           </div>
         </div>
 
-        {/* Cancel Button - Only show if placed and waiting for restaurant confirmation */}
-        {!isShared && orderStatus === "placed" && (
+        {/* Restaurant has not answered yet: tell the customer about the automatic cancellation + refund */}
+        {!isShared && !isCancelledOrder && !isDeliveredOrder && order?.cancellation?.autoCancelAt && (
+          <div className="px-2">
+            <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-4 text-sm text-amber-900 dark:text-amber-200">
+              Waiting for the restaurant to accept your order. If they do not respond by{' '}
+              <strong>{new Date(order.cancellation.autoCancelAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>,
+              your order is cancelled automatically{order?.payment?.status === 'paid' ? ' and you are refunded in full' : ''}.
+            </div>
+          </div>
+        )}
+
+        {/* Cancelled: show what happened to the money */}
+        {!isShared && isCancelledOrder && order?.payment?.refund?.status && order.payment.refund.status !== 'none' && (
+          <div className="px-2">
+            <div className={`rounded-2xl p-4 text-sm border ${order.payment.refund.status === 'failed' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`}>
+              {order.payment.refund.status === 'processed' && (order.payment.method === 'wallet'
+                ? <>₹{order.payment.refund.amount} has been refunded to your Raydo wallet.</>
+                : <>Your refund of ₹{order.payment.refund.amount} has been started. It reaches your original payment method in 5-7 working days.</>)}
+              {order.payment.refund.status === 'pending' && <>Your refund of ₹{order.payment.refund.amount} is being processed.</>}
+              {order.payment.refund.status === 'failed' && <>We could not send your refund automatically. Our team has been alerted and will refund you shortly.</>}
+            </div>
+          </div>
+        )}
+
+        {/* Cancel Button - shown when the server says this order can still be cancelled */}
+        {!isShared && (order?.cancellation ? order.cancellation.canCancel : orderStatus === "placed") && (
           <div className="px-2">
             <button onClick={handleCancelOrder} className="w-full py-4 text-sm font-bold text-red-500 bg-red-50 dark:bg-red-950/20 rounded-2xl hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex items-center justify-center gap-2">
               <X className="w-4 h-4" />

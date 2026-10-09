@@ -3,33 +3,46 @@ import { User } from '../../user/models/User.js';
 import { verifyAccessToken } from '../../services/tokenService.js';
 
 export const getIdentityFromSocket = (socket) => {
-  const token = socket.handshake.auth?.token;
+  let token =
+    socket.handshake.auth?.token ||
+    socket.handshake.query?.token ||
+    socket.handshake.headers?.authorization;
 
-  if (!token) {
-    throw new ApiError(401, 'Socket token is required');
+  if (typeof token === 'string' && token.startsWith('Bearer ')) {
+    token = token.slice(7).trim();
   }
 
-  return verifyAccessToken(token);
+  if (!token) {
+    return null;
+  }
+
+  try {
+    return verifyAccessToken(token);
+  } catch {
+    return null;
+  }
 };
 
 export const attachSocketAuth = (io) => {
   io.use(async (socket, next) => {
     try {
-      socket.auth = getIdentityFromSocket(socket);
+      const identity = getIdentityFromSocket(socket);
 
-      if (socket.auth.role === 'user') {
-        const user = await User.findById(socket.auth.sub).select('active isActive deletedAt').lean();
+      if (identity) {
+        socket.auth = identity;
 
-        if (!user || user.deletedAt || user.isActive === false || user.active === false) {
-          return next(new Error('User account is not active'));
+        if (socket.auth.role === 'user') {
+          const user = await User.findById(socket.auth.sub).select('active isActive deletedAt').lean();
+
+          if (user && (user.deletedAt || user.isActive === false || user.active === false)) {
+            return next(new Error('User account is not active'));
+          }
         }
       }
 
       next();
-    } catch (error) {
-      const err = new Error(error?.message || 'Socket authentication failed');
-      err.data = { code: 'UNAUTHORIZED' };
-      next(err);
+    } catch {
+      next();
     }
   });
 };

@@ -121,7 +121,7 @@ function FileUploadBox({ doc, onUpload, uploadedFile }) {
   );
 }
 
-export default function FranchiseStep3({ config, defaultValues, onSubmit, onBack, submitting }) {
+export default function FranchiseStep3({ config, defaultValues, onSubmit, onBack, submitting, planSummary }) {
   const docList = config?.requiredDocuments?.filter(d => d.enabled)
     .sort((a, b) => a.order - b.order) || DEFAULT_DOCS;
 
@@ -165,6 +165,18 @@ export default function FranchiseStep3({ config, defaultValues, onSubmit, onBack
 
   return (
     <form onSubmit={handleSubmit} noValidate>
+      {planSummary && (
+        <div style={{ marginBottom: 24, padding: 16, borderRadius: 14, background: 'rgba(255,196,0,0.07)', border: '1px solid rgba(255,196,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#FFC400', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Your selected plan</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'white', marginTop: 2 }}>{planSummary.title}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 20, fontWeight: 900, color: 'white' }}>{'\u20B9'}{Number(planSummary.fee || 0).toLocaleString('en-IN')}</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>You will pay this in the next step</div>
+          </div>
+        </div>
+      )}
       <div style={{ marginBottom: 28 }}>
         <h2 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 4px', color: 'white' }}>Document Upload</h2>
         <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0 }}>
@@ -210,7 +222,7 @@ export default function FranchiseStep3({ config, defaultValues, onSubmit, onBack
           {submitting ? (
             <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Submitting...</>
           ) : (
-            <>Submit Application <ArrowRight size={16} /></>
+            <>Submit & Continue to Payment <ArrowRight size={16} /></>
           )}
         </button>
       </div>

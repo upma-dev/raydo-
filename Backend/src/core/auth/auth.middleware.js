@@ -55,14 +55,18 @@ export const authMiddleware = (req, res, next) => {
             const FoodAdmin = mongoose.model('FoodAdmin');
             FoodAdmin.findById(userId).lean().then((doc) => {
                 if (res.headersSent) return;
-                if (!doc || doc.isActive === false || doc.active === false) {
+                const isExplicitlyDisabled = doc && (doc.status === 'inactive' || doc.status === 'blocked' || doc.status === 'deactivated');
+                if (!doc || isExplicitlyDisabled) {
                     return sendError(res, 401, doc ? 'Admin account is deactivated' : 'Admin account not found');
                 }
                 req.user.adminLevel = doc.adminLevel;
                 req.user.module = doc.module;
                 req.user.permissions = doc.permissions || [];
                 req.user.franchiseId = doc.franchiseId ? doc.franchiseId.toString() : null;
-                req.user.role = doc.role || role; // Use precise role from DB if available
+                // Use the precise DB role (superadmin/subadmin...), but a franchise login keeps its token role (ADMIN):
+                // 'franchise' is not an allowed role on admin routes, and franchiseId + route guards scope it instead.
+                const dbRole = String(doc.role || '').toUpperCase();
+                req.user.role = (dbRole && dbRole !== 'FRANCHISE') ? doc.role : role;
                 next();
             }).catch(() => {
                 if (!res.headersSent) {

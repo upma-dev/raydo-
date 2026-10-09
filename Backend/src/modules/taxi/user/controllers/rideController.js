@@ -5,7 +5,7 @@ import { normalizePoint } from '../../../../utils/geo.js';
 import { resolveConfiguredGatewayCredentials } from '../../services/paymentGatewayService.js';
 import { Driver } from '../../driver/models/Driver.js';
 import { WalletTransaction } from '../../driver/models/WalletTransaction.js';
-import { applyDriverWalletAdjustment, serializeDriverWallet } from '../../driver/services/walletService.js';
+import { applyDriverWalletAdjustment, serializeDriverWallet, settleCompletedRideWallet } from '../../driver/services/walletService.js';
 import { Notification } from '../../admin/promotions/models/Notification.js';
 import { RIDE_LIVE_STATUS, RIDE_STATUS } from '../../constants/index.js';
 import {
@@ -608,6 +608,9 @@ export const verifyRazorpayRideCompletion = async (req, res) => {
 
     await session.commitTransaction();
 
+    // The rider has paid: an ONLINE ride's driver earning is credited now (it was held until payment was confirmed)
+    await settleCompletedRideWallet({ rideId: liveRide._id }).catch((e) => console.error('[Taxi] settle after payment failed:', e?.message || e));
+
     if (result.walletResult?.transaction) {
       emitToDriver(liveRide.driverId, 'driver:wallet:updated', {
         wallet: result.walletResult.wallet,
@@ -697,6 +700,8 @@ export const payRideCompletionWithWallet = async (req, res) => {
     });
 
     await session.commitTransaction();
+
+    await settleCompletedRideWallet({ rideId: ride._id }).catch((e) => console.error('[Taxi] settle after payment failed:', e?.message || e));
 
     if (result.walletResult?.transaction) {
       emitToDriver(ride.driverId, 'driver:wallet:updated', {

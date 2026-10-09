@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { deliveryAPI } from "@food/api";
 import { useCompanyName } from "@food/hooks/useCompanyName";
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings";
+import GlobalLanguageSelector from "@/shared/components/GlobalLanguageSelector";
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -425,7 +426,8 @@ export default function FeedNavbar({ className = "" }) {
       </div>
 
       {/* Right Icons */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <GlobalLanguageSelector variant="light" />
         {/* Emergency */}
         <button
             onClick={() => setShowEmergencyPopup(true)}

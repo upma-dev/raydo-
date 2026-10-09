@@ -19,7 +19,21 @@ export async function listPendingFoodApprovals(query = {}) {
     const filter = { approvalStatus: 'pending' };
     if (query.restaurantId && mongoose.Types.ObjectId.isValid(String(query.restaurantId))) {
         filter.restaurantId = query.restaurantId;
+    } else if (query.zoneId && mongoose.Types.ObjectId.isValid(String(query.zoneId))) {
+        const zoneRestaurantIds = await FoodRestaurant.find({ zoneId: new mongoose.Types.ObjectId(String(query.zoneId)) }).distinct('_id');
+        filter.restaurantId = { $in: zoneRestaurantIds };
     }
+    
+    if (query.franchiseId && mongoose.Types.ObjectId.isValid(String(query.franchiseId))) {
+        const franchiseRestaurantIds = await FoodRestaurant.find({ franchiseId: new mongoose.Types.ObjectId(String(query.franchiseId)) }).distinct('_id');
+        if (filter.restaurantId && filter.restaurantId.$in) {
+            const existing = filter.restaurantId.$in.map(String);
+            filter.restaurantId = { $in: franchiseRestaurantIds.filter(id => existing.includes(String(id))) };
+        } else if (!filter.restaurantId) {
+            filter.restaurantId = { $in: franchiseRestaurantIds };
+        }
+    }
+
     if (query.search && String(query.search).trim()) {
         const term = String(query.search).trim().slice(0, 80);
         filter.$or = [
@@ -35,7 +49,7 @@ export async function listPendingFoodApprovals(query = {}) {
         .select('restaurantId categoryName name price variants image foodType approvalStatus requestedAt createdAt')
         .lean();
 
-    const addonList = await FoodAddon.find({ approvalStatus: 'pending' })
+    const addonList = await FoodAddon.find(filter)
         .sort({ requestedAt: -1, createdAt: -1 })
         .limit(limit)
         .select('restaurantId draft isAvailable requestedAt createdAt')

@@ -89,7 +89,7 @@ export function useZone(location, options = {}) {
       const promise = (() => {
         if (key && zoneInFlight.has(key)) return zoneInFlight.get(key)
         const p = zoneAPI
-          .detectZone(lat, lng)
+          .detectZone(lat, lng, { city: location?.city, address: location?.address || location?.formattedAddress })
           .then((response) => {
             if (!response?.data?.success) {
               throw new Error(response?.data?.message || 'Failed to detect zone')

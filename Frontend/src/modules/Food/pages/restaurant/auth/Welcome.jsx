@@ -6,7 +6,7 @@ import loginBanner1 from "@food/assets/restaurant/loginbanner1.png"
 import loginBanner2 from "@food/assets/restaurant/loginbanner2.png"
 import loginBanner3 from "@food/assets/restaurant/loginbanner3.png"
 import loginBanner4 from "@food/assets/restaurant/loginbanner4.png"
-import { useCompanyName } from "@food/hooks/useCompanyName"
+import { isModuleAuthenticated } from "@food/utils/auth"
 
 // Carousel data with images and taglines
 const carouselData = [
@@ -35,6 +35,13 @@ const carouselData = [
 export default function RestaurantWelcome() {
   const navigate = useNavigate()
   const companyName = useCompanyName() || "Raydo"
+
+  useEffect(() => {
+    if (isModuleAuthenticated("restaurant")) {
+      navigate("/food/restaurant", { replace: true })
+    }
+  }, [navigate])
+
   const [currentIndex, setCurrentIndex] = useState(0)
   const [direction, setDirection] = useState(0) // 1 for next, -1 for previous
   const [touchStart, setTouchStart] = useState(null)

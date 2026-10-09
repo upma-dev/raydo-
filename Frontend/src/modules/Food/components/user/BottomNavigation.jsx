@@ -54,8 +54,8 @@ export default function BottomNavigation() {
   ]
 
   return (
-    <div className="md:hidden fixed bottom-4 left-3 right-3 sm:left-6 sm:right-6 z-50 flex justify-center pointer-events-none">
-      <div className="flex items-center justify-between p-1.5 bg-white/95 dark:bg-[#121824]/95 backdrop-blur-xl border border-gray-100 dark:border-white/10 rounded-[28px] shadow-[0_12px_40px_rgba(0,0,0,0.14)] pointer-events-auto w-full max-w-sm sm:max-w-md mx-auto">
+    <div className="md:hidden fixed bottom-3 left-3 right-3 sm:left-6 sm:right-6 z-[9999] flex justify-center pointer-events-none">
+      <div className="flex items-center justify-between p-1.5 bg-white/95 dark:bg-[#121824]/95 backdrop-blur-xl border border-gray-100 dark:border-white/10 rounded-[28px] shadow-[0_12px_40px_rgba(0,0,0,0.22)] pointer-events-auto w-full max-w-sm sm:max-w-md mx-auto">
         {navItems.map((item) => {
           const Icon = item.icon
           return (

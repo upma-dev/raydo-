@@ -32,7 +32,7 @@ export const resolveAdminLevel = (admin = {}) => {
   const roleLower = String(admin.role || '').trim().toLowerCase();
   const explicitLevel = String(admin.adminLevel || admin.admin_level || '').trim().toLowerCase();
 
-  if (adminTypeLower === 'subadmin' || roleLower === 'subadmin' || explicitLevel === ADMIN_LEVELS.SUBADMIN) {
+  if (adminTypeLower === 'subadmin' || roleLower === 'subadmin' || adminTypeLower === 'franchise' || adminTypeLower === 'franchise_partner' || Boolean(admin.franchiseId) || explicitLevel === ADMIN_LEVELS.SUBADMIN) {
     return ADMIN_LEVELS.SUBADMIN;
   }
 
@@ -104,7 +104,7 @@ export const isSuperAdminLike = (admin = {}) => {
   const roleLower = String(admin.role || '').trim().toLowerCase();
   const explicitLevel = String(admin.adminLevel || admin.admin_level || '').trim().toLowerCase();
 
-  if (adminTypeLower === 'subadmin' || roleLower === 'subadmin' || explicitLevel === ADMIN_LEVELS.SUBADMIN) {
+  if (adminTypeLower === 'subadmin' || roleLower === 'subadmin' || adminTypeLower === 'franchise' || adminTypeLower === 'franchise_partner' || Boolean(admin.franchiseId) || explicitLevel === ADMIN_LEVELS.SUBADMIN) {
     return false;
   }
 
@@ -325,6 +325,7 @@ export const serializeAdminContext = (admin = {}) => ({
   adminLevel: resolveAdminLevel(admin),
   module: resolveAdminModule(admin),
   parentAdminId: admin.parentAdminId ? String(admin.parentAdminId) : null,
+  franchiseId: admin.franchiseId ? String(admin.franchiseId) : null,
   admin_type: normalizeAdminType(admin.admin_type || admin.role),
   permissions: normalizeAdminPermissions(admin.permissions || []),
   servicesAccess: Array.isArray(admin.servicesAccess) ? admin.servicesAccess : [],

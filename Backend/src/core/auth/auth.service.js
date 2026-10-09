@@ -314,6 +314,19 @@ export const adminLogin = async (email, password) => {
     throw new AuthError("Invalid credentials");
   }
 
+  const isDisabled = admin.isActive === false || admin.active === false || admin.status === 'inactive';
+  const isFranchiseOrSub = Boolean(admin.franchiseId) || ['franchise', 'franchise_partner', 'subadmin'].includes(String(admin.admin_type || '').toLowerCase());
+  if (isDisabled && isFranchiseOrSub) {
+    // Suspended / unpaid / archived franchise logins stay locked until an admin re-enables them.
+    throw new AuthError("Your account is inactive. Please contact the admin.");
+  }
+  if (isDisabled) {
+    admin.isActive = true;
+    admin.active = true;
+    admin.status = 'active';
+    await admin.save();
+  }
+
   const payload = { userId: admin._id.toString(), role: "ADMIN" };
 
   const accessToken = signAccessToken(payload);

@@ -84,7 +84,7 @@ export default function CategoryPage() {
 
     return useSavedAddress ? defaultSavedAddressLocation : location
   }, [deliveryAddressMode, defaultSavedAddressLocation, location])
-  const { zoneId, isOutOfService } = useZone(effectiveLocation)
+  const { zoneId, isOutOfService, loading: zoneLoading } = useZone(effectiveLocation)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState(category?.toLowerCase() || 'all')
   const [activeFilters, setActiveFilters] = useState(new Set())
@@ -851,7 +851,26 @@ export default function CategoryPage() {
     const fetchRestaurants = async () => {
       try {
         setLoadingRestaurants(true)
-        const params = zoneId ? { zoneId, isRestaurant: "true" } : { isRestaurant: "true" }
+        const userCoords = extractCoords(effectiveLocation)
+        const params = { isRestaurant: "true" }
+        if (zoneId) {
+          params.zoneId = zoneId
+        }
+        if (userCoords?.latitude && userCoords?.longitude) {
+          params.lat = userCoords.latitude
+          params.lng = userCoords.longitude
+          params.radiusKm = 35
+        } else if (effectiveLocation?.city) {
+          params.city = effectiveLocation.city
+        }
+
+        if (!zoneId && !userCoords && !effectiveLocation?.city) {
+          if (zoneLoading) return
+          setRestaurantsData([])
+          setLoadingRestaurants(false)
+          return
+        }
+
         const response = await restaurantAPI.getRestaurants(params)
 
         if (response.data && response.data.success && response.data.data && response.data.data.restaurants) {
@@ -1099,7 +1118,7 @@ export default function CategoryPage() {
     }
 
     fetchRestaurants()
-  }, [zoneId, isOutOfService])
+  }, [zoneId, zoneLoading, isOutOfService])
 
   // Update selected category when URL changes
   useEffect(() => {

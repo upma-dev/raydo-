@@ -212,8 +212,6 @@ export const adminSidebarMenu = [
     type: "section",
     label: "BANNER SETTINGS",
     items: [
-      { type: "link", label: "Raydo Landing Settings", path: "/admin/food/raydo-landing-settings", icon: "Settings" },
-      { type: "link", label: "Landing Page Management", path: "/admin/food/hero-banner-management", icon: "Image" },
       { type: "link", label: "Promotional Banners", path: "/admin/food/promotional-banner", icon: "Megaphone" },
       { type: "link", label: "General Banners", path: "/admin/food/banners", icon: "Image" },
     ],
@@ -228,26 +226,69 @@ export const adminSidebarMenu = [
   },
   {
     type: "section",
-    label: "FRANCHISE MANAGEMENT",
+    label: "SYSTEM SETTINGS",
     items: [
+      { type: "link", label: "Broadcast Notification", path: "/admin/food/broadcast-notification", icon: "Bell" },
+      { type: "link", label: "Order Cancellation Rules", path: "/admin/food/order-cancellation", icon: "X" },
+    ],
+  },
+];
+
+/**
+ * GLOBAL menu = everything that is common to Food AND Taxi.
+ * Shown when the admin picks the "Global" tab. All paths are existing pages.
+ */
+export const globalSidebarMenu = [
+  {
+    type: "section",
+    label: "GLOBAL SETTINGS",
+    items: [
+      { type: "link", label: "Brand, Contact & Colours", path: "/admin/food/global-settings", icon: "Settings" },
+      { type: "link", label: "Privacy Policy & Legal", path: "/admin/food/global-settings?tab=legal", icon: "Lock" },
+      { type: "link", label: "Brand Logos (per app)", path: "/admin/food/business-setup", icon: "Image" },
+      { type: "link", label: "Maintenance (Food + Taxi)", path: "/admin/food/global-settings?tab=maintenance", icon: "AlertTriangle" },
+      { type: "link", label: "Integrations & Payments", path: "/admin/food/global-settings?tab=integrations", icon: "CreditCard" },
+      { type: "link", label: "Advanced Maintenance Rules", path: "/admin/food/maintenance-mode", icon: "AlertTriangle" },
+    ],
+  },
+  {
+    type: "section",
+    label: "LANDING WEBSITE & CMS",
+    items: [
+      { type: "link", label: "Raydo Landing Settings", path: "/admin/food/raydo-landing-settings", icon: "Settings" },
+      { type: "link", label: "Landing Hero Banners", path: "/admin/food/hero-banner-management", icon: "Image" },
       {
         type: "expandable",
-        label: "Franchise",
-        icon: "Building2",
+        label: "CMS Landing Website",
+        icon: "Monitor",
         subItems: [
-          { label: "Applications", path: "/admin/food/franchise-management" },
-          { label: "Form Configuration", path: "/admin/food/franchise-management/form-config" },
+          { label: "Header-Footer", path: "/admin/food/settings/cms/header-footer" },
+          { label: "Home", path: "/admin/food/settings/cms/home" },
+          { label: "About Us", path: "/admin/food/settings/cms/about" },
+          { label: "Driver", path: "/admin/food/settings/cms/driver" },
+          { label: "User", path: "/admin/food/settings/cms/user" },
+          { label: "Contact", path: "/admin/food/settings/cms/contact" },
         ],
       },
     ],
   },
   {
     type: "section",
-    label: "SYSTEM SETTINGS",
+    label: "FRANCHISE MANAGEMENT",
     items: [
-      { type: "link", label: "Broadcast Notification", path: "/admin/food/broadcast-notification", icon: "Bell" },
-      { type: "link", label: "Global Branding & Setup", path: "/admin/food/business-setup", icon: "Settings" },
-      { type: "link", label: "Maintenance Mode", path: "/admin/food/maintenance-mode", icon: "AlertTriangle" },
+      {
+        type: "expandable",
+        label: "Franchise",
+        icon: "Building2",
+        resource: "franchise",
+        subItems: [
+          { label: "Dashboard", path: "/admin/food/franchise-management", resource: "franchise" },
+          { label: "Franchise List", path: "/admin/food/franchise-management/list", resource: "franchise" },
+          { label: "Support Tickets Desk", path: "/admin/food/franchise-management/support", resource: "franchise" },
+          { label: "Fees & Commission", path: "/admin/food/franchise-management/fees", resource: "franchise" },
+          { label: "Application Form Setup", path: "/admin/food/franchise-management/form-config", resource: "franchise" },
+        ],
+      },
     ],
   },
   {
@@ -263,3 +304,21 @@ export const adminSidebarMenu = [
     ],
   },
 ];
+
+export const GLOBAL_ADMIN_HOME = "/admin/food/global-settings";
+
+const collectGlobalPaths = () => {
+  const out = [];
+  const walk = (items = []) => items.forEach((i) => {
+    if (i.path) out.push(i.path.split("?")[0]);
+    if (i.items) walk(i.items);
+    if (i.subItems) walk(i.subItems);
+  });
+  walk(globalSidebarMenu);
+  return out.filter((p) => p.startsWith("/admin/"));
+};
+const GLOBAL_PATHS = collectGlobalPaths();
+
+/** True when the current admin page belongs to the Global tab (so the sidebar shows the Global menu). */
+export const isGlobalAdminPath = (pathname = "") =>
+  GLOBAL_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

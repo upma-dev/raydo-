@@ -290,8 +290,9 @@ export function useOrdersManagement(orders, statusKey, title) {
     setIsViewOrderOpen(true)
   }
 
-  const handlePrintOrder = async (order) => {
+  const handlePrintOrder = async (rawOrder) => {
     try {
+      const order = rawOrder?.originalOrder ? { ...rawOrder.originalOrder, ...rawOrder } : (rawOrder || {})
       const { default: jsPDF } = await import("jspdf")
       const { default: autoTable } = await import("jspdf-autotable")
 
@@ -302,10 +303,12 @@ export function useOrdersManagement(orders, statusKey, title) {
       })
 
       const pageWidth = doc.internal.pageSize.getWidth()
-      const orderId = order.orderId || order.id || order.subscriptionId || "N/A"
-      const orderDate = order.date && order.time
-        ? `${order.date}, ${order.time}`
-        : (order.date || new Date().toLocaleDateString())
+      const orderId = rawOrder.orderId || order.orderId || order.id || order.subscriptionId || "N/A"
+      const orderDate = rawOrder.orderDate 
+        ? `${rawOrder.orderDate} ${rawOrder.orderTime || ''}`
+        : (order.date && order.time
+            ? `${order.date}, ${order.time}`
+            : (order.date || new Date().toLocaleDateString()))
 
       const settings = getCachedSettings() || await loadBusinessSettings()
       const companyName = settings?.companyName || "Raydo Food"

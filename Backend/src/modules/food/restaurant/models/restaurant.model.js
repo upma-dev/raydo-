@@ -278,7 +278,7 @@ const restaurantSchema = new mongoose.Schema(
     },
     franchiseId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Franchise',
+      ref: 'FranchiseApplication',
       default: null,
       index: true,
     },

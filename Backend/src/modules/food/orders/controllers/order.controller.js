@@ -1,4 +1,7 @@
+import mongoose from 'mongoose';
 import { sendResponse } from '../../../../utils/response.js';
+import { isSuperAdminLike } from '../../../../core/admin/adminHierarchy.service.js';
+import { ForbiddenError } from '../../../../core/auth/errors.js';
 import * as orderService from '../services/order.service.js';
 import * as foodOrderPaymentService from '../services/foodOrderPayment.service.js';
 import {
@@ -438,6 +441,32 @@ export async function listPendingHandoverRequestsAdminController(req, res, next)
     try {
         const orders = await orderService.listPendingHandoverRequestsAdmin(req.adminContext);
         return sendResponse(res, 200, 'Pending handover requests retrieved', { orders });
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * Admin cancels an order (the refund is automatic). A franchise login may only cancel orders of its own
+ * territory; super admins may cancel any order.
+ */
+export async function cancelOrderAdminController(req, res, next) {
+    try {
+        const adminId = req.user?.userId;
+        const orderId = req.params.orderId;
+        const ctx = req.adminContext || {};
+
+        if (!isSuperAdminLike(ctx)) {
+            const order = mongoose.Types.ObjectId.isValid(orderId)
+                ? await mongoose.model('FoodOrder').findById(orderId).select('franchiseId zoneId').lean()
+                : null;
+            const ownFranchise = ctx.franchiseId && order?.franchiseId && String(order.franchiseId) === String(ctx.franchiseId);
+            const ownZone = order?.zoneId && (ctx.food_zone_ids || []).map(String).includes(String(order.zoneId));
+            if (!order || !(ownFranchise || ownZone)) throw new ForbiddenError('You can only cancel orders of your own territory');
+        }
+
+        const result = await orderService.cancelOrderAdmin(orderId, adminId, String(req.body?.reason || '').trim());
+        return sendResponse(res, 200, 'Order cancelled', result);
     } catch (err) {
         next(err);
     }

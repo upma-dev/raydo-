@@ -18,6 +18,7 @@ import {
 import { useSettings } from '../../../shared/context/SettingsContext';
 import { clearDriverAuthState } from '../services/registrationService';
 import raydoLogo from '@food/assets/raydo-logo.png';
+import GlobalLanguageSelector from '@/shared/components/GlobalLanguageSelector';
 
 const OwnerHeaderNav = () => {
   const location = useLocation();
@@ -98,6 +99,7 @@ const OwnerHeaderNav = () => {
 
         {/* Actions / User Dropdown */}
         <div className="hidden md:flex items-center gap-3">
+          <GlobalLanguageSelector variant="dark" />
           <button
             type="button"
             onClick={handleLogout}
@@ -111,6 +113,7 @@ const OwnerHeaderNav = () => {
 
         {/* Mobile Hamburger Toggle */}
         <div className="flex md:hidden items-center gap-2">
+          <GlobalLanguageSelector variant="dark" />
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

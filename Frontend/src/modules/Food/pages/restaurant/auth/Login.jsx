@@ -5,6 +5,7 @@ import { Button } from "@food/components/ui/button"
 import { restaurantAPI } from "@food/api"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { motion, AnimatePresence } from "framer-motion"
+import { isModuleAuthenticated } from "@food/utils/auth"
 import logoImg from "@food/assets/raydo-logo.png"
 
 const DEFAULT_COUNTRY_CODE = "+91"
@@ -13,6 +14,12 @@ export default function RestaurantLogin() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
   const phoneInputRef = useRef(null)
+
+  useEffect(() => {
+    if (isModuleAuthenticated("restaurant")) {
+      navigate("/food/restaurant", { replace: true })
+    }
+  }, [navigate])
   const [formData, setFormData] = useState(() => {
     const saved = sessionStorage.getItem("restaurantLoginPhone")
     return {

@@ -1369,15 +1369,7 @@ export default function AddressSelectorPage() {
                     </div>
                   </button>
 
-                  {/* Weather Alert Banner for Home address */}
-                  {isHome && (
-                    <div className="mt-3 bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 rounded-2xl p-3 flex items-center gap-2.5">
-                      <CloudRain className="h-5 w-5 text-indigo-500 flex-shrink-0" />
-                      <p className="text-xs font-medium text-indigo-900 dark:text-indigo-200">
-                        It's raining here, delivery partners may take longer to reach
-                      </p>
-                    </div>
-                  )}
+
                 </div>
               )
             })}

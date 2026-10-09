@@ -14,10 +14,16 @@ import { haversineKm } from './order.helpers.js';
 
 function extractCoords(addressLike) {
   const coords = addressLike?.location?.coordinates;
-  if (!Array.isArray(coords) || coords.length !== 2) return null;
-  const [lng, lat] = coords;
-  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return null;
-  return [Number(lng), Number(lat)];
+  if (Array.isArray(coords) && coords.length === 2) {
+    const [lng, lat] = coords;
+    if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) return [Number(lng), Number(lat)];
+  }
+  const lat = addressLike?.latitude ?? addressLike?.lat;
+  const lng = addressLike?.longitude ?? addressLike?.lng;
+  if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)) && (Number(lat) !== 0 || Number(lng) !== 0)) {
+    return [Number(lng), Number(lat)];
+  }
+  return null;
 }
 
 function isPointInPolygon(lat, lng, polygon = []) {
@@ -36,13 +42,60 @@ function isPointInPolygon(lat, lng, polygon = []) {
   return inside;
 }
 
+function getDistanceInKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 async function detectZoneIdFromAddress(addressLike) {
   const coords = extractCoords(addressLike);
-  if (!coords) return null;
-  const [lng, lat] = coords;
-  const zones = await FoodZone.find({ isActive: true }).select('_id coordinates').lean();
-  const matchedZone = (zones || []).find((zone) => isPointInPolygon(lat, lng, zone?.coordinates || []));
-  return matchedZone?._id ? String(matchedZone._id) : null;
+  const zones = await FoodZone.find({ isActive: true }).select('_id name zoneName serviceLocation coordinates').lean();
+  if (!zones || zones.length === 0) return null;
+
+  if (coords) {
+    const [lng, lat] = coords;
+    // 1. Point in polygon
+    const matchedZone = zones.find((zone) => isPointInPolygon(lat, lng, zone?.coordinates || []));
+    if (matchedZone?._id) return String(matchedZone._id);
+
+    // 2. Centroid distance (35km buffer)
+    let closestZone = null;
+    let minDistance = Infinity;
+    for (const zone of zones) {
+      const polygonCoords = Array.isArray(zone.coordinates) ? zone.coordinates : [];
+      if (polygonCoords.length === 0) continue;
+      let sumLat = 0, sumLng = 0;
+      polygonCoords.forEach(c => { sumLat += Number(c.latitude); sumLng += Number(c.longitude); });
+      const cenLat = sumLat / polygonCoords.length;
+      const cenLng = sumLng / polygonCoords.length;
+      const distKm = getDistanceInKm(lat, lng, cenLat, cenLng);
+      if (distKm <= 35 && distKm < minDistance) {
+        minDistance = distKm;
+        closestZone = zone;
+      }
+    }
+    if (closestZone?._id) return String(closestZone._id);
+  }
+
+  // 3. City / Address text match
+  const addrText = `${addressLike?.city || ''} ${addressLike?.address || ''} ${addressLike?.formattedAddress || ''}`.toLowerCase();
+  if (addrText.trim()) {
+    for (const zone of zones) {
+      const zoneLoc = (zone.serviceLocation || zone.name || zone.zoneName || '').toLowerCase();
+      if (zoneLoc && (addrText.includes(zoneLoc) || zoneLoc.split(',').some(part => part.trim() && addrText.includes(part.trim())))) {
+        return String(zone._id);
+      }
+    }
+  }
+
+  return null;
 }
 
 export async function resolveOrderZoneId(dto = {}, restaurant = null) {
@@ -119,20 +172,23 @@ export async function calculateOrderPricing(userId, dto) {
     0,
   );
 
-  const feeDoc = await FoodFeeSettings.findOne({ isActive: true })
+  let feeDoc = await FoodFeeSettings.findOne({ isActive: true })
     .sort({ createdAt: -1 })
     .lean();
   if (!feeDoc) {
-    throw new ValidationError('Fee settings are not configured. Please configure Delivery & Platform Fee first.');
+    feeDoc = {
+      deliveryFeeComputationMode: 'distance_order_value',
+      platformFee: 0,
+      gstRate: 0,
+      distanceSlabAdminDeliveryCommission: [],
+      isActive: true
+    };
   }
   const feeSettings = feeDoc;
 
   const packagingFee = 0;
-  const configuredPlatformFee = Number(feeSettings.platformFee);
-  if (!Number.isFinite(configuredPlatformFee) || configuredPlatformFee < 0) {
-    throw new ValidationError('Platform fee is not configured. Please save it in Delivery & Platform Fee settings.');
-  }
-  const platformFee = Math.round(configuredPlatformFee * 100) / 100;
+  const configuredPlatformFee = Number(feeSettings.platformFee ?? 5);
+  const platformFee = Math.round((Number.isFinite(configuredPlatformFee) && configuredPlatformFee >= 0 ? configuredPlatformFee : 5) * 100) / 100;
   const incentiveRule = feeSettings.deliveryPartnerIncentiveRule || {
     isEnabled: false,
     minOrderAmount: 0,
@@ -182,11 +238,15 @@ export async function calculateOrderPricing(userId, dto) {
     // 2. Maximum Delivery Distance Validation
     const rules = await FoodDeliveryCommissionRule.find({ status: { $ne: false } }).lean();
     if (rules && rules.length > 0) {
-      const maxDistances = rules.map(r => r.maxDistance).filter(m => m != null && Number.isFinite(Number(m)));
-      if (maxDistances.length > 0) {
-        const maxConfiguredKm = Math.max(...maxDistances.map(Number));
-        if (distanceKm > maxConfiguredKm) {
-          throw new ValidationError(`Delivery location is outside our maximum service distance (${distanceKm.toFixed(1)} km). Maximum delivery radius is ${maxConfiguredKm} km.`);
+      const hasUnlimitedSlab = rules.some(r => r.maxDistance == null);
+      if (!hasUnlimitedSlab) {
+        const maxDistances = rules.map(r => r.maxDistance).filter(m => m != null && Number.isFinite(Number(m)));
+        if (maxDistances.length > 0) {
+          const maxConfiguredKm = Math.max(...maxDistances.map(Number));
+          const maxAllowedRadius = Math.max(maxConfiguredKm, 25);
+          if (distanceKm > maxAllowedRadius) {
+            throw new ValidationError(`Delivery location is outside our maximum service distance (${distanceKm.toFixed(1)} km). Maximum delivery radius is ${maxAllowedRadius} km.`);
+          }
         }
       }
     }
@@ -279,10 +339,12 @@ export async function calculateOrderPricing(userId, dto) {
     ? Math.round((subtotal * (deliveryPartnerIncentivePercent / 100)) * 100) / 100
     : 0;
 
-  const itemGst = Math.round(subtotal * 0.05);
-  const platformGst = Math.round(platformFee * 0.18);
-  const deliveryGst = Math.round(deliveryFee * 0.18);
-  const tax = itemGst + platformGst + deliveryGst;
+  const configuredGstRate = Number(feeSettings.gstRate ?? 0);
+  const gstRatePercent = Number.isFinite(configuredGstRate) && configuredGstRate >= 0 ? configuredGstRate : 0;
+  const itemGst = Math.round((subtotal * (gstRatePercent / 100)) * 100) / 100;
+  const platformGst = gstRatePercent > 0 ? Math.round((platformFee * 0.18) * 100) / 100 : 0;
+  const deliveryGst = gstRatePercent > 0 ? Math.round((deliveryFee * 0.18) * 100) / 100 : 0;
+  const tax = Math.round((itemGst + platformGst + deliveryGst) * 100) / 100;
   const gstBreakdown = { item: itemGst, platform: platformGst, delivery: deliveryGst };
 
   let discount = 0;

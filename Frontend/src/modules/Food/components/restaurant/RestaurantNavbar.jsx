@@ -5,6 +5,7 @@ import { restaurantAPI } from "@food/api"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 import useNotificationInbox from "@food/hooks/useNotificationInbox"
 import { createPortal } from "react-dom"
+import GlobalLanguageSelector from "@/shared/components/GlobalLanguageSelector"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -346,7 +347,8 @@ export default function RestaurantNavbar({
       </div>
 
       {/* Right Side - Interactive Elements */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-1">
+        <GlobalLanguageSelector variant="light" className="mr-1" />
         {showOfflineOnlineTag && (
           <button
             onClick={handleStatusClick}

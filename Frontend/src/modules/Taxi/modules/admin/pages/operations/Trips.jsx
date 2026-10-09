@@ -44,6 +44,9 @@ const normalizeRow = (row = {}) => ({
   transportType: row.transportType || row.transport_type || row.service_type || row.module || '--',
   tripStatus: String(row.tripStatus || row.trip_status || row.status || '').toUpperCase(),
   paymentOption: String(row.paymentOption || row.payment_option || row.payment_method || 'CASH').toUpperCase(),
+  fare: Number(row.fare || 0),
+  refundStatus: row.refundStatus || 'none',
+  refundedAmount: Number(row.refundedAmount || 0),
 });
 
 const Trips = () => {
@@ -55,6 +58,40 @@ const Trips = () => {
   const [rows, setRows] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [refundingId, setRefundingId] = React.useState('');
+
+  const refundRide = async (row) => {
+    const answer = window.prompt(
+      `Refund ride ${row.requestId} (fare \u20B9${row.fare})?\n\nEnter the amount to refund (max \u20B9${row.fare}):`,
+      String(row.fare),
+    );
+    if (answer === null) return;
+    const amount = Number(answer);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > row.fare) {
+      window.alert(`Enter an amount between 1 and ${row.fare}`);
+      return;
+    }
+    const reason = window.prompt('Reason for the refund (shown to the rider):', 'Ride refunded by admin');
+    if (reason === null) return;
+    const deductFromDriver = window.confirm(
+      "Take this ride's earning back from the DRIVER's wallet?\n\nOK = driver returns the earning\nCancel = the platform bears the refund",
+    );
+    setRefundingId(row.id);
+    try {
+      const response = await adminService.refundRide(row.id, { amount, reason, deductFromDriver });
+      const data = response?.data?.data || response?.data || {};
+      window.alert(
+        `Refunded \u20B9${data.amount ?? amount} (${data.method === 'razorpay' ? 'to the original payment method' : 'to the rider wallet'}).` +
+          (data.driverDebited ? `\nTaken back from the driver: \u20B9${data.driverDebited}` : '') +
+          (data.note ? `\n${data.note}` : ''),
+      );
+      loadRows();
+    } catch (err) {
+      window.alert(err?.response?.data?.message || err?.message || 'Refund failed');
+    } finally {
+      setRefundingId('');
+    }
+  };
 
   React.useEffect(() => {
     adminService.getZones().then((res) => {
@@ -206,9 +243,24 @@ const Trips = () => {
                         </span>
                       </td>
                       <td className="px-6 py-5">
-                        <button className="text-slate-400 hover:text-slate-800">
-                          <MoreVertical size={18} />
-                        </button>
+                        <div className="flex items-center gap-3">
+                          {row.tripStatus === 'COMPLETED' && row.fare > 0 && (
+                            row.refundStatus === 'processed' ? (
+                              <span className="text-[11px] font-bold text-emerald-600">Refunded {'\u20B9'}{row.refundedAmount}</span>
+                            ) : (
+                              <button
+                                onClick={() => refundRide(row)}
+                                disabled={refundingId === row.id || row.refundStatus === 'processing'}
+                                className="px-3 py-1.5 text-[11px] font-bold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                              >
+                                {refundingId === row.id || row.refundStatus === 'processing' ? 'Refunding...' : row.refundStatus === 'failed' ? 'Retry refund' : 'Refund'}
+                              </button>
+                            )
+                          )}
+                          <button className="text-slate-400 hover:text-slate-800">
+                            <MoreVertical size={18} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

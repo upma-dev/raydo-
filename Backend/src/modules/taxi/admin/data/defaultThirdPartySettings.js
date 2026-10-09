@@ -46,17 +46,17 @@ export const createDefaultThirdPartySettings = () => {
         from_number: '',
       },
       india_hub: {
-        enabled: '0',
+        enabled: '1',
         api_key: '',
-        sid: '',
+        sid: 'BGADEC',
       },
     },
     payment: {
       razor_pay: {
         enabled: '1',
-        environment: 'test',
-        test_api_key: 'rzp_test_demo_key',
-        test_secret_key: 'rzp_test_demo_secret',
+        environment: 'live',
+        test_api_key: '',
+        test_secret_key: '',
         live_api_key: '',
         live_secret_key: '',
       },

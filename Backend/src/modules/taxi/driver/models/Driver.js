@@ -64,7 +64,7 @@ const driverSchema = new mongoose.Schema(
     },
     franchiseId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Franchise',
+      ref: 'TaxiFranchisePartner',
       default: null,
       index: true,
     },

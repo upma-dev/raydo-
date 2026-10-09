@@ -94,6 +94,7 @@ const extractRows = (res) => {
   if (Array.isArray(payload?.restaurants)) return payload.restaurants;
   if (Array.isArray(payload?.orders)) return payload.orders;
   if (Array.isArray(payload?.tickets)) return payload.tickets;
+  if (Array.isArray(payload?.applications)) return payload.applications;
   if (Array.isArray(payload?.data)) return payload.data;
   return [];
 };
@@ -268,6 +269,29 @@ const mapDeliverySupport = (response) => {
     }));
 };
 
+const mapFranchiseSupportInquiries = (response) => {
+  const rows = extractRows(response);
+  const result = [];
+  rows.forEach((app) => {
+    (app?.supportMessages || []).forEach((msg) => {
+      if (msg?.status === "pending" || msg?.status === "open") {
+        result.push({
+          id: `support-franchise-${msg.messageId || String(msg._id || Math.random())}`,
+          title: "💬 Franchise Partner Support Inquiry",
+          message: `Franchise partner ${app.applicantName} (${app.applicationId || app.city}) submitted inquiry: "${msg.subject}". Message: "${msg.message}"`,
+          type: "support",
+          category: "support",
+          path: `/admin/food/franchise-management/${app._id}`,
+          createdAt: msg.createdAt || app.updatedAt,
+          timeLabel: toDateLabel(msg.createdAt || app.updatedAt),
+          metaLabel: joinMeta(app.applicantName, app.applicationId, msg.subject, msg.priority),
+        });
+      }
+    });
+  });
+  return result;
+};
+
 const mapExpiredFssai = (response) => {
   const rows = extractRows(response);
   return rows.map((item) => ({
@@ -369,6 +393,7 @@ export default function useAdminNotifications(options = {}) {
         adminAPI.getDeliveryWithdrawals({ status: "pending", page: 1, limit: 50 }),
         // Fetch ALL delivery partners (high limit) to catch emergency offline requests
         adminAPI.getDeliveryPartners({ limit: 500, page: 1 }),
+        adminAPI.getFranchiseApplications({ limit: 100 }),
       ]);
 
       const safeGet = (idx) => {
@@ -391,6 +416,7 @@ export default function useAdminNotifications(options = {}) {
         withdrawalRes,
         deliveryWithdrawalRes,
         deliveryPartnersRes,
+        franchiseRes,
       ] = results.map((_, i) => safeGet(i));
 
       const handoverRows = mapPendingHandovers(handoverRes);
@@ -406,6 +432,7 @@ export default function useAdminNotifications(options = {}) {
         ...mapFoodApprovals(foodApprovalRes),
         ...mapUserRestaurantSupport(supportRes),
         ...mapDeliverySupport(deliverySupportRes),
+        ...mapFranchiseSupportInquiries(franchiseRes),
         ...mapWithdrawalRequests(withdrawalRes),
         ...mapDeliveryWithdrawals(deliveryWithdrawalRes),
         ...mapExpiredFssai(fssaiExpiredRes),

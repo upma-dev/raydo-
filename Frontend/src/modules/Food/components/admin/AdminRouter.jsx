@@ -16,6 +16,7 @@ const OrdersPage = lazy(() => import("@food/pages/admin/orders/OrdersPage"));
 const OrderDetectDelivery = lazy(() => import("@food/pages/admin/OrderDetectDelivery"));
 const Category = lazy(() => import("@food/pages/admin/categories/Category"));
 const FeeSettings = lazy(() => import("@food/pages/admin/fee-settings/FeeSettings"));
+const OrderCancellationSettings = lazy(() => import("@food/pages/admin/settings/OrderCancellationSettings"));
 const ReferralSettings = lazy(() => import("@food/pages/admin/referral-settings/ReferralSettings"));
 // Restaurant Management
 const ZoneSetup = lazy(() => import("@food/pages/admin/restaurant/ZoneSetup"));
@@ -137,9 +138,18 @@ const FoodSubadmins = lazy(() => import("@food/pages/admin/management/FoodSubadm
 const FoodSubadminCreate = lazy(() => import("@food/pages/admin/management/FoodSubadminCreate"));
 
 // Franchise Management
-const FranchiseManagement = lazy(() => import("@food/pages/admin/franchise/FranchiseManagement"));
+const FranchiseDashboard = lazy(() => import("@food/pages/admin/franchise/FranchiseDashboard"));
+const FranchiseList = lazy(() => import("@food/pages/admin/franchise/FranchiseList"));
+const FranchiseSupportDesk = lazy(() => import("@food/pages/admin/franchise/FranchiseSupportDesk"));
+const FranchiseModuleFees = lazy(() => import("@food/pages/admin/franchise/FranchiseModuleFees"));
 const FranchiseFormConfig = lazy(() => import("@food/pages/admin/franchise/FranchiseFormConfig"));
+const GlobalSettings = lazy(() => import("@food/pages/admin/settings/GlobalSettings"));
 const FranchiseApplicationDetail = lazy(() => import("@food/pages/admin/franchise/FranchiseApplicationDetail"));
+
+// Integrated Taxi & CMS components for Global Admin
+const TaxiFranchiseDashboard = lazy(() => import("@/modules/Taxi/modules/admin/pages/franchise/TaxiFranchiseDashboard"));
+const AdminHeaderFooter = lazy(() => import("@/modules/Taxi/modules/admin/pages/cms/HeaderFooter"));
+const AdminCMSBuilder = lazy(() => import("@/modules/Taxi/modules/admin/pages/cms/CMSBuilder"));
 
 const FoodPermissionOutlet = () => (
   <FoodAdminPermissionRoute>
@@ -220,6 +230,7 @@ export default function AdminRouter() {
             {/* FOOD & CATEGORY MANAGEMENT */}
             <Route path="categories" element={<Category />} />
             <Route path="fee-settings" element={<FeeSettings />} />
+            <Route path="order-cancellation" element={<OrderCancellationSettings />} />
             <Route path="referral-settings" element={<ReferralSettings />} />
             <Route path="foods" element={<FoodsList />} />
             <Route path="food/list" element={<FoodsList />} />
@@ -285,6 +296,7 @@ export default function AdminRouter() {
             <Route path="employees/add" element={<AddEmployee />} />
 
             {/* SYSTEM & BUSINESS SETTINGS */}
+            <Route path="global-settings" element={<GlobalSettings />} />
             <Route path="business-setup" element={<BusinessSetup />} />
             <Route path="maintenance-mode" element={<MaintenanceMode />} />
             <Route path="email-template" element={<EmailTemplate />} />
@@ -325,9 +337,18 @@ export default function AdminRouter() {
             <Route path="management/admins" element={<FoodSubadmins />} />
 
             {/* FRANCHISE MANAGEMENT */}
-            <Route path="franchise-management" element={<FranchiseManagement />} />
+            <Route path="franchise-management" element={<FranchiseDashboard />} />
+            <Route path="franchise-management/dashboard" element={<FranchiseDashboard />} />
+            <Route path="franchise-management/list" element={<FranchiseList />} />
+            <Route path="franchise-management/support" element={<FranchiseSupportDesk />} />
+            <Route path="franchise-management/fees" element={<FranchiseModuleFees />} />
             <Route path="franchise-management/form-config" element={<FranchiseFormConfig />} />
             <Route path="franchise-management/:id" element={<FranchiseApplicationDetail />} />
+            <Route path="taxi-franchise" element={<TaxiFranchiseDashboard superAdmin />} />
+
+            {/* CMS MANAGEMENT */}
+            <Route path="settings/cms/header-footer" element={<AdminHeaderFooter />} />
+            <Route path="settings/cms/*" element={<AdminCMSBuilder />} />
             <Route
               path="management/admins/create"
               element={
