@@ -213,6 +213,23 @@ async function filterPartnersByCodCashLimit(partners = [], order = null) {
   return eligiblePartners;
 }
 
+// Number of live sockets currently listening in a partner's room (0 = app closed / disconnected).
+function liveSocketCount(partnerId) {
+  try {
+    const io = getIO();
+    return io?.sockets?.adapter?.rooms?.get(rooms.delivery(partnerId))?.size || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Stable sort: partners with a live socket first, keeping distance order within each group.
+function preferConnectedPartners(list = []) {
+  return [...list].sort(
+    (a, b) => Number(liveSocketCount(b.partnerId) > 0) - Number(liveSocketCount(a.partnerId) > 0),
+  );
+}
+
 export async function getDispatchSettings() {
   return { dispatchMode: "auto" };
 }
@@ -345,13 +362,17 @@ export async function tryAutoAssign(orderId, options = {}) {
         }, { delay: 15000 });
         return order;
       }
-      // Pick closest available partner
-      eligible.push(targets[0]);
+      // Pick closest available partner, preferring one whose app is actually connected
+      eligible.push(preferConnectedPartners(targets)[0]);
     }
 
     // Pick the SINGLE CLOSEST delivery partner from eligible
-    const targetPartner = eligible[0];
-    logger.info(`tryAutoAssign: Offering order ${order._id} to CLOSEST partner ${targetPartner.partnerId} (${targetPartner.distanceKm} km).`);
+    const targetPartner = preferConnectedPartners(eligible)[0];
+    const liveSockets = liveSocketCount(targetPartner.partnerId);
+    logger.info(`tryAutoAssign: Offering order ${order._id} to partner ${targetPartner.partnerId} (${targetPartner.distanceKm} km, liveSockets=${liveSockets}).`);
+    if (liveSockets === 0) {
+      logger.warn(`tryAutoAssign: partner ${targetPartner.partnerId} marked online but has no live socket; request will only reach them via push.`);
+    }
 
     const io = getIO();
     const payload = buildDeliverySocketPayload(order, order.restaurantId);

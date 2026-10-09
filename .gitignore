@@ -11,6 +11,8 @@ Backend/.env
 Frontend/.env
 *.log
 *.mp4
+# Videos served from Frontend/public must be committed or they 404 in production
+!Frontend/public/**/*.mp4
 branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat

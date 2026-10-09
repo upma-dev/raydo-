@@ -79,9 +79,9 @@ const DriverBottomNav = () => {
       ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-100 bg-white/95 px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 backdrop-blur-md shadow-[0_-10px_30px_rgba(0,0,0,0.03)] md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-100 bg-white px-2 pb-[max(env(safe-area-inset-bottom),6px)] pt-1.5 shadow-[0_-6px_20px_rgba(0,0,0,0.06)] md:hidden">
       <div
-        className="mx-auto grid h-[68px] w-full max-w-lg items-stretch gap-0.5"
+        className="mx-auto grid h-[58px] w-full max-w-lg items-stretch gap-0.5"
         style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
       >
       {navItems.map((item) => {
@@ -94,28 +94,28 @@ const DriverBottomNav = () => {
           <NavLink
             key={item.path}
             to={item.path}
-            className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-center transition-all duration-300 ${
+            className={`relative flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-center transition-colors duration-200 ${
               isActive
-                ? "bg-slate-50 text-black translate-y-[-1px]"
+                ? "bg-slate-100 text-black"
                 : "text-black/60 font-bold opacity-80"
             }`}>
             <div
-              className={`transition-all duration-300 ${isActive ? "scale-105" : ""}`}>
+              className={`${isActive ? "scale-105" : ""}`}>
               {React.cloneElement(item.icon, {
                 strokeWidth: isActive ? 2.5 : 2,
                 size: 20,
               })}
             </div>
             <span
-              className={`max-w-full truncate text-[8px] uppercase tracking-[0.04em] transition-all duration-300 ${
+              className={`max-w-full truncate text-[10px] uppercase tracking-[0.02em] ${
                 isActive
-                  ? "opacity-100 scale-100 font-black"
-                  : "opacity-80 scale-95 font-bold"
+                  ? "opacity-100 font-black"
+                  : "opacity-80 font-bold"
               }`}>
               {item.label}
             </span>
             {isActive && (
-              <div className="absolute -top-2 h-[2px] w-7 rounded-full bg-slate-900" />
+              <div className="absolute -top-1.5 h-[2px] w-7 rounded-full bg-slate-900" />
             )}
           </NavLink>
         );

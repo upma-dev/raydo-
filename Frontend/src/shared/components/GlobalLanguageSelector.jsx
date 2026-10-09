@@ -60,22 +60,22 @@ const GlobalLanguageSelector = ({ variant = 'dark', className = '', style = {} }
     <div
       className={`global-lang-selector ${className}`}
       style={{
+        position: 'relative',
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '4px',
-        padding: '3px 8px',
-        borderRadius: '24px',
+        justifyContent: 'center',
+        width: '34px',
+        height: '34px',
+        flexShrink: 0,
+        borderRadius: '50%',
         background: isLight ? 'rgba(241, 245, 249, 0.95)' : 'rgba(15, 23, 42, 0.75)',
         border: isLight ? '1px solid rgba(203, 213, 225, 0.8)' : '1px solid rgba(255, 255, 255, 0.25)',
-        backdropFilter: 'blur(10px)',
         zIndex: 50,
-        maxWidth: '120px',
-        shrink: 0,
         ...style,
       }}
     >
-      <Globe size={14} color={isLight ? '#0f172a' : '#fff'} className="lang-globe-icon" style={{ flexShrink: 0 }} />
-      <div id={containerId} className="google-translate-container" style={{ minHeight: '20px', display: 'flex', alignItems: 'center', overflow: 'hidden' }}></div>
+      <Globe size={16} color={isLight ? '#0f172a' : '#fff'} className="lang-globe-icon" style={{ flexShrink: 0, pointerEvents: 'none' }} />
+      <div id={containerId} className="google-translate-container" style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: '50%' }}></div>
       <style>{`
         /* Hide the Google Translate branding */
         .goog-te-gadget {
@@ -83,7 +83,8 @@ const GlobalLanguageSelector = ({ variant = 'dark', className = '', style = {} }
           font-size: 0px !important;
           display: flex !important;
           align-items: center !important;
-          width: 80px !important;
+          width: 100% !important;
+          height: 100% !important;
           overflow: hidden !important;
         }
         .goog-te-gadget .goog-te-combo {
@@ -92,12 +93,14 @@ const GlobalLanguageSelector = ({ variant = 'dark', className = '', style = {} }
           border-radius: 4px;
           border: none;
           background: transparent;
-          color: ${isLight ? '#0f172a' : '#fff'};
-          font-size: 11px;
-          font-weight: 700;
+          color: transparent;
+          opacity: 0;
+          font-size: 16px;
           outline: none;
           cursor: pointer;
-          height: 22px;
+          position: absolute;
+          inset: 0;
+          height: 100% !important;
           width: 100% !important;
           max-width: 100% !important;
         }
@@ -106,12 +109,6 @@ const GlobalLanguageSelector = ({ variant = 'dark', className = '', style = {} }
           background: #fff;
         }
         
-        @media (max-width: 600px) {
-          .global-lang-selector {
-            padding: 3px 6px !important;
-          }
-        }
-
         .goog-te-gadget img,
         .goog-logo-link,
         .goog-te-gadget > span > a {

@@ -322,7 +322,7 @@ export default function RestaurantNavbar({
   }
 
   return (
-    <div className="w-full bg-white/95 backdrop-blur-md border-b border-gray-100 px-4 py-3.5 flex items-center justify-between sticky top-0 z-[60]">
+    <div className="w-full bg-white border-b border-gray-100 px-4 py-3.5 flex items-center justify-between sticky top-0 z-[60]">
       {/* Left Side - Restaurant Info */}
       <div className="flex-1 min-w-0 pr-2 flex items-center gap-2.5">
         {logoUrl && (

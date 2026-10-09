@@ -2788,37 +2788,6 @@ export default function Home() {
     setVisibleRestaurantCount(filteredRestaurants.length);
   }, [filteredRestaurants.length, visibleRestaurantCount]);
 
-  useEffect(() => {
-    if (!hasMoreRestaurants) return;
-    if (showRestaurantSkeleton || loadingRestaurants || isLoadingFilterResults) return;
-    const target = restaurantLoadMoreRef.current;
-    if (!target || typeof window === "undefined") return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-        if (!entry?.isIntersecting) return;
-        startTransition(() => {
-          loadMoreRestaurants();
-        });
-      },
-      {
-        root: null,
-        rootMargin: "240px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [
-    hasMoreRestaurants,
-    showRestaurantSkeleton,
-    loadingRestaurants,
-    isLoadingFilterResults,
-    loadMoreRestaurants,
-  ]);
-
   const recommendedForYouRestaurants = useMemo(() => {
     const idsInOrder = (recommendedRestaurantIds || []).map((id) => String(id));
     const hasIds = idsInOrder.length > 0;
@@ -3434,7 +3403,7 @@ export default function Home() {
                 <div ref={categoryAnchorRef} className="h-px w-full" aria-hidden="true" />
 
                 {/* Category Rail Header & Rail Section — Sticky together right under sticky search bar */}
-                <div className="sticky top-[54px] z-[90] bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md pt-3 pb-2 px-4 border-b border-gray-100/80 dark:border-gray-900 shadow-sm transition-all duration-300">
+                <div className="sticky top-[54px] z-[90] bg-white dark:bg-[#0a0a0a] pt-3 pb-2 px-4 border-b border-gray-100/80 dark:border-gray-900 shadow-sm transition-all duration-300">
                   {CategoryRailHeader}
                   {CategoryRailSection}
                 </div>
@@ -3623,6 +3592,57 @@ export default function Home() {
                 </div>
 
                 {renderPreviouslyOrderedSection()}
+
+                {!selectedCategory && filteredRestaurants.length > 0 && (
+                  <section className="content-auto space-y-3 pt-4">
+                    <div className="px-4 flex items-center justify-between">
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white tracking-tight">
+                        Popular Restaurants
+                      </h2>
+                      <Link
+                        to="/food/user/restaurants"
+                        className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#EB590E]">
+                        View All
+                        <ArrowRightLeft className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      </Link>
+                    </div>
+                    <div
+                      className="flex gap-3 overflow-x-auto scrollbar-hide px-4 pb-2"
+                      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                      {filteredRestaurants.slice(0, 10).map((restaurant, idx) => {
+                        const slug =
+                          restaurant.slug ||
+                          String(restaurant.name || restaurant.id || idx).toLowerCase().replace(/\s+/g, "-");
+                        const ratingValue = Number(restaurant.rating);
+                        return (
+                          <Link
+                            key={`popular-${restaurant.mongoId || restaurant.id || slug}`}
+                            to={`/food/user/restaurants/${slug}`}
+                            className="flex-shrink-0 w-40 sm:w-48 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1a1a1a] shadow-sm">
+                            <div className="relative h-24 sm:h-28 bg-gray-100">
+                              <OptimizedImage
+                                src={restaurant.image || restaurant.images?.[0]}
+                                alt={restaurant.name}
+                                className="w-full h-full object-cover"
+                                sizes="192px"
+                              />
+                              <div className="absolute bottom-2 left-2 flex items-center gap-0.5 bg-black/80 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                <Star className="w-2.5 h-2.5 fill-white text-white" />
+                                <span>{ratingValue > 0 ? ratingValue.toFixed(1) : "NEW"}</span>
+                              </div>
+                            </div>
+                            <div className="px-2.5 py-2">
+                              <p className="text-[13px] font-bold text-gray-900 dark:text-white truncate">{restaurant.name}</p>
+                              <p className="text-[11px] text-gray-500 truncate">
+                                {[restaurant.cuisine, restaurant.deliveryTime].filter(Boolean).join(" · ")}
+                              </p>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
 
                 {HeroBannerSection}
 
@@ -3957,8 +3977,8 @@ export default function Home() {
                       <Button
                         variant="outline"
                         onClick={loadMoreRestaurants}
-                        className="text-sm font-medium border-gray-300 hover:border-gray-400">
-                        Load more restaurants
+                        className="w-full max-w-sm rounded-full text-sm font-semibold border-[#EB590E] text-[#EB590E] hover:bg-orange-50">
+                        View more ({filteredRestaurants.length - visibleRestaurantCount} more restaurants)
                       </Button>
                     )}
                     <div

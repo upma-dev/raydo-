@@ -16,6 +16,8 @@ import { API_BASE_URL } from "@food/api/config"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
 import { calculateDistanceInKm, extractCoords } from "@food/utils/geoDistance"
 
+const PAGE_SIZE = 12
+
 const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "")
 
 const normalizeImageUrl = (imageUrl) => {
@@ -146,6 +148,16 @@ export default function Restaurants() {
   }, [zoneId, zoneLoading, userLocation])
 
   const hasRestaurants = useMemo(() => restaurants.length > 0, [restaurants.length])
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const hasMore = visibleCount < restaurants.length
+  const visibleRestaurants = useMemo(
+    () => restaurants.slice(0, visibleCount),
+    [restaurants, visibleCount],
+  )
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [restaurants])
 
   return (
     <AnimatedPage className="min-h-screen bg-gradient-to-b from-yellow-50/30 dark:from-[#0a0a0a] via-white dark:via-[#0a0a0a] to-orange-50/20 dark:to-[#0a0a0a]">
@@ -173,7 +185,7 @@ export default function Restaurants() {
           <div className="py-16 text-center text-sm text-gray-500">No restaurants available right now.</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 xl:gap-6 pt-2 sm:pt-3 lg:pt-4">
-            {restaurants.map((restaurant, index) => {
+            {visibleRestaurants.map((restaurant) => {
               const favorite = isFavorite(restaurant.slug)
 
               const handleToggleFavorite = (e) => {
@@ -196,7 +208,7 @@ export default function Restaurants() {
               }
 
               return (
-                <ScrollReveal key={restaurant.id} delay={index * 0.05}>
+                <div key={restaurant.id} className="content-auto">
                   <Link to={`/food/user/restaurants/${restaurant.slug}`} className="h-full flex">
                     <Card className="overflow-hidden cursor-pointer border border-gray-200 dark:border-gray-800 group bg-white dark:bg-[#1a1a1a] hover:shadow-lg dark:hover:shadow-xl dark:hover:shadow-gray-900/50 pb-1 sm:pb-2 lg:pb-3 flex flex-col h-full w-full transition-all duration-300">
                       <div className="flex flex-row min-h-[120px] sm:min-h-[140px] md:min-h-[160px] lg:min-h-[180px] flex-1">
@@ -256,6 +268,8 @@ export default function Restaurants() {
 
                         <div className="w-36 sm:w-44 md:w-56 lg:w-64 xl:w-72 flex-shrink-0 relative overflow-hidden group/image">
                           <img
+                            loading="lazy"
+                            decoding="async"
                             src={restaurant.image || "https://via.placeholder.com/400x300?text=Restaurant"}
                             alt={restaurant.name}
                             className="w-full h-full object-cover"
@@ -265,9 +279,20 @@ export default function Restaurants() {
                       </div>
                     </Card>
                   </Link>
-                </ScrollReveal>
+                </div>
               )
             })}
+          </div>
+        )}
+        {hasMore && !showRestaurantsSkeleton && (
+          <div className="flex justify-center py-6">
+            <Button
+              variant="outline"
+              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+              className="w-full max-w-sm rounded-full border-[#EB590E] text-sm font-semibold text-[#EB590E] hover:bg-orange-50"
+            >
+              View more ({restaurants.length - visibleCount} more restaurants)
+            </Button>
           </div>
         )}
       </div>
