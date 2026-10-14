@@ -9,7 +9,11 @@ const supportTicketSchema = new mongoose.Schema(
         issueType: { type: String, required: true, trim: true },
         description: { type: String, default: '', trim: true },
         status: { type: String, enum: ['open', 'in-progress', 'resolved'], default: 'open', index: true },
-        adminResponse: { type: String, default: '' }
+        adminResponse: { type: String, default: '' },
+        // Franchise partner of the restaurant's zone: sees this ticket in its portal and may answer it (admin sees both)
+        franchiseId: { type: mongoose.Schema.Types.ObjectId, ref: 'FranchiseApplication', default: null, index: true },
+        franchiseResponse: { type: String, default: '' },
+        franchiseRespondedAt: { type: Date, default: null }
     },
     { collection: 'food_support_tickets', timestamps: true }
 );

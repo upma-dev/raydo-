@@ -1634,18 +1634,29 @@ const ActiveTrip = () => {
     const pickupArrivedAt = liveRaw?.arrivedAt || liveRequest?.raw?.arrivedAt || effectiveState?.arrivedAt || localArrivedAt || '';
     const tripStartedAt = liveRaw?.startedAt || liveRequest?.raw?.startedAt || effectiveState?.startedAt || '';
     const tripDestinationArrivedAt = localDestinationArrivedAt || '';
+    // Once the trip is completed the SERVER has already added the waiting charge to the ride fare and saved the split.
+    // Use that, so the same Rs amount is shown to the driver and the rider (and the waiting is never added twice).
+    const serverWaiting = liveRaw?.waitingCharge && Number(liveRaw?.fareBeforeWaiting) > 0 ? liveRaw.waitingCharge : null;
+    const serverWaitingAmount = serverWaiting ? Math.max(0, Number(serverWaiting.amount || 0)) : 0;
     const pickupWaitingSummary = useMemo(
-        () => computePickupWaitingCharge({
-            arrivedAt: pickupArrivedAt,
-            startedAt: tripStartedAt,
-            freeWaitingBeforeMinutes,
-            waitingChargePerMinute,
-        }),
-        [freeWaitingBeforeMinutes, pickupArrivedAt, tripStartedAt, waitingChargePerMinute],
+        () => (serverWaiting
+            ? {
+                waitingSeconds: Math.max(0, Number(serverWaiting.totalWaitedMinutes || 0)) * 60,
+                chargeableMinutes: Math.max(0, Number(serverWaiting.minutes || 0)),
+                waitingChargeTotal: serverWaitingAmount,
+            }
+            : computePickupWaitingCharge({
+                arrivedAt: pickupArrivedAt,
+                startedAt: tripStartedAt,
+                freeWaitingBeforeMinutes,
+                waitingChargePerMinute,
+            })),
+        [freeWaitingBeforeMinutes, pickupArrivedAt, tripStartedAt, waitingChargePerMinute, serverWaiting, serverWaitingAmount],
     );
     const previousCancellationFee = Number(liveRaw?.previousCancellationFee || effectiveState?.previousCancellationFee || 0);
-    const baseRideFare = Math.max(0, Number(liveRaw?.baseRideFare || effectiveState?.baseRideFare || (fareAmount - previousCancellationFee)));
-    const totalFareAmount = fareAmount + pickupWaitingSummary.waitingChargeTotal;
+    const fareWithoutWaiting = Math.max(0, fareAmount - serverWaitingAmount);   // fareAmount already contains the waiting once the server billed it
+    const baseRideFare = Math.max(0, Number(liveRaw?.baseRideFare || effectiveState?.baseRideFare || (fareWithoutWaiting - previousCancellationFee)));
+    const totalFareAmount = fareWithoutWaiting + pickupWaitingSummary.waitingChargeTotal;
     const tripArrivedAt = tripDestinationArrivedAt;
     const tripDurationLabel = formatDurationLabel(tripStartedAt, tripDestinationArrivedAt || Date.now());
     const tripSummaryTitle = isParcel ? 'Delivery Summary' : 'Ride Summary';

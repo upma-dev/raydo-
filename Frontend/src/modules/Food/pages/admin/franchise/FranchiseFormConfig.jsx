@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { adminAPI } from "@food/api";
 import {
   ArrowLeft, Save, Plus, Trash2, ChevronDown, CheckCircle2, Loader2,
-  FileText, CreditCard, DollarSign, Settings, QrCode
+  FileText, CreditCard, DollarSign, Settings, QrCode, Power, UserPlus, Globe
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -137,7 +137,7 @@ export default function FranchiseFormConfig() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState('fields');
+  const [activeTab, setActiveTab] = useState('control');
 
   useEffect(() => {
     adminAPI.getFranchiseFormConfig()
@@ -174,6 +174,7 @@ export default function FranchiseFormConfig() {
         requiredDocuments: config.requiredDocuments || [],
         moduleFranchiseFees: config.moduleFranchiseFees || { food: 50000, taxi: 50000, both: 80000 },
         moduleCommissions: config.moduleCommissions || { food: 10, taxi: 10, both: 10 },
+        applicationSettings: config.applicationSettings || { automaticFormEnabled: true },
         paymentDetails: config.paymentDetails || { upiId: '', qrCodeUrl: '', bankName: '', accountNumber: '', ifscCode: '', accountHolderName: '' },
       });
       setSaved(true);
@@ -226,6 +227,7 @@ export default function FranchiseFormConfig() {
       {/* Navigation Tabs */}
       <div className="flex gap-2 mb-6 border-b border-slate-200 pb-2">
         {[
+          ['control', 'Application Control'],
           ['fields', 'Form Fields'],
           ['docs', 'KYC Documents'],
           ['fees', 'Default Module Fees & Payment QR']
@@ -241,6 +243,59 @@ export default function FranchiseFormConfig() {
           </button>
         ))}
       </div>
+
+      {/* Tab 0: Application Control (manual + global/automatic) */}
+      {activeTab === 'control' && (() => {
+        const settings = config?.applicationSettings || {};
+        const formOn = settings.automaticFormEnabled !== false;
+        const setSettings = (changes) => setConfig(prev => ({ ...prev, applicationSettings: { ...(prev.applicationSettings || {}), ...changes } }));
+        return (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-5 flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0"><UserPlus className="w-5 h-5 text-slate-700" /></div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-slate-900">Manual - admin adds the franchise</h3>
+                <p className="text-xs text-slate-500 mt-0.5">You create the franchise yourself from "Create Franchise". This is always available, even when the automatic form is off.</p>
+              </div>
+              <button type="button" onClick={() => navigate('/admin/food/franchise-management/create')} className="px-3.5 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800">Create Franchise</button>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center shrink-0"><Globe className="w-5 h-5 text-blue-600" /></div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-bold text-slate-900">Global - automatic public form</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Anyone can apply from the app. Applications and notifications reach admin as before.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={formOn}
+                  onClick={() => setSettings({ automaticFormEnabled: !formOn })}
+                  className={`px-4 py-2 rounded-lg text-xs font-extrabold inline-flex items-center gap-2 border ${formOn ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}
+                >
+                  <Power className="w-4 h-4" /> {formOn ? 'Form is ON' : 'Form is OFF'}
+                </button>
+              </div>
+
+              {!formOn && (
+                <div className="mt-5 pt-5 border-t border-slate-100 space-y-3">
+                  <p className="text-xs font-semibold text-amber-700">Users who tap Franchise will see this message instead of the form.</p>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Title</label>
+                    <input type="text" maxLength={120} value={settings.closedTitle || ''} onChange={e => setSettings({ closedTitle: e.target.value })} className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 text-slate-900" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Message</label>
+                    <textarea rows={3} maxLength={1000} value={settings.closedMessage || ''} onChange={e => setSettings({ closedMessage: e.target.value })} className="w-full p-2.5 text-sm rounded-lg border border-slate-300 text-slate-900" />
+                  </div>
+                </div>
+              )}
+              <p className="text-[11px] text-slate-400 mt-4">Click "Save All Config" to apply.</p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Tab 1: Form Fields */}
       {activeTab === 'fields' && (

@@ -13,6 +13,7 @@ import { useLocation } from "@food/hooks/useLocation"
 import { useCart } from "@food/context/CartContext"
 import { useLocationSelector } from "./UserLayout"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
+import quickSpicyLogo from "@food/assets/raydo-logo.png"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}

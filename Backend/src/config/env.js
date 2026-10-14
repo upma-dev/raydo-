@@ -96,6 +96,7 @@ export const config = {
     razorpayKeyId: process.env.RAZORPAY_KEY_ID,
     razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET,
     razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET, // ✅ NEW
+    googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || '',   // server-side Directions (taxi outstation distance, food polyline)
 
     // Email (SMTP) – for admin forgot password OTP etc.
     emailHost: process.env.EMAIL_HOST,

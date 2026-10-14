@@ -381,12 +381,25 @@ export default function ProfessionalSearch() {
                 <X className="w-4 h-4" />
               </button>
             )}
+            <style>{`
+              @keyframes voiceRipple { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(2.6); opacity: 0; } }
+              @keyframes voiceGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(244,63,94,.0); } 50% { box-shadow: 0 0 0 4px rgba(244,63,94,.22), 0 0 18px rgba(244,63,94,.25); } }
+            `}</style>
+            {isListening && <div className="absolute inset-0 rounded-xl pointer-events-none" style={{ animation: 'voiceGlow 1.4s ease-in-out infinite' }} />}
+            {isListening && (
+              <>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 -mr-1 rounded-full bg-rose-400 pointer-events-none" style={{ animation: 'voiceRipple 1.5s ease-out infinite' }} />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 -mr-1 rounded-full bg-rose-400 pointer-events-none" style={{ animation: 'voiceRipple 1.5s ease-out .5s infinite' }} />
+              </>
+            )}
             <button 
               onClick={handleVoiceSearch}
-              className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full transition-all ${isListening ? 'text-rose-500 scale-125 animate-pulse' : 'text-slate-400'}`}
+              aria-label={isListening ? "Listening" : "Search by voice"}
+              className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full transition-all ${isListening ? 'text-white bg-rose-500 scale-110' : 'text-slate-400'}`}
             >
               <Mic className="w-5 h-5" />
             </button>
+            {isListening && <span className="absolute left-10 top-1/2 -translate-y-1/2 text-sm font-semibold text-rose-500 pointer-events-none bg-slate-100 dark:bg-zinc-800 pr-2">Listening…</span>}
           </div>
         </div>
       </div>

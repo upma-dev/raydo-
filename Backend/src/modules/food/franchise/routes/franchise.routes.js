@@ -19,7 +19,22 @@ import {
     getPartnerTaxiRidesController,
     getPartnerTaxiDriversController,
     getPartnerTaxiBusController,
+    getPartnerFinanceController,
+    getPartnerProfileController,
+    listPartnerIssuesController,
+    respondPartnerIssueController,
+    createPartnerRequestController,
+    listRidersController,
+    getRiderController,
+    decideRiderController,
+    getTaxiDriverController,
+    decideTaxiDriverController,
+    listFoodPaymentsController,
+    getDeliveryFeesController,
+    saveDeliveryFeesController,
+    resetDeliveryFeesController,
 } from '../controllers/franchise.public.controller.js';
+import { financeWriteRateLimiter } from '../../../../middleware/rateLimit.js';
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import { authRateLimiter } from '../../../../middleware/rateLimit.js';
@@ -60,6 +75,31 @@ router.get('/taxi/overview', requireFranchisePartner, getPartnerTaxiOverviewCont
 router.get('/taxi/rides', requireFranchisePartner, getPartnerTaxiRidesController);
 router.get('/taxi/drivers', requireFranchisePartner, getPartnerTaxiDriversController);
 router.get('/taxi/bus', requireFranchisePartner, getPartnerTaxiBusController);
+
+// Food riders (delivery partners) of the franchise's zone
+router.get('/food/riders', requireFranchisePartner, listRidersController);
+router.get('/food/riders/:id', requireFranchisePartner, getRiderController);
+router.post('/food/riders/:id/:action(approve|reject)', requireFranchisePartner, financeWriteRateLimiter, decideRiderController);
+// Delivery fee slabs of the franchise's food zone (goes to riders; does not touch platform commission)
+router.get('/food/delivery-fees', requireFranchisePartner, getDeliveryFeesController);
+router.put('/food/delivery-fees', requireFranchisePartner, financeWriteRateLimiter, saveDeliveryFeesController);
+router.delete('/food/delivery-fees', requireFranchisePartner, financeWriteRateLimiter, resetDeliveryFeesController);
+// Payments of the franchise's food orders (read-only)
+router.get('/food/payments', requireFranchisePartner, listFoodPaymentsController);
+// Taxi drivers of the franchise's taxi zone: details + approve / reject / block / unblock
+router.get('/taxi/drivers/:id', requireFranchisePartner, getTaxiDriverController);
+router.post('/taxi/drivers/:id/:action(approve|reject|block|unblock)', requireFranchisePartner, financeWriteRateLimiter, decideTaxiDriverController);
+
+// Own finance view (read-only): earnings, platform commission, wallet, fee & deposit
+router.get('/finance', requireFranchisePartner, getPartnerFinanceController);
+
+// Issues (support tickets) raised by users / restaurants of the franchise zone
+router.get('/issues', requireFranchisePartner, listPartnerIssuesController);
+router.patch('/issues/:source(user|restaurant)/:id', requireFranchisePartner, financeWriteRateLimiter, respondPartnerIssueController);
+
+// Own profile + requests to admin (zone change, deactivate account)
+router.get('/profile', requireFranchisePartner, getPartnerProfileController);
+router.post('/requests', requireFranchisePartner, financeWriteRateLimiter, createPartnerRequestController);
 
 // Money / account actions: franchise login required
 router.post('/support-message', requireFranchisePartner, submitPartnerSupportMessageController);

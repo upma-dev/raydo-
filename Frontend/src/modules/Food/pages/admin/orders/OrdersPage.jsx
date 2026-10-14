@@ -35,6 +35,7 @@ const statusConfig = {
   "restaurant-cancelled": { title: "Restaurant Cancelled Orders", color: "red", icon: Package },
   "payment-failed": { title: "Payment Failed Orders", color: "red", icon: Package },
   "refunded": { title: "Refunded Orders", color: "sky", icon: Package },
+  "refund-pending": { title: "Refunds Pending (customer money to be returned)", color: "red", icon: Package },
   "offline-payments": { title: "Offline Payments", color: "slate", icon: Package },
 }
 
@@ -523,6 +524,11 @@ export default function OrdersPage({ statusKey = "all" }) {
         paymentType,
         paymentStatus,
         orderStatus: displayStatus,
+        // Cancel button is decided by the REAL status (the label above hides e.g. pending_payment / confirmed behind "Pending")
+        canAdminCancel: [
+          'pending_payment', 'created', 'placed', 'pending', 'confirmed', 'preparing', 'ready_for_pickup',
+          'reached_pickup', 'picked_up', 'reached_drop', 'handover_requested',
+        ].includes(backendStatus),
         deliveryPartnerName,
         deliveryPartnerPhone,
         deliveryType: order.deliveryType || "Home Delivery",
@@ -732,7 +738,7 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
 
     const reason = prompt(
-      `Cancel order ${order.orderId}? The customer is refunded automatically.\n\nEnter the reason (shown to the customer):`,
+      `Cancel order ${order.orderId}? ${(String(order.payment?.status || "").toLowerCase() === "paid" && !["cash", "cod"].includes(String(order.payment?.method || "").toLowerCase())) ? "The customer paid online, so the refund will be arranged." : "This is a cash-on-delivery order, so there is nothing to refund."}\n\nEnter the reason (shown to the customer):`,
       "Order cancelled by admin",
     )
 
@@ -742,7 +748,18 @@ export default function OrdersPage({ statusKey = "all" }) {
       setProcessingActionOrderId(order.id || order.orderId)
       const response = await adminAPI.rejectOrder(orderIdToUse, reason)
       if (response.data?.success) {
-        toast.success(response.data?.message || `Order ${order.orderId} rejected`)
+        const refund = response.data?.data?.refund
+        if (refund?.status === "manual_pending" && refund?.paymentId) {
+          // Manual refund: take the admin straight to this payment in the Razorpay dashboard
+          const url = `https://dashboard.razorpay.com/app/payments/${refund.paymentId}`
+          window.open(url, "_blank", "noopener")
+          toast.warning(`Order cancelled. Refund ₹${refund.amount} in Razorpay, then click "Mark refunded" on the order.`, {
+            duration: 15000,
+            action: { label: "Open Razorpay", onClick: () => window.open(url, "_blank", "noopener") },
+          })
+        } else {
+          toast.success(response.data?.message || `Order ${order.orderId} rejected`)
+        }
         await fetchOrders({ silent: true, withRingCheck: false })
       } else {
         toast.error(response.data?.message || "Failed to reject order")
@@ -750,6 +767,32 @@ export default function OrdersPage({ statusKey = "all" }) {
     } catch (error) {
       debugError("Error rejecting order:", error)
       toast.error(error.response?.data?.message || "Failed to reject order")
+    } finally {
+      setProcessingActionOrderId(null)
+    }
+  }
+
+  // Admin refunded this order by hand in Razorpay: record the Razorpay refund id so the order shows "Refunded"
+  const handleMarkRefundDone = async (order) => {
+    const orderIdToUse = order.id || order._id
+    const referenceId = prompt(
+      `Refunded ₹${order.payment?.refund?.amount || order.totalAmount} for order ${order.orderId} in Razorpay?
+
+Enter the Razorpay refund id (looks like rfnd_xxxxxxxx):`,
+      "",
+    )
+    if (referenceId === null) return
+    try {
+      setProcessingActionOrderId(order.id || order.orderId)
+      const response = await adminAPI.markRefundDone(orderIdToUse, { referenceId })
+      if (response.data?.success) {
+        toast.success("Refund recorded. The customer has been notified.")
+        await fetchOrders({ silent: true, withRingCheck: false })
+      } else {
+        toast.error(response.data?.message || "Could not record the refund")
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Could not record the refund")
     } finally {
       setProcessingActionOrderId(null)
     }
@@ -985,8 +1028,9 @@ export default function OrdersPage({ statusKey = "all" }) {
         onViewOrder={handleViewOrder}
         onPrintOrder={handlePrintOrder}
         onRefund={handleRefund}
+        onMarkRefundDone={handleMarkRefundDone}
         onDeleteOrder={statusKey === "all" ? handleDeleteOrder : undefined}
-                onRejectOrder={statusKey === "all" || statusKey === "pending" ? handleRejectOrder : undefined}
+                onRejectOrder={handleRejectOrder}
         actionLoadingOrderId={processingActionOrderId}
         deletingOrderId={deletingOrderId}
       />

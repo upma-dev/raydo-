@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { FoodOrder } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
+import { normalizeGstRate, gstOn } from '../../admin/services/gst.service.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { FoodDeliverySurgeZone } from '../../admin/models/deliverySurgeZone.model.js';
@@ -112,9 +113,21 @@ export async function resolveOrderZoneId(dto = {}, restaurant = null) {
   return null;
 }
 
-async function resolveDistanceRule(distanceKm) {
+/**
+ * Delivery fee slabs for an order: the slabs of the restaurant's food zone (set by the franchise owning that zone)
+ * when it has any active ones, otherwise the platform-wide slabs.
+ */
+export async function loadDeliveryRules(zoneId) {
+  if (zoneId && mongoose.Types.ObjectId.isValid(String(zoneId))) {
+    const zoneRules = await FoodDeliveryCommissionRule.find({ zoneId: new mongoose.Types.ObjectId(String(zoneId)), status: { $ne: false } }).lean();
+    if (zoneRules.length) return { rules: zoneRules, source: 'zone' };
+  }
+  const rules = await FoodDeliveryCommissionRule.find({ zoneId: null, status: { $ne: false } }).lean();
+  return { rules, source: 'platform' };
+}
+
+async function resolveDistanceRule(distanceKm, rules = []) {
   if (!Number.isFinite(Number(distanceKm)) || Number(distanceKm) < 0) return null;
-  const rules = await FoodDeliveryCommissionRule.find({ status: { $ne: false } }).lean();
   if (!rules.length) return null;
   const d = Number(distanceKm);
   const sorted = [...rules].sort((a, b) => Number(a.minDistance || 0) - Number(b.minDistance || 0));
@@ -133,8 +146,7 @@ async function resolveDistanceRule(distanceKm) {
 }
 
 /** Active base slab (minDistance <= 0). Flat user fee source matches base-slab pricing. */
-async function resolveBaseDistanceSlab() {
-  const rules = await FoodDeliveryCommissionRule.find({ status: { $ne: false } }).lean();
+async function resolveBaseDistanceSlab(rules = []) {
   if (!rules.length) return null;
   return (
     [...rules]
@@ -235,8 +247,8 @@ export async function calculateOrderPricing(userId, dto) {
       }
     }
 
-    // 2. Maximum Delivery Distance Validation
-    const rules = await FoodDeliveryCommissionRule.find({ status: { $ne: false } }).lean();
+    // 2. Maximum Delivery Distance Validation (zone slabs of the restaurant's zone, else platform slabs)
+    const { rules, source: slabSource } = await loadDeliveryRules(restaurant?.zoneId);
     if (rules && rules.length > 0) {
       const hasUnlimitedSlab = rules.some(r => r.maxDistance == null);
       if (!hasUnlimitedSlab) {
@@ -251,7 +263,7 @@ export async function calculateOrderPricing(userId, dto) {
       }
     }
 
-    const distanceRule = await resolveDistanceRule(distanceKm);
+    const distanceRule = await resolveDistanceRule(distanceKm, rules);
     if (!distanceRule) {
       throw new ValidationError('No active distance slab found for this delivery distance');
     }
@@ -277,7 +289,7 @@ export async function calculateOrderPricing(userId, dto) {
       excessDistanceKm = Math.round(Number(distanceKm || 0) * 100) / 100;
     } else {
       // Non-base (Option A): base slab user per-km rate as flat + matched per-km × excess beyond base max
-      const baseSlab = await resolveBaseDistanceSlab();
+      const baseSlab = await resolveBaseDistanceSlab(rules);
       baseSlabFlatFee = baseSlab
         ? Math.round((Number(baseSlab.basePayout || 0) * 100)) / 100
         : 0;
@@ -301,6 +313,7 @@ export async function calculateOrderPricing(userId, dto) {
     riderDeliveryEarningAfterAdminCommission = deliveryFee;
     deliveryFeeBreakdown = {
       source: 'distance_slab',
+      slabSource,
       distanceKm: Math.round(Number(distanceKm || 0) * 100) / 100,
       distanceRuleId: String(distanceRule._id),
       distanceRange: {
@@ -339,11 +352,11 @@ export async function calculateOrderPricing(userId, dto) {
     ? Math.round((subtotal * (deliveryPartnerIncentivePercent / 100)) * 100) / 100
     : 0;
 
-  const configuredGstRate = Number(feeSettings.gstRate ?? 0);
-  const gstRatePercent = Number.isFinite(configuredGstRate) && configuredGstRate >= 0 ? configuredGstRate : 0;
-  const itemGst = Math.round((subtotal * (gstRatePercent / 100)) * 100) / 100;
-  const platformGst = gstRatePercent > 0 ? Math.round((platformFee * 0.18) * 100) / 100 : 0;
-  const deliveryGst = gstRatePercent > 0 ? Math.round((deliveryFee * 0.18) * 100) / 100 : 0;
+  // One GST rate for everything: the admin's "GST rate" in Fee Settings (no hardcoded 18% for fees)
+  const gstRatePercent = normalizeGstRate(feeSettings.gstRate);
+  const itemGst = gstOn(subtotal, gstRatePercent);
+  const platformGst = gstOn(platformFee, gstRatePercent);
+  const deliveryGst = gstOn(deliveryFee, gstRatePercent);
   const tax = Math.round((itemGst + platformGst + deliveryGst) * 100) / 100;
   const gstBreakdown = { item: itemGst, platform: platformGst, delivery: deliveryGst };
 

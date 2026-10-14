@@ -7,6 +7,7 @@ const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 import bikeLogo from '../../Food/assets/bikelogo.png'
 import raydoDeliveryRider from '../../Food/assets/raydo-delivery-rider.png'
+import { HAS_VALID_GOOGLE_MAPS_KEY } from '@/modules/Taxi/modules/admin/utils/googleMaps'
 
 
 /**
@@ -489,7 +490,7 @@ export default function GoogleMapsTracking({
     )
   }
 
-  if (!apiKey) {
+  if (!HAS_VALID_GOOGLE_MAPS_KEY) {
     return (
       <div className={containerClasses + " bg-yellow-50 border border-yellow-200 p-4 text-center"}>
         <p className="text-yellow-800 text-sm">?? Google Maps API key not configured</p>

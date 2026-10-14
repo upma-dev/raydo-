@@ -136,7 +136,7 @@ export default function FranchiseApplyPage() {
         </div>
 
         {/* Step Indicator */}
-        <div style={{ marginBottom: 40 }}>
+        <div style={{ marginBottom: 40, display: formConfig?.applicationOpen === false && !created ? 'none' : 'block' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 0, position: 'relative' }}>
             {STEPS.map((step, i) => {
               const Icon = step.icon;
@@ -169,7 +169,14 @@ export default function FranchiseApplyPage() {
 
         {/* Step Content */}
         <div className="glass-card" style={{ borderRadius: 24, padding: '36px 32px' }}>
-          {loadingConfig ? (
+          {!loadingConfig && formConfig?.applicationOpen === false && !created ? (
+            <div style={{ textAlign: 'center', padding: '48px 16px' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🛠️</div>
+              <h2 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 10px' }}>{formConfig.closedTitle}</h2>
+              <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, margin: '0 auto 24px', maxWidth: 440, whiteSpace: 'pre-line' }}>{formConfig.closedMessage}</p>
+              <button type="button" className="btn-outline" style={{ margin: '0 auto' }} onClick={() => navigate('/')}>Back to home</button>
+            </div>
+          ) : loadingConfig ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60, gap: 12 }}>
               <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', color: '#6895FF' }} />
               <span style={{ color: 'rgba(255,255,255,0.5)' }}>Loading form...</span>

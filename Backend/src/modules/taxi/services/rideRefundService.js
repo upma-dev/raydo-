@@ -153,15 +153,15 @@ export const refundCompletedRide = async ({ rideId, amount, reason = '', method 
     }
   }
 
-  // --- 3) Franchise commission of a fully refunded ride
+  // --- 3) Franchise earning of a refunded ride: full refund = full reversal, partial = proportional
   if (refundAmount >= fare) {
     await reverseFranchiseCommission({ rideId: claimed._id }).catch((e) => console.error('[Franchise] taxi commission reversal failed:', e?.message || e));
-    try {
-      const { reverseTaxiRide } = await import('../../food/admin/services/franchiseLedger.service.js');
-      await reverseTaxiRide(claimed._id);
-    } catch (e) {
-      console.error('[Franchise] taxi ledger reversal failed:', e?.message || e);
-    }
+  }
+  try {
+    const { reverseTaxiRide } = await import('../../food/admin/services/franchiseLedger.service.js');
+    await reverseTaxiRide(claimed._id, { refundAmount, fare });
+  } catch (e) {
+    console.error('[Franchise] taxi ledger reversal failed:', e?.message || e);
   }
 
   await Ride.updateOne({ _id: ride._id }, {

@@ -3,7 +3,9 @@ import FranchiseApplication from '../models/franchiseApplication.model.js';
 import FranchiseLedger from '../models/franchiseLedger.model.js';
 import FranchiseFormConfig from '../models/franchiseFormConfig.model.js';
 import { creditTaxiRide, creditBooking } from './franchiseLedger.service.js';
-import { getCommissionRate, normalizeModules, roundMoney } from './franchisePlan.js';
+import { normalizeModules, roundMoney } from './franchisePlan.js';
+import { resolveRates } from './commissionRules.service.js';
+import { bpsToPercent } from './franchiseMoney.js';
 
 /**
  * TAXI SIDE OF A FRANCHISE
@@ -85,7 +87,7 @@ export const SERVICE_LABEL = { ride: 'City taxi', intercity: 'Outstation', parce
 const isOperating = (app) =>
     app.status === 'approved' &&
     ['paid', 'waived'].includes(app.franchiseFeeStatus) &&
-    app.accountStatus !== 'suspended' &&
+    !['suspended', 'terminated'].includes(app.accountStatus) &&
     !app.archived;
 
 /**
@@ -98,7 +100,7 @@ export async function creditFranchiseForRide(rideId) {
         const Driver = model('TaxiDriver');
         if (!Ride || !Driver) return null;
 
-        const ride = await Ride.findById(rideId).select('driverId commissionAmount fare serviceType walletSettledAt status franchiseApplicationId').lean();
+        const ride = await Ride.findById(rideId).select('driverId commissionAmount fare serviceType walletSettledAt completedAt status franchiseApplicationId').lean();
         if (!ride || ride.status !== 'completed' || !ride.walletSettledAt || ride.franchiseApplicationId) return null;
 
         const settings = await getTaxiSettings();
@@ -115,19 +117,39 @@ export async function creditFranchiseForRide(rideId) {
             taxiZoneId: driver.zoneId,
             selectedModules: { $in: ['taxi'] },
             status: 'approved',
-        }).select('selectedModules moduleCommissions status franchiseFeeStatus accountStatus archived').lean();
+        }).select('selectedModules territoryId status franchiseFeeStatus accountStatus archived').lean();
         if (!app || !isOperating(app)) return null;
 
-        // Base chosen by the admin: what the PLATFORM earned on the ride (default, same idea as food) or the fare itself
-        const base = roundMoney(settings.commissionBase === 'fare' ? ride.fare : ride.commissionAmount);
-        const rate = getCommissionRate(app.selectedModules, app.moduleCommissions, 'taxi');
-        const row = await creditTaxiRide({ franchiseId: app._id, rideId: ride._id, base, rate });
+        // Eligible earning of the franchise = what the PLATFORM earned on the ride (its commission from the driver).
+        // Never the fare: the fare is mostly the driver's money.
+        const base = roundMoney(ride.commissionAmount);
+        const row = await creditTaxiRide({ franchiseId: app._id, rideId: ride._id, base, at: ride.completedAt || ride.walletSettledAt });
         if (row) await Ride.updateOne({ _id: ride._id }, { $set: { franchiseApplicationId: app._id } });
         return row;
     } catch (err) {
         console.error('[Franchise] taxi ride credit failed:', err?.message || err);
         return null;
     }
+}
+
+/**
+ * Net franchise money per order/ride/booking: earning - platform commission - reversals (v2) or credit - reversal (v1).
+ * Returns Map(sourceId -> { net, base }).
+ */
+export async function netBySource(franchiseId, refType, ids) {
+    const out = new Map();
+    if (!ids.length) return out;
+    const rows = await FranchiseLedger.find({
+        franchiseId, refType, $or: [{ sourceId: { $in: ids } }, { refId: { $in: ids } }],
+    }).select('refId sourceId amount base type').lean();
+    rows.forEach((r) => {
+        const key = r.sourceId || r.refId;
+        const cur = out.get(key) || { net: 0, base: 0 };
+        cur.net = roundMoney(cur.net + (Number(r.amount) || 0));
+        if ((r.type === 'earning' || r.type === 'credit') && r.base) cur.base = r.base;
+        out.set(key, cur);
+    });
+    return out;
 }
 
 /** Overview of the franchise's taxi business: rides, drivers, money. */
@@ -202,7 +224,7 @@ export async function getTaxiOverview(franchiseId) {
     return {
         zone: zone ? { id: zone._id, name: zone.name } : null,
         taxiZoneId: app.taxiZoneId || null,
-        commissionRate: getCommissionRate(app.selectedModules, app.moduleCommissions, 'taxi'),
+        commissionRate: bpsToPercent((await resolveRates(app)).taxi.rateBps),
         rides: {
             completed: rideAgg[0]?.rides || 0,
             gmv: roundMoney(rideAgg[0]?.gmv || 0),
@@ -241,10 +263,7 @@ export async function listTaxiRides(franchiseId, query = {}) {
         Ride.countDocuments(match),
     ]);
 
-    const credits = await FranchiseLedger.find({ franchiseId: app._id, refType: 'ride', refId: { $in: rows.map((r) => String(r._id)) } })
-        .select('refId amount type').lean();
-    const earnedByRide = new Map();
-    credits.forEach((c) => earnedByRide.set(c.refId, (earnedByRide.get(c.refId) || 0) + c.amount));
+    const earnedByRide = await netBySource(app._id, 'ride', rows.map((r) => String(r._id)));
 
     return {
         items: rows.map((r) => ({
@@ -258,7 +277,7 @@ export async function listTaxiRides(franchiseId, query = {}) {
             fare: roundMoney(r.fare),
             paymentMethod: r.paymentMethod,
             status: r.adminRefund?.status === 'processed' ? 'refunded' : r.status,
-            franchiseEarned: roundMoney(earnedByRide.get(String(r._id)) || 0),
+            franchiseEarned: roundMoney(earnedByRide.get(String(r._id))?.net || 0),
             completedAt: r.completedAt || r.createdAt,
         })),
         total, page, limit,
@@ -271,9 +290,12 @@ export async function listTaxiDrivers(franchiseId, query = {}) {
     if (!Driver || !app.taxiZoneId) return { items: [], total: 0, page: 1, limit: 15 };
     const { page, limit, skip } = paging(query);
     const match = { zoneId: app.taxiZoneId, deletedAt: null };
+    if (query.state === 'blocked' || query.state === 'rejected') match.status = query.state;
+    else if (query.state === 'pending') match.$or = [{ approve: false, status: { $nin: ['blocked', 'rejected'] } }, { status: 'pending' }];
+    else if (query.state === 'approved') { match.approve = { $ne: false }; match.status = { $nin: ['pending', 'blocked', 'rejected'] }; }
     if (query.search) {
-        const re = new RegExp(String(query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-        match.$or = [{ name: re }, { phone: re }];
+        const re = new RegExp(String(query.search).slice(0, 60).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        match.$and = [{ $or: [{ name: re }, { phone: re }, { vehicleNumber: re }] }];
     }
 
     const [rows, total] = await Promise.all([
@@ -287,7 +309,9 @@ export async function listTaxiDrivers(franchiseId, query = {}) {
             id: d._id,
             name: d.name || '-',
             phone: d.phone || '',
-            approved: d.approve === true,
+            approved: d.approve !== false && !['pending', 'blocked', 'rejected'].includes(String(d.status || '').toLowerCase()),
+            state: ['blocked', 'rejected'].includes(String(d.status || '').toLowerCase()) ? String(d.status).toLowerCase()
+                : (d.approve === false || String(d.status || '').toLowerCase() === 'pending') ? 'pending' : 'approved',
             status: d.status || '',
             online: d.isOnline === true,
             vehicleType: d.vehicleType || '',
@@ -317,7 +341,7 @@ export async function listTaxiZonesForFranchise(franchiseId = null) {
 
 /* ------------------------------ BUS SERVICE ------------------------------ */
 
-const APP_FIELDS = 'selectedModules moduleCommissions status franchiseFeeStatus accountStatus archived franchiseFeePaidAt reviewedAt createdAt';
+const APP_FIELDS = 'selectedModules territoryId status franchiseFeeStatus accountStatus archived franchiseFeePaidAt reviewedAt createdAt';
 
 async function operatingFranchise(filter) {
     const app = await FranchiseApplication.findOne({ ...filter, selectedModules: { $in: ['taxi'] }, status: 'approved' }).select(APP_FIELDS).lean();
@@ -392,10 +416,9 @@ export async function creditFranchiseForBusBookings(limit = 100) {
             if (app && new Date(b.createdAt) >= since) {
                 const total = Number(b.amount) || 0;
                 const kept = total > 0 ? Math.max(0, total - (Number(b.financialSnapshot?.refundedAmount) || 0)) / total : 1;
-                const full = settings.commissionBase === 'fare' ? total : (Number(b.financialSnapshot?.calculatedPlatformEarning) || 0);
+                const full = Number(b.financialSnapshot?.calculatedPlatformEarning) || 0;
                 const base = roundMoney(full * kept);
-                const rate = getCommissionRate(app.selectedModules, app.moduleCommissions, 'taxi');
-                const row = await creditBooking({ franchiseId: app._id, kind: 'bus', bookingId: b._id, base, rate });
+                const row = await creditBooking({ franchiseId: app._id, kind: 'bus', bookingId: b._id, base });
                 if (row) {
                     credited += 1;
                     await BusBooking.updateOne({ _id: b._id }, { $set: { franchiseApplicationId: app._id } });
@@ -421,9 +444,7 @@ export async function listTaxiBusBookings(franchiseId, query = {}) {
             .select('bookingCode travelDate seatLabels amount passenger routeSnapshot financialSnapshot status').lean(),
         BusBooking.countDocuments(match),
     ]);
-    const credits = await FranchiseLedger.find({ franchiseId: app._id, refType: 'bus', refId: { $in: rows.map((r) => String(r._id)) } })
-        .select('refId amount').lean();
-    const earned = new Map(credits.map((c) => [c.refId, c.amount]));
+    const earned = await netBySource(app._id, 'bus', rows.map((r) => String(r._id)));
 
     return {
         items: rows.map((r) => ({
@@ -436,7 +457,7 @@ export async function listTaxiBusBookings(franchiseId, query = {}) {
             passengerName: r.passenger?.name || '-',
             amount: roundMoney(r.amount),
             platformEarning: roundMoney(r.financialSnapshot?.calculatedPlatformEarning),
-            franchiseEarned: roundMoney(earned.get(String(r._id)) || 0),
+            franchiseEarned: roundMoney(earned.get(String(r._id))?.net || 0),
             status: r.status,
         })),
         total, page, limit,
@@ -453,7 +474,7 @@ const sinceOf = (app) => new Date(app?.franchiseFeePaidAt || app?.reviewedAt || 
  *  - base "platform_commission" : Raydo's commission % for this service (admin-set) of what the customer paid
  */
 const bookingBase = (settings, kind, total) =>
-    roundMoney(settings.commissionBase === 'fare' ? total : (total * (Number(settings.serviceCommission?.[kind]) || 0)) / 100);
+    roundMoney((total * (Number(settings.serviceCommission?.[kind]) || 0)) / 100);
 
 /**
  * Pooling: credited when the booking is COMPLETED and PAID. The franchise is the one whose taxi zone contains the pickup stop.
@@ -479,8 +500,7 @@ export async function creditFranchiseForPoolingAndRental(limit = 100) {
                     const stop = (routeCache.get(key)?.stops || []).find((x) => String(x.id) === String(b.pickupStopId));
                     const app = stop ? await franchiseForPoint(stop.latitude, stop.longitude) : null;
                     if (app && new Date(b.createdAt) >= sinceOf(app)) {
-                        const rate = getCommissionRate(app.selectedModules, app.moduleCommissions, 'taxi');
-                        const row = await creditBooking({ franchiseId: app._id, kind: 'pooling', bookingId: b._id, base: bookingBase(settings, 'pooling', Number(b.fare) || 0), rate });
+                        const row = await creditBooking({ franchiseId: app._id, kind: 'pooling', bookingId: b._id, base: bookingBase(settings, 'pooling', Number(b.fare) || 0) });
                         if (row) { credited += 1; await Booking.updateOne({ _id: b._id }, { $set: { franchiseApplicationId: app._id } }); }
                     }
                     await Booking.updateOne({ _id: b._id }, { $set: { franchiseCreditCheckedAt: new Date() } });
@@ -501,8 +521,7 @@ export async function creditFranchiseForPoolingAndRental(limit = 100) {
                     const loc = r.serviceLocation || {};
                     const app = (await franchiseForPoint(loc.latitude, loc.longitude)) || (await franchiseForServiceLocation(loc.locationId));
                     if (app && new Date(r.createdAt) >= sinceOf(app)) {
-                        const rate = getCommissionRate(app.selectedModules, app.moduleCommissions, 'taxi');
-                        const row = await creditBooking({ franchiseId: app._id, kind: 'rental', bookingId: r._id, base: bookingBase(settings, 'rental', Number(r.totalCost) || 0), rate });
+                        const row = await creditBooking({ franchiseId: app._id, kind: 'rental', bookingId: r._id, base: bookingBase(settings, 'rental', Number(r.totalCost) || 0) });
                         if (row) { credited += 1; await Rental.updateOne({ _id: r._id }, { $set: { franchiseApplicationId: app._id } }); }
                     }
                     await Rental.updateOne({ _id: r._id }, { $set: { franchiseCreditCheckedAt: new Date() } });
@@ -533,9 +552,7 @@ export async function listTaxiBookings(franchiseId, query = {}) {
         Model.find(match).sort({ createdAt: -1 }).skip(skip).limit(limit).select(select).lean(),
         Model.countDocuments(match),
     ]);
-    const credits = await FranchiseLedger.find({ franchiseId: app._id, refType: service, refId: { $in: rows.map((r) => String(r._id)) } })
-        .select('refId amount base').lean();
-    const byId = new Map(credits.map((c) => [c.refId, c]));
+    const byId = await netBySource(app._id, service, rows.map((r) => String(r._id)));
     const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '-');
 
     return {
@@ -545,12 +562,12 @@ export async function listTaxiBookings(franchiseId, query = {}) {
                 ? {
                     id: r._id, bookingCode: r.bookingId, route: `${r.pickupLabel || '-'} → ${r.dropLabel || '-'}`, operator: 'Pooling',
                     travelDate: day(r.travelDate), seats: String(r.seatsBooked || 1), amount: roundMoney(r.fare), platformEarning: roundMoney(c.base),
-                    franchiseEarned: roundMoney(c.amount), status: r.bookingStatus,
+                    franchiseEarned: roundMoney(c.net), status: r.bookingStatus,
                 }
                 : {
                     id: r._id, bookingCode: `RENT_${String(r._id).slice(-8).toUpperCase()}`, route: r.serviceLocation?.name || r.serviceLocation?.city || '-',
                     operator: r.vehicleName || 'Rental', travelDate: day(r.pickupDateTime), seats: `${r.requestedHours || 0} h`, amount: roundMoney(r.totalCost),
-                    platformEarning: roundMoney(c.base), franchiseEarned: roundMoney(c.amount), status: r.status,
+                    platformEarning: roundMoney(c.base), franchiseEarned: roundMoney(c.net), status: r.status,
                 };
         }),
         total, page, limit,

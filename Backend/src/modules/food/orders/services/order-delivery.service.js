@@ -18,6 +18,7 @@ import * as foodTransactionService from './foodTransaction.service.js';
 import * as dispatchService from './order-dispatch.service.js';
 import { isPartnerInActiveZoneSync } from './order-dispatch.service.js';
 import * as paymentService from './order-payment.service.js';
+import { assertRiderCanTakeCod } from '../../delivery/services/riderCash.service.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { creditFoodOrder } from '../../admin/services/franchiseLedger.service.js';
 
@@ -314,6 +315,10 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   if (!identity) throw new ValidationError('Order id required');
 
   const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
+
+  // COD: an offer sent earlier (or a direct call) must not take the rider above the admin's cash limit
+  const orderToAccept = await FoodOrder.findOne(identity).select('payment.method pricing.total').lean();
+  if (orderToAccept) await assertRiderCanTakeCod(partnerId, orderToAccept);
 
   const activeZones = await FoodZone.find({ isActive: true }).select('_id coordinates').lean();
   if (activeZones && activeZones.length > 0) {

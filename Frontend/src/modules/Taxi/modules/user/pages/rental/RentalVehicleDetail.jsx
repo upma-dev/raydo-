@@ -568,19 +568,15 @@ const RentalVehicleDetail = () => {
     }
   }, [duration, vehicle]);
 
-  if (!vehicle) {
-    navigate('/rental');
-    return null;
-  }
 
   const gallery = useMemo(
     () =>
       [
-        ...(Array.isArray(vehicle.gallery) ? vehicle.gallery : []),
-        ...(Array.isArray(vehicle.galleryImages) ? vehicle.galleryImages : []),
-        vehicle.coverImage,
-        vehicle.image,
-        vehicle.map_icon,
+        ...(Array.isArray(vehicle?.gallery) ? vehicle?.gallery : []),
+        ...(Array.isArray(vehicle?.galleryImages) ? vehicle?.galleryImages : []),
+        vehicle?.coverImage,
+        vehicle?.image,
+        vehicle?.map_icon,
       ].filter((value, index, array) => value && array.indexOf(value) === index),
     [vehicle],
   );
@@ -588,11 +584,11 @@ const RentalVehicleDetail = () => {
   useEffect(() => {
     setSelectedImage(gallery[0] || '');
   }, [gallery]);
-  const pricingRows = Array.isArray(vehicle.rawPricing)
+  const pricingRows = Array.isArray(vehicle?.rawPricing)
     ? [...vehicle.rawPricing].sort(
         (a, b) => Number(a.durationHours || 0) - Number(b.durationHours || 0),
       )
-    : Array.isArray(vehicle.pricing)
+    : Array.isArray(vehicle?.pricing)
       ? [...vehicle.pricing].sort(
           (a, b) => Number(a.durationHours || 0) - Number(b.durationHours || 0),
         )
@@ -690,9 +686,9 @@ const RentalVehicleDetail = () => {
 
   const summaryBadges = useMemo(
     () => [
-      { icon: Users, label: `${vehicle.capacity || 0} seats` },
-      { icon: Luggage, label: `${vehicle.luggageCapacity || 0} bags` },
-      { icon: Fuel, label: vehicle.vehicleCategory || 'Vehicle' },
+      { icon: Users, label: `${vehicle?.capacity || 0} seats` },
+      { icon: Luggage, label: `${vehicle?.luggageCapacity || 0} bags` },
+      { icon: Fuel, label: vehicle?.vehicleCategory || 'Vehicle' },
     ],
     [vehicle],
   );
@@ -754,8 +750,8 @@ const RentalVehicleDetail = () => {
         );
 
         const allowedStoreIds = new Set(
-          Array.isArray(vehicle.serviceStoreIds)
-            ? vehicle.serviceStoreIds.map((item) => String(item))
+          Array.isArray(vehicle?.serviceStoreIds)
+            ? vehicle?.serviceStoreIds.map((item) => String(item))
             : [],
         );
 
@@ -926,7 +922,7 @@ const RentalVehicleDetail = () => {
     return () => {
       mounted = false;
     };
-  }, [vehicle.serviceStoreIds]);
+  }, [vehicle?.serviceStoreIds]);
 
   const submitQuote = async () => {
     if (!quoteForm.requestedHours || Number(quoteForm.requestedHours) <= 0) {
@@ -952,8 +948,8 @@ const RentalVehicleDetail = () => {
     setSubmittingQuote(true);
     try {
       await userService.createRentalQuoteRequest({
-        vehicleTypeId: vehicle.id,
-        vehicleName: vehicle.name,
+        vehicleTypeId: vehicle?.id,
+        vehicleName: vehicle?.name,
         contactName: quoteForm.contactName,
         contactPhone: quoteForm.contactPhone,
         contactEmail: quoteForm.contactEmail,
@@ -1071,6 +1067,13 @@ const RentalVehicleDetail = () => {
       },
     });
   };
+  // go back when the page was opened without its data (done in an effect, not while rendering)
+  useEffect(() => {
+    if (!vehicle) navigate('/rental', { replace: true });
+  }, [vehicle, navigate]);
+
+  // every hook has run above, so it is safe to stop here
+  if (!vehicle) return null;
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#F8FAFC_0%,#F3F4F6_38%,#EEF2F7_100%)] max-w-lg mx-auto font-sans pb-36 relative overflow-hidden">

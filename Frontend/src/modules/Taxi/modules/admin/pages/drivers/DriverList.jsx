@@ -63,7 +63,11 @@ const DriverList = ({ mode = 'approved' }) => {
           name: d.name || 'Unknown',
           serviceLocation: d.service_location_name || d.city || d.service_location?.name || 'India',
           phone: d.phone || d.mobile || 'N/A',
-          transportType: d.transport_type || d.register_for || d.vehicle_type || 'All - Bike',
+          // the services the driver works in, and the real name of the vehicle type he chose
+          transportType: (Array.isArray(d.service_categories) && d.service_categories.length
+            ? d.service_categories.map((item) => String(item).charAt(0).toUpperCase() + String(item).slice(1)).join(', ')
+            : (d.transport_type || d.register_for || '-')),
+          vehicleTypeName: d.vehicle_type_name || d.vehicle_type || '-',
           rating: Number(d.rating_count || d.ratingCount || 0) > 0
             ? Number(d.rating || d.average_rating || d.avg_rating || 0)
             : 0,
@@ -305,7 +309,8 @@ const DriverList = ({ mode = 'approved' }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Name</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Service Location</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Mobile Number</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Transport Type</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Services</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Vehicle Type</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Today Selfie</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Document View</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Approved Status</th>
@@ -335,6 +340,7 @@ const DriverList = ({ mode = 'approved' }) => {
                     <td className="px-4 py-4 text-sm text-gray-500">{driver.serviceLocation}</td>
                     <td className="px-4 py-4 text-sm text-gray-500">{driver.phone}</td>
                     <td className="px-4 py-4 text-sm text-gray-500">{driver.transportType}</td>
+                    <td className="px-4 py-4 text-sm text-gray-500">{driver.vehicleTypeName}</td>
                     <td className="px-4 py-4">
                       {driver.onlineSelfieImage ? (
                         <button

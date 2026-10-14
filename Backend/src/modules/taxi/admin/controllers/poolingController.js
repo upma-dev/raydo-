@@ -5,6 +5,7 @@ import { PoolingSeatReservation } from '../models/PoolingSeatReservation.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { asyncHandler } from '../../../../utils/asyncHandler.js';
 import { uploadDataUrlToCloudinary } from '../../../../utils/cloudinaryUpload.js';
+import { resolveConfiguredGatewayCredentials } from '../../services/paymentGatewayService.js';
 
 const ok = (res, data, message) => res.status(200).json({ success: true, data, message });
 const created = (res, data, message) => res.status(201).json({ success: true, data, message });
@@ -44,20 +45,48 @@ export const getPoolingBookings = asyncHandler(async (req, res) => {
   return ok(res, bookings, 'Pooling bookings fetched successfully');
 });
 
+const ALLOWED_BOOKING_STATUSES = ['confirmed', 'cancelled', 'completed', 'no_show'];
+
 export const updatePoolingBookingStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
-  const booking = await PoolingBooking.findByIdAndUpdate(
-    req.params.id,
-    { bookingStatus: status },
-    { new: true }
-  );
+  const status = String(req.body?.status || '').toLowerCase();
+  if (!ALLOWED_BOOKING_STATUSES.includes(status)) {
+    throw new ApiError(400, `status must be one of: ${ALLOWED_BOOKING_STATUSES.join(', ')}`);
+  }
+  const booking = await PoolingBooking.findByIdAndUpdate(req.params.id, { bookingStatus: status }, { new: true });
   if (!booking) throw new ApiError(404, 'Booking not found');
 
-  if (['cancelled', 'no_show'].includes(String(status || '').toLowerCase())) {
+  if (['cancelled', 'no_show'].includes(status)) {
     await PoolingSeatReservation.deleteMany({ booking: booking._id });
   }
 
-  return ok(res, booking, 'Booking status updated successfully');
+  // A trip the operator cancels is refunded in full, once. (No-show: the fare is kept.)
+  // `refund: false` in the body skips the refund (for example when it was already paid back by hand).
+  let refund = null;
+  if (status === 'cancelled' && req.body?.refund !== false) {
+    const claimed = await PoolingBooking.findOneAndUpdate(
+      { _id: booking._id, paymentStatus: 'paid', 'payment.paymentId': { $exists: true, $ne: '' } },
+      { $set: { paymentStatus: 'refunding' } },
+    );
+    if (claimed) {
+      try {
+        const { keyId, keySecret } = await resolveConfiguredGatewayCredentials('razor_pay');
+        const response = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(claimed.payment.paymentId)}/refund`, {
+          method: 'POST',
+          headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: Math.round(Number(claimed.fare) * 100), notes: { reason: 'Pooling trip cancelled', bookingId: claimed.bookingId } }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error?.description || 'Razorpay refund failed');
+        refund = { status: 'processed', refundId: payload?.id || '', amount: claimed.fare };
+        await PoolingBooking.updateOne({ _id: booking._id }, { $set: { paymentStatus: 'refunded', 'payment.refundId': payload?.id || '', 'payment.refundedAt': new Date() } });
+      } catch (err) {
+        refund = { status: 'failed', error: err?.message || 'Refund failed' };
+        await PoolingBooking.updateOne({ _id: booking._id }, { $set: { paymentStatus: 'paid' } });   // can be retried
+      }
+    }
+  }
+
+  return ok(res, { ...booking.toObject(), refund }, 'Booking status updated successfully');
 });
 
 // --- Routes & Stops (Already mostly handled, but adding placeholders for consistency) ---

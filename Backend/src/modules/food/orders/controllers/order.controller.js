@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { sendResponse } from '../../../../utils/response.js';
+import { markRefundDoneManually, refundViaApiNow, requestOrderRefund } from '../services/order-cancel.service.js';
 import { isSuperAdminLike } from '../../../../core/admin/adminHierarchy.service.js';
 import { ForbiddenError } from '../../../../core/auth/errors.js';
 import * as orderService from '../services/order.service.js';
@@ -450,6 +451,29 @@ export async function listPendingHandoverRequestsAdminController(req, res, next)
  * Admin cancels an order (the refund is automatic). A franchise login may only cancel orders of its own
  * territory; super admins may cancel any order.
  */
+export async function markRefundDoneAdminController(req, res, next) {
+    try {
+        const ctx = req.adminContext || {};
+        const byFranchise = !isSuperAdminLike(ctx) && Boolean(ctx.franchiseId);
+        const result = await markRefundDoneManually(req.params.orderId, req.body || {}, req.user?.userId, {
+            paidBy: byFranchise ? 'franchise' : 'admin',
+            franchiseId: byFranchise ? ctx.franchiseId : null,
+        });
+        return sendResponse(res, 200, 'Refund recorded', result);
+    } catch (err) {
+        next(err);
+    }
+}
+
+export async function refundViaApiAdminController(req, res, next) {
+    try {
+        const result = await refundViaApiNow(req.params.orderId);
+        return sendResponse(res, result.status === 'processed' ? 200 : 502, result.status === 'processed' ? 'Refund sent to Razorpay' : (result.error || 'Refund could not be completed'), result);
+    } catch (err) {
+        next(err);
+    }
+}
+
 export async function cancelOrderAdminController(req, res, next) {
     try {
         const adminId = req.user?.userId;
@@ -467,6 +491,27 @@ export async function cancelOrderAdminController(req, res, next) {
 
         const result = await orderService.cancelOrderAdmin(orderId, adminId, String(req.body?.reason || '').trim());
         return sendResponse(res, 200, 'Order cancelled', result);
+    } catch (err) {
+        next(err);
+    }
+}
+
+
+/** The refund button of the restaurant: automatic cancel + refund before pickup, otherwise a request for the admin. */
+export async function requestRefundRestaurantController(req, res, next) {
+    try {
+        const result = await requestOrderRefund(req.params.orderId, { byRole: 'RESTAURANT', byId: req.user?.userId, reason: req.body?.reason, amount: req.body?.amount });
+        return sendResponse(res, 200, result.mode === 'requested' ? 'Refund request sent to the admin' : 'Order cancelled and the customer is being refunded', result);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/** The refund button of the delivery partner: always a request that the admin decides. */
+export async function requestRefundDeliveryController(req, res, next) {
+    try {
+        const result = await requestOrderRefund(req.params.orderId, { byRole: 'DELIVERY_PARTNER', byId: req.user?.userId, reason: req.body?.reason, amount: req.body?.amount });
+        return sendResponse(res, 200, 'Refund request sent to the admin', result);
     } catch (err) {
         next(err);
     }

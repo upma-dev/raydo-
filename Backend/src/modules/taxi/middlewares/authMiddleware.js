@@ -178,11 +178,23 @@ export const authenticate = (allowedRoles = [], options = {}) => async (req, _re
   }
 };
 
+/**
+ * Rider / driver endpoints. A valid login token is REQUIRED.
+ *
+ * It used to continue WITHOUT a token and "resolve" the caller as the user named in an x-user-id header / userId field,
+ * or, when none was given, as the OLDEST USER IN THE DATABASE. That let anybody read and use another person's wallet,
+ * rides and bookings with no login at all. The old behaviour only exists for a developer machine that sets
+ * ALLOW_OPEN_USER_IDENTITY=true (and never in production).
+ */
+const openUserIdentityAllowed = () =>
+  String(process.env.NODE_ENV || 'development').toLowerCase() !== 'production'
+  && ['1', 'true', 'yes', 'on'].includes(String(process.env.ALLOW_OPEN_USER_IDENTITY || '').trim().toLowerCase());
+
 export const authenticateOrResolveUser = (allowedRoles = ['user']) => async (req, res, next) => {
   const authorization = req.headers.authorization || '';
   const [, token] = authorization.split(' ');
 
-  if (token) {
+  if (token || !openUserIdentityAllowed()) {
     return authenticate(allowedRoles)(req, res, next);
   }
 
@@ -196,4 +208,11 @@ export const authenticateOrResolveUser = (allowedRoles = ['user']) => async (req
   } catch (error) {
     next(error);
   }
+};
+
+/** Public pages (search, seat map): a token is checked when sent, but not needed. Nothing private may use this. */
+export const authenticateOptional = (allowedRoles = ['user']) => async (req, res, next) => {
+  const [, token] = (req.headers.authorization || '').split(' ');
+  if (!token) return next();
+  return authenticate(allowedRoles)(req, res, next);
 };

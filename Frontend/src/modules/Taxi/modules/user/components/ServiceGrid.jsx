@@ -36,11 +36,14 @@ function getSavedStops() {
     if (lastLoc?.address) {
       const shortAddr = lastLoc.address.split(',')[0].trim();
       stops.push({ id: 'recent', label: shortAddr.length > 12 ? `${shortAddr.slice(0, 10)}...` : shortAddr, emoji: '📍', path: '/taxi/user/ride/select-location' });
-    } else {
-      stops.push({ id: 'airport', label: 'Airport', emoji: '✈️', path: '/taxi/user/ride/select-location?destination=Airport' });
     }
+    // AIRPORT shortcut disabled for now:
+    // else {
+    //   stops.push({ id: 'airport', label: 'Airport', emoji: '✈️', path: '/taxi/user/ride/select-location?destination=Airport' });
+    // }
   } catch (err) {
-    stops.push({ id: 'airport', label: 'Airport', emoji: '✈️', path: '/taxi/user/ride/select-location?destination=Airport' });
+    // AIRPORT shortcut disabled for now:
+    // stops.push({ id: 'airport', label: 'Airport', emoji: '✈️', path: '/taxi/user/ride/select-location?destination=Airport' });
   }
 
   stops.push({ id: 'add', label: 'Add Stop', emoji: '➕', path: '/taxi/user/ride/select-location' });
@@ -226,7 +229,7 @@ const ServiceGrid = ({ plain = false }) => {
                 (defCard.id === 'bus' && cName.includes('bus')) ||
                 (defCard.id === 'outstation' && cName.includes('outstation'))
               );
-            });
+            }); 
             if (!exists) {
               finalCards.push(defCard);
             }
@@ -248,7 +251,7 @@ const ServiceGrid = ({ plain = false }) => {
   }, []);
 
   return (
-    <div className="relative w-full bg-[#F0F5FD] text-[#111827]">
+    <div className="relative w-full bg-transparent text-[#111827]">
       {/* 1. VISUAL HERO TRANSITION CURVE */}
       <div className="relative w-full pointer-events-none z-20 overflow-hidden leading-none">
         <svg viewBox="0 0 1440 32" fill="none" className="w-full h-4 sm:h-6 preserve-3d" preserveAspectRatio="none">
@@ -264,7 +267,7 @@ const ServiceGrid = ({ plain = false }) => {
         <div className="mb-4 mt-0">
           <h3 className="text-[14px] font-extrabold text-[#111827] mb-2 tracking-tight flex items-center gap-1.5">
             <span>Quick stops</span>
-            <span className="text-[10px] font-semibold text-[#667085] bg-white px-2 py-0.5 rounded-full border border-indigo-100">Saved</span>
+            <span className="text-[10px] font-semibold text-[#4B6A9B] bg-[#E3EEFF] px-2 py-0.5 rounded-full border border-indigo-100">Saved</span>
           </h3>
 
           <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1 px-[18px] -mx-[18px]">
@@ -277,7 +280,7 @@ const ServiceGrid = ({ plain = false }) => {
                 transition={{ duration: 0.3, delay: idx * 0.05 }}
                 whileTap={{ scale: 0.96 }}
                 onClick={() => navigate(stop.path)}
-                className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full bg-white border border-indigo-100/90 shadow-[0_4px_14px_rgba(30,41,59,0.03)] hover:border-[#FFC400] transition-all cursor-pointer text-[#111827]"
+                className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#E3EEFF] border border-blue-200 shadow-[0_4px_14px_rgba(30,41,59,0.03)] hover:border-[#FFC400] transition-all cursor-pointer text-[#111827]"
               >
                 <span className="text-[15px] leading-none">{stop.emoji}</span>
                 <span className="text-[13px] font-extrabold text-[#111827]">{stop.label}</span>
@@ -306,7 +309,7 @@ const ServiceGrid = ({ plain = false }) => {
               [...Array(4)].map((_, i) => (
                 <div
                   key={i}
-                  className="shrink-0 w-[142px] h-[115px] animate-pulse rounded-[16px] bg-white border border-slate-200"
+                  className="shrink-0 w-[142px] h-[115px] animate-pulse rounded-[16px] bg-[#E3EEFF] border border-blue-200"
                 />
               ))
             ) : (
@@ -335,7 +338,7 @@ const ServiceGrid = ({ plain = false }) => {
                     whileHover={{ y: -2, scale: 1.02 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={() => navigate(card.path)}
-                    className="shrink-0 w-[142px] p-3 rounded-[16px] bg-white border border-slate-200/80 shadow-[0_6px_20px_rgba(30,41,59,0.04)] flex flex-col justify-between cursor-pointer group transition-all"
+                    className="shrink-0 w-[142px] p-3 rounded-[16px] bg-[#E3EEFF] border border-blue-200/80 shadow-[0_6px_20px_rgba(30,41,59,0.04)] flex flex-col justify-between cursor-pointer group transition-all"
                   >
                     {/* Top Row: Vehicle Icon + ETA */}
                     <div className="flex items-start justify-between w-full mb-1">
@@ -351,7 +354,7 @@ const ServiceGrid = ({ plain = false }) => {
                           className="h-full w-full object-contain drop-shadow-xs group-hover:scale-110 transition-transform"
                         />
                       </div>
-                      <span className="text-[9.5px] font-bold text-[#667085] bg-[#F0F5FD] px-2 py-0.5 rounded-full border border-indigo-100">
+                      <span className="text-[9.5px] font-bold text-[#667085] bg-white/70 px-2 py-0.5 rounded-full border border-blue-200">
                         {renderEtaText()}
                       </span>
                     </div>

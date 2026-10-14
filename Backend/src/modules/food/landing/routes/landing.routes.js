@@ -1,3 +1,5 @@
+import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
+import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import express from 'express';
 import { upload } from '../../../../middleware/upload.js';
 import {
@@ -72,6 +74,15 @@ router.get('/pages/:key', getPublicPageController);
 router.get('/referral-settings', getPublicReferralSettingsController);
 
 // Admin hero banner management
+// Changing banners / landing content is an ADMIN action. Every upload, delete, edit, reorder, status switch and
+// landing-settings change here used to be open to anyone on the internet (no login at all). Reading stays public.
+const adminOnlyWrites = (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  return authMiddleware(req, res, (err) => (err ? next(err) : requireRoles('ADMIN', 'SUBADMIN', 'SUPERADMIN', 'SUPER_ADMIN')(req, res, next)));
+};
+router.use('/hero-banners', adminOnlyWrites);
+router.use('/explore-icons', adminOnlyWrites);
+
 router.get('/hero-banners', listHeroBannersController);
 router.post(
     '/hero-banners/multiple',

@@ -9,7 +9,6 @@ const DeliveryHome = lazy(() => import("@food/pages/delivery/DeliveryHome"))
 const Notifications = lazy(() => import("@food/pages/delivery/Notifications"))
 const MyOrders = lazy(() => import("@food/pages/delivery/MyOrders"))
 const PocketPage = lazy(() => import("@food/pages/delivery/PocketPage"))
-const GigBooking = lazy(() => import("@food/pages/delivery/GigBooking"))
 const PickupDirectionsPage = lazy(() => import("@food/pages/delivery/PickupDirectionsPage"))
 const ProfilePage = lazy(() => import("@food/pages/delivery/ProfilePage"))
 const ProfileDetails = lazy(() => import("@food/pages/delivery/ProfileDetails"))
@@ -114,16 +113,8 @@ export default function DeliveryRouter() {
           }
           path="pocket"
         />
-        <Route
-          element={
-            <ProtectedRoute>
-              <DeliveryLayout showGig={true}>
-                <GigBooking />
-              </DeliveryLayout>
-            </ProtectedRoute>
-          }
-          path="gig"
-        />
+        {/* Gig feature is discontinued: old links go back to the home screen */}
+        <Route path="gig" element={<Navigate to="/food/delivery" replace />} />
         <Route
           element={
             <ProtectedRoute>

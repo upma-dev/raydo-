@@ -2,6 +2,8 @@ import { sendResponse } from '../../../../utils/response.js';
 import * as franchiseAdminService from '../../admin/services/franchise.service.js';
 import * as overviewService from '../../admin/services/franchiseOverview.service.js';
 import * as taxiService from '../../admin/services/franchiseTaxi.service.js';
+import { actorOf } from '../../admin/services/franchiseAudit.service.js';
+import * as requestsService from '../../admin/services/franchiseRequests.service.js';
 
 /**
  * GET /v1/food/admin/franchise/applications
@@ -65,7 +67,7 @@ export async function updateStatusController(req, res, next) {
  */
 export async function deleteApplicationController(req, res, next) {
     try {
-        const result = await overviewService.removeFranchise(req.params.id);
+        const result = await overviewService.removeFranchise(req.params.id, actorOf(req));
         return sendResponse(res, 200, result.deleted ? 'Franchise deleted' : 'Franchise archived', result);
     } catch (err) {
         next(err);
@@ -77,7 +79,7 @@ export async function deleteApplicationController(req, res, next) {
  */
 export async function updateCommissionController(req, res, next) {
     try {
-        const app = await franchiseAdminService.updateCommissionSettings(req.params.id, req.body);
+        const app = await franchiseAdminService.updateCommissionSettings(req.params.id, req.body, actorOf(req));
         return sendResponse(res, 200, 'Commission & financial settings updated', app);
     } catch (err) {
         next(err);
@@ -139,9 +141,8 @@ export async function syncSubAdminController(req, res, next) {
  */
 export async function createApplicationController(req, res, next) {
     try {
-        const adminUserId = req.user?.id;
-        const app = await franchiseAdminService.createApplication(req.body, adminUserId);
-        return sendResponse(res, 201, 'Franchise application created successfully', app);
+        const app = await franchiseAdminService.createApplication(req.body, actorOf(req));
+        return sendResponse(res, 201, 'Franchise created successfully', app);
     } catch (err) {
         next(err);
     }
@@ -166,7 +167,7 @@ export async function replySupportMessageController(req, res, next) {
 export async function updatePayoutRequestStatusController(req, res, next) {
     try {
         const { status, adminNote, transactionId } = req.body;
-        const app = await franchiseAdminService.updatePayoutRequestStatus(req.params.id, req.params.requestId, { status, adminNote, transactionId });
+        const app = await franchiseAdminService.updatePayoutRequestStatus(req.params.id, req.params.requestId, { status, adminNote, transactionId }, actorOf(req));
         return sendResponse(res, 200, 'Payout request status updated', app);
     } catch (err) {
         next(err);
@@ -199,6 +200,7 @@ const wrap = (fn, message) => async (req, res, next) => {
     }
 };
 
+export const decideFranchiseRequestController = wrap((req) => requestsService.decideRequest(req.params.id, req.params.requestId, req.body || {}, actorOf(req)), 'Request updated');
 export const getTaxiZonesController = wrap((req) => taxiService.listTaxiZonesForFranchise(req.query.franchiseId || null), 'Taxi zones fetched');
 export const getTaxiOverviewController = wrap((req) => taxiService.getTaxiOverview(req.params.id), 'Taxi overview fetched');
 export const getTaxiRidesController = wrap((req) => taxiService.listTaxiRides(req.params.id, req.query), 'Taxi rides fetched');
@@ -208,7 +210,9 @@ export const getOverviewController = wrap((req) => overviewService.getFranchiseO
 export const getFranchiseRestaurantsController = wrap((req) => overviewService.listFranchiseRestaurants(req.params.id, req.query), 'Restaurants fetched');
 export const getFranchiseOrdersController = wrap((req) => overviewService.listFranchiseOrders(req.params.id, req.query), 'Orders fetched');
 export const getFranchiseLedgerController = wrap((req) => overviewService.listFranchiseLedger(req.params.id, req.query), 'Ledger fetched');
-export const suspendFranchiseController = wrap((req) => overviewService.suspendFranchise(req.params.id, req.body?.reason), 'Franchise suspended');
-export const activateFranchiseController = wrap((req) => overviewService.activateFranchise(req.params.id), 'Franchise activated');
-export const restoreFranchiseController = wrap((req) => overviewService.restoreFranchise(req.params.id), 'Franchise restored');
-export const updateFranchiseProfileController = wrap((req) => overviewService.updateFranchiseProfile(req.params.id, req.body), 'Franchise updated');
+export const suspendFranchiseController = wrap((req) => overviewService.suspendFranchise(req.params.id, req.body?.reason, actorOf(req)), 'Franchise suspended');
+export const activateFranchiseController = wrap((req) => overviewService.activateFranchise(req.params.id, actorOf(req), req.body?.reason), 'Franchise activated');
+export const terminateFranchiseController = wrap((req) => overviewService.terminateFranchise(req.params.id, req.body?.reason, actorOf(req)), 'Franchise terminated');
+export const restoreFranchiseController = wrap((req) => overviewService.restoreFranchise(req.params.id, actorOf(req)), 'Franchise restored');
+export const updateFranchiseProfileController = wrap((req) => overviewService.updateFranchiseProfile(req.params.id, req.body, actorOf(req)), 'Franchise updated');
+export const changeTerritoryController = wrap((req) => franchiseAdminService.changeTerritory(req.params.id, req.body || {}, actorOf(req)), 'Territory changed');

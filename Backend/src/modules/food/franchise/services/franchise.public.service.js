@@ -7,9 +7,14 @@ import { createRazorpayCheckoutOrder, verifyPaymentSignature } from '../../order
 import { syncFranchiseSubAdmin } from '../../admin/services/franchise.service.js';
 import { availableBalance } from '../../admin/services/franchiseLedger.service.js';
 import {
-    normalizeModules, normalizeFees, normalizeCommissions, getFranchiseFee,
-    getCommissionRate, roundMoney,
+    normalizeModules, normalizeFees, normalizeCommissions, getFranchiseFee, roundMoney,
 } from '../../admin/services/franchisePlan.js';
+import { resolveRates, ratesToDto } from '../../admin/services/commissionRules.service.js';
+import {
+    ensureLegacyCharges, chargeToDto, onboardingDuePaise, recordRazorpayOnboardingPayment,
+} from '../../admin/services/franchiseCharges.service.js';
+import { getFranchiseFinance } from '../../admin/services/franchiseFinance.service.js';
+import { fromPaise } from '../../admin/services/franchiseMoney.js';
 
 class PartnerError extends Error {
     constructor(message, statusCode = 400) {
@@ -23,7 +28,11 @@ class PartnerError extends Error {
  */
 export async function getPublicFormConfig() {
     const config = await FranchiseFormConfig.getConfig();
+    const settings = config.applicationSettings || {};
     return {
+        applicationOpen: settings.automaticFormEnabled !== false,
+        closedTitle: settings.closedTitle || 'Franchise applications are paused',
+        closedMessage: settings.closedMessage || 'We are not taking new franchise applications right now. Please check back soon.',
         fields: config.fields
             .filter(f => f.enabled)
             .sort((a, b) => a.order - b.order),
@@ -47,6 +56,9 @@ export async function submitFranchiseApplication(data) {
     } = data;
 
     const config = await FranchiseFormConfig.getConfig();
+    if (config.applicationSettings?.automaticFormEnabled === false) {
+        throw new PartnerError(config.applicationSettings.closedMessage || 'Franchise applications are currently closed.', 403);
+    }
     const modules = normalizeModules(selectedModules);
     const fees = normalizeFees(config.moduleFranchiseFees);
     const commissions = normalizeCommissions(config.moduleCommissions);
@@ -146,6 +158,10 @@ export async function getPartnerDashboardData(applicationId, phone, { franchiseI
     const fees = normalizeFees(app.moduleFranchiseFees);
     const commissions = normalizeCommissions(app.moduleCommissions);
 
+    const onboardingCharges = (await ensureLegacyCharges(app)).map(chargeToDto);
+    const depositCharge = onboardingCharges.find((c) => c.kind === 'security_deposit');
+    const amountDue = onboardingCharges.reduce((sum, c) => sum + c.outstanding, 0);
+
     const base = {
         limited: !full,
         partnerInfo: {
@@ -169,6 +185,8 @@ export async function getPartnerDashboardData(applicationId, phone, { franchiseI
             franchiseFee: app.franchiseFee,
             franchiseFeeStatus: app.franchiseFeeStatus || 'pending',
             franchiseFeePaidAt: app.franchiseFeePaidAt || null,
+            securityDeposit: depositCharge ? depositCharge.expected : 0,
+            amountDue: roundMoney(amountDue),
             moduleFranchiseFees: fees,
             adminPaymentOptions: {
                 upiId: formConfig?.paymentDetails?.upiId || '',
@@ -239,12 +257,12 @@ export async function getPartnerDashboardData(applicationId, phone, { franchiseI
     const driversList = Driver ? await Driver.find({ franchiseId: fid }).limit(30).lean() : [];
 
     const [ledgerAgg] = await FranchiseLedger.aggregate([
-        { $match: { franchiseId: fid, type: { $in: ['credit', 'reversal'] } } },
+        { $match: { franchiseId: fid, type: { $in: NET_TYPES } } },
         { $group: { _id: null, earned: { $sum: '$amount' } } },
     ]);
     const ledger = await FranchiseLedger.find({ franchiseId: fid }).sort({ createdAt: -1 }).limit(50).lean();
     const byModule = await FranchiseLedger.aggregate([
-        { $match: { franchiseId: fid, type: { $in: ['credit', 'reversal'] } } },
+        { $match: { franchiseId: fid, type: { $in: NET_TYPES } } },
         { $group: { _id: '$module', earned: { $sum: '$amount' } } },
     ]);
     const earningsByModule = { food: 0, taxi: 0 };
@@ -261,13 +279,20 @@ export async function getPartnerDashboardData(applicationId, phone, { franchiseI
 
     const payoutRequests = app.payoutRequests || [];
     const wallet = roundMoney(app.walletBalance || 0);
+    const platformRates = ratesToDto(await resolveRates(app));
+    delete platformRates.ruleId;
+    const partnerCharges = (await ensureLegacyCharges(app)).map(chargeToDto)
+        .map((c) => ({ ...c, payments: c.payments.map(({ confirmedByName, ...rest }) => rest) }));
 
     return {
         ...base,
         financialSettings: {
             ...base.financialSettings,
-            commissionRate: getCommissionRate(modules, commissions, 'food'),
+            // % the PLATFORM keeps of this franchise's earnings (current rule)
+            commissionRate: platformRates.food.rate,
+            platformRates,
             moduleCommissions: commissions,
+            charges: partnerCharges,
             payoutCycle: app.payoutCycle || 'weekly',
             minPayoutThreshold: app.minPayoutThreshold || 0,
             walletBalance: wallet,
@@ -339,6 +364,14 @@ export async function getPartnerDashboardData(applicationId, phone, { franchiseI
     };
 }
 
+const NET_TYPES = ['credit', 'reversal', 'earning', 'platform_commission', 'earning_reversal', 'commission_reversal'];
+
+/** The logged-in partner's own finance (daily earnings, commission, wallet, fee & deposit). */
+export async function getPartnerFinance(franchiseId, query = {}) {
+    await findByFranchiseId(franchiseId, { lean: true });
+    return getFranchiseFinance(franchiseId, query, { forPartner: true });
+}
+
 // ─── Fee payment (before the partner has a login) ───────────────────────────
 
 /**
@@ -375,11 +408,13 @@ export async function createRazorpayOrderForFranchise(applicationId, phone) {
     if (app.status === 'rejected') throw new PartnerError('This application was rejected, so payment is closed');
     if (app.franchiseFeeStatus !== 'pending') throw new PartnerError('Franchise fee is already settled');
 
-    const amountInPaise = Math.round((Number(app.franchiseFee) || 0) * 100);
+    const amountInPaise = await onboardingDuePaise(app.toObject());
+    if (amountInPaise <= 0) throw new PartnerError('Nothing is due right now');
     const razorpayOrder = await createRazorpayCheckoutOrder(amountInPaise, 'INR', `FRN-${app.applicationId}`);
 
-    // Remember the order so verification can prove the payment belongs to THIS application
+    // Remember the order (and its amount) so verification can prove the payment belongs to THIS application
     app.set('franchiseFeePaymentDetails.razorpayOrderId', razorpayOrder.orderId);
+    app.set('franchiseFeePaymentDetails.razorpayOrderAmountPaise', amountInPaise);
     await app.save();
 
     return {
@@ -417,25 +452,26 @@ export async function verifyRazorpayPaymentForFranchise(applicationId, phone, pa
         throw new PartnerError('Invalid Razorpay payment signature');
     }
 
-    app.franchiseFeeStatus = 'paid';
-    app.franchiseFeePaidAt = new Date();
-    app.franchiseFeePaymentDetails = {
-        transactionId: razorpay_payment_id,
-        razorpayOrderId: razorpay_order_id,
-        paymentMethod: 'razorpay',
-        paidAmount: app.franchiseFee,
-        submittedAt: new Date(),
-        notes: `Razorpay Online Order ID: ${razorpay_order_id}`,
-    };
+    // Record the verified amount against the joining fee, then the deposit (idempotent per Razorpay payment id).
+    // The fee status / login unlock follow from the charges (franchiseCharges.service syncLegacyFeeFields).
+    const paidPaise = Number(app.franchiseFeePaymentDetails?.razorpayOrderAmountPaise) || Math.round((Number(app.franchiseFee) || 0) * 100);
+    app.set('franchiseFeePaymentDetails.transactionId', razorpay_payment_id);
+    app.set('franchiseFeePaymentDetails.paymentMethod', 'razorpay');
+    app.set('franchiseFeePaymentDetails.submittedAt', new Date());
+    app.set('franchiseFeePaymentDetails.notes', `Razorpay Online Order ID: ${razorpay_order_id}`);
     await app.save();
+    await recordRazorpayOnboardingPayment(app.toObject(), { paymentId: razorpay_payment_id, amountPaise: paidPaise });
 
     // The fee can be paid while the application is still under review. Paying never approves it:
     //  - already approved  -> activate the login now (password shown once)
     //  - still in review   -> login is created and activated later, when the admin approves
     let newCredentials = null;
-    if (app.status === 'approved') {
+    const fresh = await FranchiseApplication.findById(app._id).select('status franchiseFeeStatus').lean();
+    if (fresh?.status === 'approved') {
         try {
-            const result = await syncFranchiseSubAdmin(app._id, { overrideFeeCheck: true });
+            // Unlock only if joining fee AND deposit are now covered (a partial payment keeps the login locked)
+            const settled = ['paid', 'waived'].includes(fresh.franchiseFeeStatus);
+            const result = await syncFranchiseSubAdmin(app._id, { overrideFeeCheck: settled });
             if (result?.credentialsInfo?.password) newCredentials = result.credentialsInfo;
         } catch (err) {
             console.error('Failed to sync SubAdmin after Razorpay fee payment:', err);
@@ -504,9 +540,16 @@ export async function submitPartnerPayoutRequest(franchiseId, payoutData) {
         accountDetails,
         status: 'pending',
         requestedAt: new Date(),
-        adminNote: payoutData.notes || '',
+        adminNote: String(payoutData.notes || '').slice(0, 300),
     });
-    await app.save();
+    // Version check: if another request changed this franchise meanwhile, this save fails instead of over-reserving
+    app.increment();
+    try {
+        await app.save();
+    } catch (err) {
+        if (err?.name === 'VersionError') throw new PartnerError('Another request was being processed. Please try again.', 409);
+        throw err;
+    }
     return getPartnerDashboardData(null, null, { franchiseId });
 }
 
@@ -520,14 +563,23 @@ export async function claimRefundFromSuperAdmin(franchiseId, refundData) {
     const { refundId, orderId, merchantName, amount, claimReason } = refundData;
     if (!orderId) throw new PartnerError('orderId is required');
 
-    // The order must really belong to this franchise
+    // The order must really belong to this franchise, and the franchise must really have paid the refund itself
     const FoodOrder = mongoose.models.FoodOrder;
     const orderFilter = mongoose.Types.ObjectId.isValid(String(orderId))
         ? { _id: orderId, franchiseId: app._id }
         : { order_id: orderId, franchiseId: app._id };
-    if (FoodOrder && !(await FoodOrder.exists(orderFilter))) {
+    const orderDoc = FoodOrder ? await FoodOrder.findOne(orderFilter).select('payment.refund').lean() : null;
+    if (FoodOrder && !orderDoc) {
         throw new PartnerError('Order not found in your territory', 404);
     }
+    const paid = orderDoc?.payment?.refund;
+    if (orderDoc && (paid?.status !== 'processed' || paid?.paidBy !== 'franchise')) {
+        throw new PartnerError('Record the refund on the order first. Only a refund the franchise paid itself can be claimed.');
+    }
+    // Never more than the franchise actually refunded
+    const maxClaim = Number(paid?.amount) || 0;
+    const claimAmount = roundMoney(amount === undefined || amount === null || amount === '' ? maxClaim : Math.min(Number(amount) || 0, maxClaim));
+    if (orderDoc && !(claimAmount > 0)) throw new PartnerError('Claim amount must be above zero');
 
     let refundItem = app.refundRequests.find(r => (refundId && r.id === refundId) || r.orderId === orderId);
     if (refundItem) {
@@ -542,7 +594,7 @@ export async function claimRefundFromSuperAdmin(franchiseId, refundData) {
             customerName: refundData.customerName || 'Customer',
             customerPhone: refundData.customerPhone || '',
             merchantName: merchantName || 'Restaurant Outlet',
-            amount: roundMoney(amount),
+            amount: claimAmount,
             reason: refundData.reason || 'Customer / Restaurant Order Refund Request',
             method: 'UPI / Bank Transfer',
             status: 'claimed_from_admin',
@@ -557,7 +609,8 @@ export async function claimRefundFromSuperAdmin(franchiseId, refundData) {
 }
 
 /**
- * Mark a refund as paid to the customer. Allowed only AFTER the admin approved the claim.
+ * Franchise acknowledges the reimbursement. Allowed only AFTER the admin approved the claim (the money itself was credited
+ * to the franchise wallet when the admin approved it).
  */
 export async function processRestaurantRefund(franchiseId, refundId) {
     const app = await findByFranchiseId(franchiseId);

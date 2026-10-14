@@ -342,6 +342,16 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
             </div>
           )}
 
+          {/* Customer instructions / customization */}
+          {(order.note || order.instructions) && (
+            <div className="border-t border-slate-200 pt-4">
+              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <p className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-1">Customer instructions</p>
+                <p className="text-sm text-amber-900 whitespace-pre-wrap">{order.note || order.instructions}</p>
+              </div>
+            </div>
+          )}
+
           {/* Order Items */}
           {order.items && Array.isArray(order.items) && order.items.length > 0 && (
             <div className="border-t border-slate-200 pt-4">
@@ -364,6 +374,15 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
                           </span>
                         )}
                       </div>
+                      {(item.variantName || item.variant || item.variation) && (
+                        <p className="text-xs font-semibold text-emerald-700 mt-1 ml-8">Variation: {item.variantName || item.variant || item.variation}</p>
+                      )}
+                      {Array.isArray(item.addons) && item.addons.length > 0 && (
+                        <p className="text-xs text-slate-500 mt-1 ml-8">+ {item.addons.map((a) => a?.name || a?.title || a).join(", ")}</p>
+                      )}
+                      {(item.notes || item.note || item.instructions) && (
+                        <p className="text-xs italic text-amber-700 mt-1 ml-8">Customization: {item.notes || item.note || item.instructions}</p>
+                      )}
                       {item.description && (
                         <p className="text-xs text-slate-500 mt-1 ml-8">{item.description}</p>
                       )}

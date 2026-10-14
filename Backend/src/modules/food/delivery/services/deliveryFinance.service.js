@@ -6,6 +6,7 @@ import { FoodDeliveryCashDeposit } from '../models/foodDeliveryCashDeposit.model
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
+import { getRiderCashPosition } from './riderCash.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { createRazorpayCheckoutOrder, isRazorpayConfigured, verifyPaymentSignature, fetchRazorpayOrder, fetchRazorpayPayment } from '../../orders/helpers/razorpay.helper.js';
 
@@ -166,7 +167,7 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
         totalEarned,
         totalBonus,
         totalCashLimit,
-        availableCashLimit: Math.max(0, totalCashLimit - cashInHand),
+        availableCashLimit: Math.max(0, totalCashLimit - cashInHand - (await getRiderCashPosition(partnerId)).activeCod),
         deliveryWithdrawalLimit,
         transactions: transactions.slice(0, 50)
     };

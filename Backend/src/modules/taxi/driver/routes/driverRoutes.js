@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { authRateLimiter } from "../../../../middleware/rateLimit.js";
 import { asyncHandler } from "../../../../utils/asyncHandler.js";
 import { authenticate } from "../../middlewares/authMiddleware.js";
 import {
@@ -95,11 +96,12 @@ driverRouter.post(
   asyncHandler(createSupportTicket),
 );
 
-driverRouter.post("/register", asyncHandler(registerDriver));
-driverRouter.post("/login", asyncHandler(loginDriver));
-driverRouter.post("/auth/send-otp", asyncHandler(startDriverLoginOtpRequest));
+driverRouter.post("/register", authRateLimiter, asyncHandler(registerDriver));
+driverRouter.post("/login", authRateLimiter, asyncHandler(loginDriver));
+driverRouter.post("/auth/send-otp", authRateLimiter, asyncHandler(startDriverLoginOtpRequest));
 driverRouter.post(
   "/auth/verify-otp",
+  authRateLimiter,
   asyncHandler(verifyDriverLoginOtpRequest),
 );
 driverRouter.get(
@@ -413,8 +415,8 @@ driverRouter.get(
   "/vehicle-field-templates",
   asyncHandler(getDriverVehicleFieldTemplates),
 );
-driverRouter.post("/onboarding/send-otp", asyncHandler(startOnboarding));
-driverRouter.post("/onboarding/verify-otp", asyncHandler(verifyOnboardingOtp));
+driverRouter.post("/onboarding/send-otp", authRateLimiter, asyncHandler(startOnboarding));
+driverRouter.post("/onboarding/verify-otp", authRateLimiter, asyncHandler(verifyOnboardingOtp));
 driverRouter.patch(
   "/onboarding/personal",
   asyncHandler(saveOnboardingPersonal),

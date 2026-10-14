@@ -400,6 +400,8 @@ export const useRestaurantNotifications = () => {
     // Validate socket URL format
     try {
       const urlTest = new URL(socketUrl); // This will throw if URL is invalid
+      const isProductionBuild = Boolean(import.meta.env.PROD)
+      const isProductionDeployment = typeof window !== 'undefined' && !['localhost', '127.0.0.1'].includes(window.location.hostname)
       // Additional validation: ensure it's not localhost in production
       if ((isProductionBuild || isProductionDeployment) && (urlTest.hostname === 'localhost' || urlTest.hostname === '127.0.0.1')) {
         debugError('? CRITICAL: Socket URL contains localhost in production!');
@@ -422,8 +424,6 @@ export const useRestaurantNotifications = () => {
     debugLog('?? API_BASE_URL:', API_BASE_URL);
     debugLog('?? Restaurant ID:', restaurantId);
     debugLog('?? Environment:', import.meta.env.MODE);
-    debugLog('?? Is Production Build:', isProductionBuild);
-    debugLog('?? Is Production Deployment:', isProductionDeployment);
 
     // Initialize socket connection (default namespace)
     // Use polling only to avoid repeated "WebSocket connection failed" when backend is down
@@ -542,6 +542,11 @@ export const useRestaurantNotifications = () => {
         orderMongoId: data?.orderMongoId || data?.order_mongo_id,
         ...data
       };
+      // Only a fresh order may ring the restaurant (never an order that is already accepted / ready / done / cancelled)
+      const soundStatus = String(normalizedData?.status || normalizedData?.orderStatus || '').toLowerCase();
+      if (['preparing', 'ready_for_pickup', 'out_for_delivery', 'delivered', 'completed'].includes(soundStatus) || soundStatus.includes('cancel')) {
+        return;
+      }
       // Force immediate buzz for notification events, even if dedupe would skip.
       activeOrderRef.current = normalizedData || { id: Date.now() };
       playNotificationSound(normalizedData);

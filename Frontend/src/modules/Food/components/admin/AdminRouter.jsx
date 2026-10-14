@@ -143,6 +143,10 @@ const FranchiseList = lazy(() => import("@food/pages/admin/franchise/FranchiseLi
 const FranchiseSupportDesk = lazy(() => import("@food/pages/admin/franchise/FranchiseSupportDesk"));
 const FranchiseModuleFees = lazy(() => import("@food/pages/admin/franchise/FranchiseModuleFees"));
 const FranchiseFormConfig = lazy(() => import("@food/pages/admin/franchise/FranchiseFormConfig"));
+const FranchiseCreate = lazy(() => import("@food/pages/admin/franchise/FranchiseCreate"));
+const FranchiseTerritories = lazy(() => import("@food/pages/admin/franchise/FranchiseTerritories"));
+const FranchiseCommissionRules = lazy(() => import("@food/pages/admin/franchise/FranchiseCommissionRules"));
+const FranchiseFinanceDashboard = lazy(() => import("@food/pages/admin/franchise/FranchiseFinanceDashboard"));
 const GlobalSettings = lazy(() => import("@food/pages/admin/settings/GlobalSettings"));
 const FranchiseApplicationDetail = lazy(() => import("@food/pages/admin/franchise/FranchiseApplicationDetail"));
 
@@ -201,6 +205,7 @@ export default function AdminRouter() {
             <Route path="orders/restaurant-cancelled" element={<OrdersPage statusKey="restaurant-cancelled" />} />
             <Route path="orders/payment-failed" element={<OrdersPage statusKey="payment-failed" />} />
             <Route path="orders/refunded" element={<OrdersPage statusKey="refunded" />} />
+            <Route path="orders/refund-pending" element={<OrdersPage statusKey="refund-pending" />} />
             <Route path="orders/offline-payments" element={<OrdersPage statusKey="offline-payments" />} />
             <Route path="order-detect-delivery" element={<OrderDetectDelivery />} />
             <Route path="order-refunds/new" element={<NewRefundRequests />} />
@@ -343,6 +348,10 @@ export default function AdminRouter() {
             <Route path="franchise-management/support" element={<FranchiseSupportDesk />} />
             <Route path="franchise-management/fees" element={<FranchiseModuleFees />} />
             <Route path="franchise-management/form-config" element={<FranchiseFormConfig />} />
+            <Route path="franchise-management/create" element={<FranchiseCreate />} />
+            <Route path="franchise-management/territories" element={<FranchiseTerritories />} />
+            <Route path="franchise-management/commission" element={<FranchiseCommissionRules />} />
+            <Route path="franchise-management/finance" element={<FranchiseFinanceDashboard />} />
             <Route path="franchise-management/:id" element={<FranchiseApplicationDetail />} />
             <Route path="taxi-franchise" element={<TaxiFranchiseDashboard superAdmin />} />
 

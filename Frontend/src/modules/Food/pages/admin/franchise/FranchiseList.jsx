@@ -152,7 +152,7 @@ export default function FranchiseList() {
 
           <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => window.open('/food/franchise/apply', '_blank')}
+              onClick={() => navigate('/admin/food/franchise-management/create')}
               className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow-md inline-flex items-center gap-2 transition-all"
             >
               <Plus className="w-4 h-4" />

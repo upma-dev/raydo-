@@ -2217,7 +2217,10 @@ export default function Home() {
           startTransition(() => {
             const sorted = sortRestaurantsForDisplay(transformedRestaurants);
             setRestaurantsData(sorted);
-            try { localStorage.setItem("home_cached_restaurants", JSON.stringify(sorted)); } catch (_) {}
+            // Cache only what the first screen needs, and write it when the browser is idle (a big synchronous write blocks scrolling)
+            const writeCache = () => { try { localStorage.setItem("home_cached_restaurants", JSON.stringify(sorted.slice(0, 30))); } catch (_) {} };
+            if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(writeCache, { timeout: 3000 });
+            else setTimeout(writeCache, 1500);
           });
         } else {
           debugWarn("Invalid API response structure:", response.data);
@@ -3049,7 +3052,7 @@ export default function Home() {
         {showCategorySkeleton ? (
           <CategoryChipRowSkeleton className="py-1" />
         ) : (
-          displayCategories.slice(0, 12).map((category, index) => (
+          displayCategories.map((category, index) => (
             <Link
               key={category.id || index}
               to={`/food/user/category/${category.slug || category.name.toLowerCase().replace(/\s+/g, "-")}`}
@@ -3071,8 +3074,8 @@ export default function Home() {
           ))
         )}
 
-        {/* See All: always show when sticky, otherwise only when >12 categories */}
-        {!showCategorySkeleton && (isCategoryStuck || displayCategories.length > 12) && (
+        {/* All categories are listed above; See All is only a shortcut while the rail is sticky */}
+        {!showCategorySkeleton && isCategoryStuck && (
           <div
             className="flex-shrink-0 flex flex-col items-center gap-2 cursor-pointer group"
             onClick={() => navigate("/food/user/categories")}
@@ -3206,7 +3209,7 @@ export default function Home() {
                       className="h-28"
                       roundedClass="rounded-t-2xl"
                     />
-                    <div className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-lg ${Number(restaurant.rating) > 0 ? "bg-black/80 backdrop-blur-md text-white font-medium" : "bg-gray-200/90 text-gray-600 font-medium"} text-[10px] shadow-lg border border-white/10`}>
+                    <div className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-lg ${Number(restaurant.rating) > 0 ? "bg-black/80 text-white font-medium" : "bg-gray-200/90 text-gray-600 font-medium"} text-[10px] shadow-lg border border-white/10`}>
                       {Number(restaurant.rating) > 0 ? `★ ${Number(restaurant.rating).toFixed(1)}` : "NEW"}
                     </div>
                   </div>
@@ -3682,7 +3685,7 @@ export default function Home() {
                                   className="h-28 sm:h-32"
                                   roundedClass="rounded-t-2xl"
                                 />
-                                <div className="absolute bottom-2 left-2 flex items-center gap-0.5 bg-black/85 backdrop-blur-sm text-white text-[11px] font-bold px-1.5 py-0.5 rounded-md shadow-sm">
+                                <div className="absolute bottom-2 left-2 flex items-center gap-0.5 bg-black/85 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-md shadow-sm">
                                   <Star className="w-2.5 h-2.5 fill-white text-white" />
                                   <span>{ratingValue > 0 ? ratingValue.toFixed(1) : "NEW"}</span>
                                 </div>
@@ -3863,7 +3866,7 @@ export default function Home() {
                                         }
                                         className={`h-11 w-11 rounded-[20px] shadow-xl flex items-center justify-center transition-all duration-300 ${favorite
                                             ? "bg-red-500 text-white"
-                                            : "bg-white/90 backdrop-blur-sm text-gray-800 hover:bg-white"
+                                            : "bg-white/95 text-gray-800 hover:bg-white"
                                           }`}>
                                         <Bookmark
                                           className={`h-5 w-5 transition-all duration-300 ${favorite ? "fill-white" : ""

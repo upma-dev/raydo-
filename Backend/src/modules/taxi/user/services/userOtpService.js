@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { ApiError } from '../../../../utils/ApiError.js';
+import { isMasterOtp as isMasterOtpFor } from '../../../../core/otp/masterOtp.js';
 import { env } from '../../../../config/env.js';
 import { UserAuthSession } from '../models/UserAuthSession.js';
 import { User } from '../models/User.js';
@@ -8,6 +9,7 @@ import { sendOtpSms } from '../../services/smsService.js';
 import { assignPushTokenToEntity } from '../../services/pushTokenService.js';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
+const MAX_OTP_ATTEMPTS = 5;
 const VERIFIED_SESSION_TTL_MS = 10 * 60 * 1000;
 
 export const normalizeUserPhone = (value) => {
@@ -88,6 +90,7 @@ export const startUserOtp = async ({ phone }) => {
       otpHash: hashOtp(otp),
       otpExpiresAt: new Date(now + OTP_TTL_MS),
       otpVerifiedAt: null,
+      otpAttempts: 0,
       expiresAt: new Date(now + OTP_TTL_MS),
     },
     { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
@@ -114,10 +117,7 @@ export const verifyUserOtp = async ({ phone, otp, token, fcmToken, platform }) =
     throw new ApiError(400, 'A valid 4-digit or 6-digit OTP is required');
   }
 
-  const isMasterOtp =
-    normalizedOtp === '1234' ||
-    normalizedOtp === '123456' ||
-    (env.staticOtpCode && normalizedOtp === env.staticOtpCode);
+  const isMasterOtp = isMasterOtpFor(normalizedOtp, phone);
 
   if (!isMasterOtp && (!session.otpExpiresAt || new Date(session.otpExpiresAt).getTime() < Date.now())) {
     await UserAuthSession.deleteOne({ _id: session._id });
@@ -125,6 +125,12 @@ export const verifyUserOtp = async ({ phone, otp, token, fcmToken, platform }) =
   }
 
   if (!isMasterOtp && session.otpHash !== hashOtp(normalizedOtp)) {
+    // A 4-digit OTP can be guessed in 10,000 tries: allow only a few, then the OTP is dead
+    const updated = await UserAuthSession.findOneAndUpdate({ _id: session._id }, { $inc: { otpAttempts: 1 } }, { returnDocument: 'after' });
+    if (Number(updated?.otpAttempts || 0) >= MAX_OTP_ATTEMPTS) {
+      await UserAuthSession.deleteOne({ _id: session._id });
+      throw new ApiError(429, 'Too many wrong OTP attempts. Please request a new OTP.');
+    }
     throw new ApiError(401, 'Invalid OTP');
   }
 

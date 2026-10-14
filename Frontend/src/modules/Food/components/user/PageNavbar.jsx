@@ -25,9 +25,10 @@ export default function PageNavbar({
   const autoLocationAttemptedRef = useRef(false)
   const requestLocationRef = useRef(requestLocation)
   const enableLocationDebugLogs = false
+  const debugError = (...args) => { console.error(...args) }
   const debugLog = (...args) => {
     if (enableLocationDebugLogs && import.meta.env.DEV) {
-      debugLog(...args)
+      console.debug(...args)   // (it called debugLog itself before: endless recursion when the flag was on)
     }
   }
 

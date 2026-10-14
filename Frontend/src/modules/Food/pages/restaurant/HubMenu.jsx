@@ -983,9 +983,9 @@ export default function HubMenu() {
     setIsCategoryOptionsOpen(false)
   }
 
-  const handleSaveCategoryName = () => {
+  const handleSaveCategoryName = async () => {
     if (!editCategoryName.trim() || !selectedCategory) return
-    
+
     const newCategoryName = editCategoryName.trim()
     if (newCategoryName === selectedCategory.name) {
       setIsEditCategoryOpen(false)
@@ -993,23 +993,13 @@ export default function HubMenu() {
       return
     }
 
-    // Update all foods in this category
-    const allFoods = getAllFoods()
-    const updatedFoods = allFoods.map(food => {
-      if (food.category === selectedCategory.name) {
-        return { ...food, category: newCategoryName }
-      }
-      return food
-    })
-
-    // Save updated foods
+    // The category is renamed on the server (its foods follow it); the old code edited a local list that no longer exists
     try {
-      localStorage.setItem('restaurant_foods', JSON.stringify(updatedFoods))
-      window.dispatchEvent(new CustomEvent('foodsChanged'))
-      window.dispatchEvent(new Event('storage'))
+      await restaurantAPI.updateCategory(selectedCategory.id, { name: newCategoryName })
+      await fetchMenu(false)
     } catch (error) {
       debugError('Error updating category:', error)
-      alert('Error updating category name')
+      alert(error?.response?.data?.message || 'Error updating category name')
       return
     }
 

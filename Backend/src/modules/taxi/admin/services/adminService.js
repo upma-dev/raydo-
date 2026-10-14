@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { assertVehicleTypeFitsServices } from '../../services/vehicleServiceRules.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { createDefaultAdminState } from '../data/defaultAdminState.js';
 import { Admin } from '../models/Admin.js';
@@ -819,6 +820,18 @@ const syncBusDriverForBusService = async (busService, normalizedPayload = {}) =>
   const existingDriver =
     (existingDriverId && await BusDriver.findById(existingDriverId)) ||
     (await BusDriver.findOne({ phone: driverPhone }));
+
+  // One driver login = one bus. Never take a driver away from another bus, or share a phone between two drivers.
+  const phoneOwner = await BusDriver.findOne({ phone: driverPhone }).select('_id assignedBusServiceId').lean();
+  if (phoneOwner && (!existingDriver || String(phoneOwner._id) !== String(existingDriver._id))) {
+    throw new ApiError(409, 'This phone number is already used by another bus driver');
+  }
+  if (existingDriver?.assignedBusServiceId && String(existingDriver.assignedBusServiceId) !== String(busService._id)) {
+    const otherBus = await BusService.findById(existingDriver.assignedBusServiceId).select('busName').lean();
+    if (otherBus) {
+      throw new ApiError(409, `This driver is already assigned to another bus (${otherBus.busName || 'bus'}). Remove them there first.`);
+    }
+  }
 
   const driver = existingDriver || new BusDriver();
 
@@ -2340,7 +2353,9 @@ const DRIVER_LIST_SELECT = [
   'service_location_id',
   'city',
   'registerFor',
+  'serviceCategories',
   'vehicleType',
+  'vehicleTypeId',
   'vehicleNumber',
   'vehicleColor',
   'rating',
@@ -2372,7 +2387,10 @@ const serializeDriverListItem = (driver) => ({
     '',
   transport_type: driver.registerFor || driver.vehicleType || '',
   register_for: driver.registerFor || '',
+  service_categories: Array.isArray(driver.serviceCategories) ? driver.serviceCategories : [],
   vehicle_type: driver.vehicleType || '',
+  vehicle_type_id: driver.vehicleTypeId ? String(driver.vehicleTypeId?._id || driver.vehicleTypeId) : null,
+  vehicle_type_name: driver.vehicleTypeName || '',
   vehicle_number: driver.vehicleNumber || '',
   vehicle_color: driver.vehicleColor || '',
   rating:
@@ -3617,7 +3635,13 @@ export const updateUser = async (id, payload) => {
   }
   if (payload.profileImage !== undefined) update.profileImage = String(payload.profileImage || '').trim();
   if (payload.wallet_balance !== undefined) update.wallet_balance = Number(payload.wallet_balance || 0);
-  if (payload.active !== undefined) update.active = Boolean(payload.active);
+  // Block / unblock: the login checks both `active` and `isActive`, so both are set together. (Before, unblocking
+  // set only `active`; a user whose `isActive` had been switched off stayed locked out.)
+  const activeValue = payload.active !== undefined ? payload.active : payload.isActive;
+  if (activeValue !== undefined) {
+    update.active = Boolean(activeValue);
+    update.isActive = Boolean(activeValue);
+  }
   if (payload.password) {
     update.password = await hashPassword(String(payload.password));
   }
@@ -3946,7 +3970,7 @@ export const adjustUserWallet = async (id, payload = {}) => {
   return { balance: Number(nextBalance.toFixed(2)) };
 };
 
-export const listDrivers = async ({ page = 1, limit = 50, status, search, approve, isOnline } = {}, currentAdmin = null) => {
+export const listDrivers = async ({ page = 1, limit = 50, status, search, approve, isOnline, service_location_id, zone, transport_type, vehicle_type_id } = {}, currentAdmin = null) => {
   const safePage = Number(page) || 1;
   const safeLimit = Number(limit) || 50;
   const start = (safePage - 1) * safeLimit;
@@ -3965,6 +3989,19 @@ export const listDrivers = async ({ page = 1, limit = 50, status, search, approv
     query.approve = approve === 'true' || approve === true || approve === 1;
   }
 
+  // Filters of the admin list (the zone / city dropdown, service and vehicle type were sent but ignored before)
+  const locationFilter = service_location_id || zone;
+  if (locationFilter && locationFilter !== 'all' && mongoose.isValidObjectId(locationFilter)) {
+    query.service_location_id = toObjectId(locationFilter);
+  }
+  if (transport_type && transport_type !== 'all') {
+    const wanted = String(transport_type).toLowerCase();
+    query.$and = [...(query.$and || []), { $or: [{ serviceCategories: wanted }, { registerFor: wanted }] }];
+  }
+  if (vehicle_type_id && mongoose.isValidObjectId(vehicle_type_id)) {
+    query.vehicleTypeId = toObjectId(vehicle_type_id);
+  }
+
   await Driver.updateMany(
     { isOnline: true, socketId: null },
     { $set: { isOnline: false } },
@@ -3976,18 +4013,18 @@ export const listDrivers = async ({ page = 1, limit = 50, status, search, approv
       query.isOnline = true;
       query.socketId = { $ne: null };
     } else {
-      query.$or = [{ isOnline: false }, { isOnline: { $exists: false } }, { socketId: null }];
+      query.$and = [...(query.$and || []), { $or: [{ isOnline: false }, { isOnline: { $exists: false } }, { socketId: null }] }];
     }
   }
 
   if (search) {
     const regex = new RegExp(String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    query.$or = [
+    query.$and = [...(query.$and || []), { $or: [
       { name: regex },
       { phone: regex },
       { email: regex },
       { vehicleNumber: regex }
-    ];
+    ] }];
   }
 
   const total = await Driver.countDocuments(query);
@@ -4034,8 +4071,16 @@ export const listDrivers = async ({ page = 1, limit = 50, status, search, approv
     serviceLocations.map((location) => [String(location._id), location]),
   );
 
+  // The real name of each driver's vehicle type (Sedan, Bike...), not just the generic key (car / bike / auto)
+  const vehicleTypeIds = [...new Set(drivers.map((driver) => String(driver.vehicleTypeId || '')).filter(Boolean))];
+  const vehicleTypeNames = new Map(
+    (vehicleTypeIds.length ? await Vehicle.find({ _id: { $in: vehicleTypeIds } }).select('_id name').lean() : [])
+      .map((vehicle) => [String(vehicle._id), vehicle.name || '']),
+  );
+
   const hydratedDrivers = drivers.map((driver) => ({
     ...driver,
+    vehicleTypeName: driver.vehicleTypeId ? vehicleTypeNames.get(String(driver.vehicleTypeId)) || '' : '',
     owner_id: driver.owner_id ? ownerMap.get(String(driver.owner_id)) || driver.owner_id : null,
     service_location_id: driver.service_location_id
       ? serviceLocationMap.get(String(driver.service_location_id)) || driver.service_location_id
@@ -4775,10 +4820,11 @@ export const createDriver = async (payload = {}, currentAdmin = null) => {
 
   const vehicleTypeId =
     payload.vehicle_type_id || payload.vehicleTypeId || payload.vehicleType?._id || payload.vehicleType?.id || null;
-  const vehicleRecord =
-    vehicleTypeId && mongoose.isValidObjectId(vehicleTypeId)
-      ? await Vehicle.findById(vehicleTypeId).lean()
-      : null;
+  const serviceCategories = normalizeDriverServiceCategories(
+    payload.serviceCategories ?? payload.service_categories,
+    registerFor,
+  );
+  const vehicleRecord = await assertVehicleTypeFitsServices({ vehicleTypeId, serviceCategories });
   const normalizedVehicleInput = String(
     vehicleRecord?.name ||
       payload.vehicle_type ||
@@ -4803,10 +4849,6 @@ export const createDriver = async (payload = {}, currentAdmin = null) => {
     payload.approve !== undefined
       ? Boolean(payload.approve)
       : !['pending', 'disapproved', 'inactive', 'rejected'].includes(status);
-  const serviceCategories = normalizeDriverServiceCategories(
-    payload.serviceCategories ?? payload.service_categories,
-    registerFor,
-  );
   const onboardingPayload =
     payload.onboarding && typeof payload.onboarding === 'object' && !Array.isArray(payload.onboarding)
       ? payload.onboarding
@@ -4887,15 +4929,53 @@ export const updateDriver = async (id, payload, currentAdmin = null) => {
   }
 
   const vehicleTypeValue = payload.vehicle_type ?? payload.vehicleType ?? payload.car_type;
-  if (vehicleTypeValue !== undefined) {
+  if (vehicleTypeValue !== undefined && typeof vehicleTypeValue !== 'object') {
     update.vehicleType = String(vehicleTypeValue || '').trim().toLowerCase() || 'car';
   }
 
   const vehicleTypeId =
     payload.vehicle_type_id ?? payload.vehicleTypeId ?? payload.vehicleType?._id ?? payload.vehicleType?.id;
+  const serviceCategoriesValue = payload.serviceCategories ?? payload.service_categories;
+
+  // The services the driver works in: saved as the list the dispatch uses (before, only registerFor changed and the
+  // service list stayed on the old value, so a driver kept getting - or missing - the wrong kind of ride)
+  if (serviceCategoriesValue !== undefined || transportTypeValue !== undefined) {
+    const current = await Driver.findById(id).select('registerFor serviceCategories vehicleTypeId').lean();
+    update.serviceCategories = normalizeDriverServiceCategories(
+      serviceCategoriesValue !== undefined ? serviceCategoriesValue : undefined,
+      update.registerFor || current?.registerFor || 'taxi',
+    );
+    if (serviceCategoriesValue !== undefined && transportTypeValue === undefined) {
+      const primary = update.serviceCategories.includes('taxi') && update.serviceCategories.includes('outstation')
+        ? 'both'
+        : update.serviceCategories[0];
+      if (primary) update.registerFor = normalizeDriverRegisterFor(primary);
+    }
+    // the vehicle type that is already on the driver must still fit the new services
+    if (vehicleTypeId === undefined && current?.vehicleTypeId) {
+      await assertVehicleTypeFitsServices({ vehicleTypeId: current.vehicleTypeId, serviceCategories: update.serviceCategories });
+    }
+  }
+
   if (vehicleTypeId !== undefined) {
-    update.vehicleTypeId =
-      vehicleTypeId && mongoose.isValidObjectId(vehicleTypeId) ? toObjectId(vehicleTypeId) : null;
+    if (!vehicleTypeId) {
+      update.vehicleTypeId = null;
+    } else {
+      const existing = update.serviceCategories ? null : await Driver.findById(id).select('serviceCategories registerFor').lean();
+      const categories = update.serviceCategories
+        || (existing?.serviceCategories?.length ? existing.serviceCategories : normalizeDriverServiceCategories(undefined, existing?.registerFor || 'taxi'));
+      const vehicleRecord = await assertVehicleTypeFitsServices({ vehicleTypeId, serviceCategories: categories });
+      update.vehicleTypeId = toObjectId(vehicleTypeId);
+      // dispatch matches drivers on these two text fields, so they follow the vehicle type that was picked
+      const genericType = normalizeImportVehicleType(vehicleRecord?.name || '', vehicleRecord);
+      update.vehicleType = genericType;
+      update.vehicleIconType = genericType;
+    }
+  }
+
+  if (update.phone) {
+    const duplicate = await Driver.findOne({ phone: update.phone, _id: { $ne: id } }).select('_id').lean();
+    if (duplicate) throw new ApiError(409, 'Another driver already uses this phone number');
   }
 
   if (payload.vehicle_make !== undefined || payload.vehicleMake !== undefined || payload.car_make !== undefined) {
@@ -4945,6 +5025,15 @@ export const updateDriver = async (id, payload, currentAdmin = null) => {
 
   if (payload.onboarding !== undefined) {
     update.onboarding = payload.onboarding;
+  }
+
+  // Blocking / disabling a driver takes him offline straight away (he must not keep getting ride requests).
+  // Unblocking does not put him online: he goes online himself after he logs in again.
+  const nowDisabled = ['blocked', 'inactive', 'suspended', 'deleted'].includes(String(update.status || '').toLowerCase())
+    || update.approve === false;
+  if (nowDisabled) {
+    update.isOnline = false;
+    update.socketId = null;
   }
 
   const driver = await Driver.findByIdAndUpdate(id, update, { returnDocument: 'after' });
@@ -7935,6 +8024,19 @@ export const createBusService = async (payload = {}, options = {}) => {
       throw new ApiError(400, 'Destination city is required');
     }
 
+  // Check the driver details BEFORE saving, so a bad driver never leaves a half-created bus behind
+  const driverNameInput = sanitizeBusText(normalizedPayload.driverName, '');
+  const driverPhoneInput = sanitizeBusPhone(normalizedPayload.driverPhone || '');
+  if ((driverNameInput || driverPhoneInput) && (!driverNameInput || !driverPhoneInput)) {
+    throw new ApiError(400, 'Bus driver name and phone are both required');
+  }
+  if (driverPhoneInput) {
+    const clash = await BusDriver.findOne({ phone: driverPhoneInput }).select('assignedBusServiceId').lean();
+    if (clash?.assignedBusServiceId && await BusService.exists({ _id: clash.assignedBusServiceId })) {
+      throw new ApiError(409, 'This driver is already assigned to another bus. Remove them there first.');
+    }
+  }
+
   const item = await BusService.create({
     ...normalizedPayload,
     ownerId,
@@ -7989,7 +8091,8 @@ export const updateBusService = async (id, payload = {}, options = {}) => {
       : await BusService.findByIdAndDelete(id);
     if (!item) throw new ApiError(404, 'Bus service not found');
     if (item.busDriverId) {
-      await BusDriver.findByIdAndDelete(item.busDriverId);
+      // only remove the driver login that belongs to THIS bus
+      await BusDriver.deleteOne({ _id: item.busDriverId, assignedBusServiceId: item._id });
     }
     return true;
   };

@@ -4,9 +4,11 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 const listSchema = z.object({
     search: z.string().max(80).optional(),
     restaurantId: z.string().optional(),
+    zoneId: z.string().optional(),
     approvalStatus: z.enum(['pending', 'approved', 'rejected']).optional(),
     page: z.coerce.number().int().min(1).optional(),
-    limit: z.coerce.number().int().min(1).max(200).optional()
+    // Large page sizes are capped, not rejected (the franchise/admin pages ask for 1000)
+    limit: z.coerce.number().int().min(1).transform((n) => Math.min(n, 200)).optional()
 });
 
 const rejectSchema = z.object({

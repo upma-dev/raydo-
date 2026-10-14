@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, MapPin, Clock, Users, ChevronRight, Star } from 'lucide-react';
@@ -18,10 +18,9 @@ const SharedTaxiSeats = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { route, date } = location.state || {};
-  if (!route) { navigate('/cab/shared'); return null; }
 
   const [seats, setSeats] = useState(
-    Array.isArray(route.seats) ? route.seats.map(s => ({ ...s })) : INIT_SEATS.map(s => ({ ...s }))
+    Array.isArray(route?.seats) ? route?.seats.map(s => ({ ...s })) : INIT_SEATS.map(s => ({ ...s }))
   );
 
   const toggle = (id) => setSeats(prev =>
@@ -32,9 +31,16 @@ const SharedTaxiSeats = () => {
   );
 
   const selected = seats.filter(s => s.status === 'selected');
-  const total = selected.length * route.price;
+  const total = selected.length * route?.price;
 
   const rows = [[seats[0],seats[1]],[seats[2],seats[3]],[seats[4],seats[5]],[seats[6],seats[7]]];
+  // go back when the page was opened without its data (done in an effect, not while rendering)
+  useEffect(() => {
+    if (!route) navigate('/cab/shared', { replace: true });
+  }, [route, navigate]);
+
+  // every hook has run above, so it is safe to stop here
+  if (!route) return null;
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#F8FAFC_0%,#F3F4F6_38%,#EEF2F7_100%)] max-w-lg mx-auto font-sans pb-28 relative overflow-hidden">

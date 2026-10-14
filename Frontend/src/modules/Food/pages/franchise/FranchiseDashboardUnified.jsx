@@ -2,13 +2,16 @@ import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { useNavigate, NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import {
   Car, Users, IndianRupee, LogOut, Clock, ChevronRight, CreditCard, Wallet, Bell, AlertTriangle,
-  LayoutDashboard, Truck, FileText, Loader2, Building, Utensils, Lock, CheckCircle, Package, MessageSquare, TrendingUp, BusFront,
+  LayoutDashboard, Truck, FileText, Loader2, Building, Utensils, Lock, CheckCircle, Package, MessageSquare, TrendingUp, BusFront, Bike,
 } from 'lucide-react';
 import { clearModuleAuth, getCurrentUser } from "@food/utils/auth";
 import { franchiseAPI } from "@food/api";
 import {
-  TaxiDashboardPage, TaxiRidesPage, TaxiBusPage, TaxiDriversPage, EarningsPage, WalletPage, SupportPage, StatCard,
+  TaxiDashboardPage, TaxiRidesPage, TaxiBusPage, EarningsPage, WalletPage, SupportPage, StatCard,
 } from './pages/FranchisePortalPages';
+import FranchiseProfilePage from './pages/FranchiseProfilePage';
+import FranchiseIssuesPage from './pages/FranchiseIssuesPage';
+import { RidersPage, TaxiDriversManagePage, FoodPaymentsPage, DeliveryFeePage } from './pages/FranchisePortalOps';
 
 // Food pages (data is scoped to this franchise on the server by franchiseId)
 const RestaurantsList = lazy(() => import('./pages/FranchiseRestaurantsList'));
@@ -19,7 +22,6 @@ const AddonsList = lazy(() => import('./pages/FranchiseAddonsList'));
 const FoodApproval = lazy(() => import('./pages/FranchiseFoodApproval'));
 const AddRestaurant = lazy(() => import('@food/pages/admin/restaurant/AddRestaurant'));
 const JoiningRequest = lazy(() => import('@food/pages/admin/restaurant/JoiningRequest'));
-const RestaurantCommission = lazy(() => import('@food/pages/admin/restaurant/RestaurantCommission'));
 const RestaurantComplaints = lazy(() => import('@food/pages/admin/restaurant/RestaurantComplaints'));
 const RestaurantReviews = lazy(() => import('@food/pages/admin/restaurant/RestaurantReviews'));
 const OrderDetectDelivery = lazy(() => import('@food/pages/admin/OrderDetectDelivery'));
@@ -141,11 +143,11 @@ export default function FranchiseDashboardUnified() {
             <Section title="TAXI" />
             <SidebarItem id="rides" to="rides" label="Rides (city, outstation, parcel)" icon={Car} />
             <SidebarItem id="bus" to="bus" label="Bus, pooling & rental" icon={BusFront} />
-            <SidebarItem id="drivers" to="drivers" label="Drivers" icon={Users} />
+            <SidebarItem id="drivers" to="drivers" label="Drivers (approve / block)" icon={Users} />
           </div>
           <div className="space-y-1 mt-4 pt-2 border-t border-white/5">
             <Section title="FINANCE & HELP" />
-            <SidebarItem id="earnings" to="earnings" label="Earnings" icon={IndianRupee} />
+            <SidebarItem id="earnings" to="earnings" label="Earnings & commission" icon={IndianRupee} />
             <SidebarItem id="wallet" to="wallet" label="Wallet & payouts" icon={Wallet} />
             <SidebarItem id="support" to="support" label="Support" icon={MessageSquare} />
           </div>
@@ -166,9 +168,14 @@ export default function FranchiseDashboardUnified() {
           <Section title="RESTAURANTS" />
           <SidebarItem id="restaurants" label="Restaurants" icon={Building} subItems={[
             { to: 'restaurants/list', label: 'Restaurants List' }, { to: 'restaurants/add', label: 'Add New Restaurant' },
-            { to: 'restaurants/joining', label: 'New Joining Request' }, { to: 'restaurants/commission', label: 'Restaurant Commission' },
+            { to: 'restaurants/joining', label: 'New Joining Request' },
             { to: 'restaurants/reviews', label: 'Restaurant Reviews' }, { to: 'restaurants/complaints', label: 'Restaurant Complaints' },
           ]} />
+        </div>
+        <div className="space-y-1 mt-4 pt-2 border-t border-white/5">
+          <Section title="DELIVERY" />
+          <SidebarItem id="riders" to="riders" label="Delivery riders" icon={Bike} />
+          <SidebarItem id="delivery-fee" to="delivery-fee" label="Delivery fee (my zone)" icon={IndianRupee} />
         </div>
         <div className="space-y-1 mt-4 pt-2 border-t border-white/5">
           <Section title="ORDERS" />
@@ -181,9 +188,11 @@ export default function FranchiseDashboardUnified() {
         </div>
         <div className="space-y-1 mt-4 pt-2 border-t border-white/5">
           <Section title="FINANCE & HELP" />
-          <SidebarItem id="earnings" to="earnings" label="Earnings" icon={IndianRupee} />
+          <SidebarItem id="earnings" to="earnings" label="Earnings & commission" icon={IndianRupee} />
+          <SidebarItem id="payments" to="payments" label="Order payments" icon={CreditCard} />
           <SidebarItem id="wallet" to="wallet" label="Wallet & payouts" icon={Wallet} />
-          <SidebarItem id="support" to="support" label="Support" icon={MessageSquare} />
+          <SidebarItem id="issues" to="issues" label="Zone issues (users & restaurants)" icon={AlertTriangle} />
+            <SidebarItem id="support" to="support" label="Support" icon={MessageSquare} />
         </div>
       </>
     );
@@ -243,11 +252,13 @@ export default function FranchiseDashboardUnified() {
           <div className="flex items-center gap-4">
             <button className="p-2 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100"><Bell size={20} /></button>
             <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-blue-500 text-white flex items-center justify-center font-bold text-sm">{partnerInitials}</div>
-              <div className="mr-2">
-                <p className="text-sm font-bold text-slate-800">{partnerName}</p>
-                <p className="text-xs font-medium text-slate-500">{dash?.partnerInfo?.applicationId || 'Franchise Partner'}</p>
-              </div>
+              <button type="button" onClick={() => navigate(`${basePath}/profile`)} className="flex items-center gap-3 text-left rounded-xl hover:bg-slate-50 p-1 -m-1" title="My profile">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-blue-500 text-white flex items-center justify-center font-bold text-sm">{partnerInitials}</div>
+                <div className="mr-2">
+                  <p className="text-sm font-bold text-slate-800">{partnerName}</p>
+                  <p className="text-xs font-medium text-slate-500">My profile · {dash?.partnerInfo?.applicationId || 'Franchise Partner'}</p>
+                </div>
+              </button>
               <button onClick={logout} className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-2" title="Logout"><LogOut size={18} /><span className="text-sm font-semibold">Logout</span></button>
             </div>
           </div>
@@ -263,10 +274,12 @@ export default function FranchiseDashboardUnified() {
                 <Route path="/" element={<Navigate to={`${hasFood ? 'food' : 'taxi'}/dashboard`} replace />} />
 
                 {/* TAXI */}
+                <Route path="food/issues" element={Food(<FranchiseIssuesPage />)} />
+                <Route path="profile" element={<FranchiseProfilePage onChanged={loadDash} />} />
                 <Route path="taxi/dashboard" element={Taxi(<TaxiDashboardPage />)} />
                 <Route path="taxi/rides" element={Taxi(<TaxiRidesPage />)} />
                 <Route path="taxi/bus" element={Taxi(<TaxiBusPage />)} />
-                <Route path="taxi/drivers" element={Taxi(<TaxiDriversPage />)} />
+                <Route path="taxi/drivers" element={Taxi(<TaxiDriversManagePage />)} />
                 <Route path="taxi/earnings" element={Taxi(<EarningsPage dash={dash} modules={modules} />)} />
                 <Route path="taxi/wallet" element={Taxi(<WalletPage dash={dash} reload={loadDash} />)} />
                 <Route path="taxi/support" element={Taxi(<SupportPage dash={dash} reload={loadDash} />)} />
@@ -278,7 +291,7 @@ export default function FranchiseDashboardUnified() {
                       <StatCard label="Restaurants" value={tm.activeOutletsCount ?? 0} icon={Building} tone="amber" />
                       <StatCard label="Orders" value={tm.totalOrders ?? 0} sub={`${tm.deliveredOrders ?? 0} delivered`} icon={FileText} tone="blue" />
                       <StatCard label="Delivered order value" value={inr(tm.totalGMV)} icon={TrendingUp} tone="violet" />
-                      <StatCard label="Your food earnings" value={inr(earn.food)} sub={`${dash?.financialSettings?.commissionRate ?? 0}% commission`} icon={IndianRupee} tone="emerald" />
+                      <StatCard label="Your food earnings" value={inr(earn.food)} sub={`after ${dash?.financialSettings?.commissionRate ?? 0}% platform commission`} icon={IndianRupee} tone="emerald" />
                     </div>
                   )
                 )} />
@@ -289,7 +302,6 @@ export default function FranchiseDashboardUnified() {
                 <Route path="food/restaurants/list" element={Food(<RestaurantsList />)} />
                 <Route path="food/restaurants/add" element={Food(<AddRestaurant />)} />
                 <Route path="food/restaurants/joining" element={Food(<JoiningRequest />)} />
-                <Route path="food/restaurants/commission" element={Food(<RestaurantCommission />)} />
                 <Route path="food/restaurants/reviews" element={Food(<RestaurantReviews />)} />
                 <Route path="food/restaurants/complaints" element={Food(<RestaurantComplaints />)} />
                 <Route path="food/orders/all" element={Food(<OrdersPage statusKey="all" />)} />
@@ -301,6 +313,9 @@ export default function FranchiseDashboardUnified() {
                 <Route path="food/orders/canceled" element={Food(<OrdersPage statusKey="canceled" />)} />
                 <Route path="food/orders/refunded" element={Food(<OrdersPage statusKey="refunded" />)} />
                 <Route path="food/order-detect-delivery" element={Food(<OrderDetectDelivery />)} />
+                <Route path="food/riders" element={Food(<RidersPage />)} />
+                <Route path="food/delivery-fee" element={Food(<DeliveryFeePage />)} />
+                <Route path="food/payments" element={Food(<FoodPaymentsPage />)} />
                 <Route path="food/earnings" element={Food(<EarningsPage dash={dash} modules={modules} />)} />
                 <Route path="food/wallet" element={Food(<WalletPage dash={dash} reload={loadDash} />)} />
                 <Route path="food/support" element={Food(<SupportPage dash={dash} reload={loadDash} />)} />

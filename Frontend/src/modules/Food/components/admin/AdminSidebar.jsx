@@ -201,6 +201,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     counts["/admin/food/delivery-partners/join-request"] = Number(badges.deliveryPartners || 0)
     counts["/admin/food/delivery-partners"] = Number(badges.emergencyOffline || 0)
     counts["/admin/food/delivery-partners/gigs"] = Number(badges.handovers || 0)
+    counts["/admin/food/orders/refund-pending"] = Number(badges.refundsPending || 0)
     counts["/admin/food/delivery-partners/earning-addon-history"] = Number(badges.earningAddons || 0)
 
     counts["/admin/food/restaurant-withdraws"] = Number(badges.restaurantWithdrawals || 0)

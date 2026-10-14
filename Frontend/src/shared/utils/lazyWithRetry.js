@@ -20,6 +20,7 @@ export function lazyWithRetry(componentImport, maxRetries = 3, delayMs = 500) {
         const component = await componentImport()
         if (typeof window !== 'undefined') {
           window.sessionStorage.setItem('page-has-been-refreshed', 'false')
+          window.sessionStorage.removeItem('chunk-error-reloaded')
         }
         return component
       } catch (error) {

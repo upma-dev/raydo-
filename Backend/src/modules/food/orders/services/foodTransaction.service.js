@@ -400,18 +400,51 @@ export async function settleRestaurant(orderId, adminId) {
 }
 
 /**
+ * The order was cancelled after the rider had already picked it up: the rider did the work, so the rider is paid
+ * (idempotent: if the delivery payout was already credited nothing is posted again).
+ */
+export async function creditRiderForCancelledOrder(orderId) {
+    const tx = await FoodTransaction.findOne({ orderId }).lean();
+    const order = await mongoose.model('FoodOrder').findById(orderId).select('dispatch riderTotalPayout riderEarning').lean();
+    const rawId = tx?.deliveryPartnerId || order?.dispatch?.deliveryPartnerId;
+    const riderId = rawId?._id ? String(rawId._id) : (rawId ? String(rawId) : null);
+    const share = Number(tx?.amounts?.riderTotalPayout || tx?.amounts?.riderShare || order?.riderTotalPayout || order?.riderEarning) || 0;
+    if (!riderId || share <= 0) return null;
+    const existing = await Transaction.findOne({ orderId, entityType: 'deliveryBoy', category: 'delivery_payout' }).lean();
+    if (existing) return null;
+    return recordTransaction({
+        entityType: 'deliveryBoy', entityId: riderId, type: 'credit', amount: share,
+        description: `Delivery payout for order ${orderId}: cancelled after pickup`,
+        category: 'delivery_payout', orderId: String(orderId),
+    });
+}
+
+/** Restaurant cancelled an order it had already accepted: take the admin-set penalty from its wallet (once per order). */
+export async function chargeRestaurantCancelPenalty(orderId, restaurantId, amount) {
+    const penalty = Math.round((Number(amount) || 0) * 100) / 100;
+    if (penalty <= 0 || !restaurantId) return null;
+    const existing = await Transaction.findOne({ orderId, entityType: 'restaurant', category: 'cancel_penalty' }).lean();
+    if (existing) return null;
+    return recordTransaction({
+        entityType: 'restaurant', entityId: String(restaurantId), type: 'debit', amount: penalty,
+        description: `Penalty: order ${orderId} cancelled by the restaurant after accepting it`,
+        category: 'cancel_penalty', orderId: String(orderId), allowNegative: true,
+    });
+}
+
+/**
  * Take back the restaurant / delivery-partner wallet credits of an order that was cancelled or refunded.
  * Credits are posted as soon as an online payment is captured, so a cancelled order must undo them,
  * otherwise the wallets show money for an order that never happened.
  * Idempotent: each credit is reversed at most once. Reversals are allowed to push a wallet negative
  * (the money may already have been withdrawn) so the books always end up correct.
  */
-export async function reverseWalletsForOrder(orderId, { onlyRestaurant = false } = {}) {
+export async function reverseWalletsForOrder(orderId, { onlyRestaurant = false, keepRider = false } = {}) {
     const results = [];
     const credits = await Transaction.find({
         orderId,
         type: 'credit',
-        category: { $in: onlyRestaurant ? ['order_payout'] : ['order_payout', 'delivery_payout'] },
+        category: { $in: (onlyRestaurant || keepRider) ? ['order_payout'] : ['order_payout', 'delivery_payout'] },
     }).lean();
 
     for (const credit of credits) {

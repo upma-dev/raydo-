@@ -903,6 +903,28 @@ export const restoreScheduledDispatches = async () => {
   for (const ride of rides) {
     await startDispatchFlow(ride);
   }
+
+  // The driver search runs on in-memory timers, so a server restart used to leave every ride that was still
+  // "searching" stuck for ever. Recent ones get their search started again; old ones are closed properly.
+  const staleBefore = new Date(Date.now() - 20 * 60 * 1000);
+  const searching = await Ride.find({
+    status: RIDE_STATUS.SEARCHING,
+    liveStatus: RIDE_LIVE_STATUS.SEARCHING,
+    driverId: null,
+    $or: [{ scheduledAt: null }, { scheduledAt: { $exists: false } }],
+  }).select('_id userId createdAt bookingMode');
+
+  for (const ride of searching) {
+    try {
+      if (new Date(ride.createdAt) < staleBefore) {
+        await cancelRideByUser({ rideId: ride._id, userId: ride.userId, reason: 'No driver was found. Please book again.' });
+      } else if (!activeDispatches.has(String(ride._id))) {
+        await startDispatchFlow(ride);
+      }
+    } catch (error) {
+      console.error('Could not restore the driver search of ride', String(ride._id), error?.message || error);
+    }
+  }
 };
 
 export const notifyLateAvailableDriver = async (driverId) => {

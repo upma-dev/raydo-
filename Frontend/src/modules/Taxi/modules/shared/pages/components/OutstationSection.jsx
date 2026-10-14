@@ -7,7 +7,8 @@ export default function OutstationSection() {
   const navigate = useNavigate();
   const [activeOption, setActiveOption] = useState("One-way");
 
-  const options = ["One-way", "Round Trip", "Airport", "Intercity"];
+  // "Airport" option disabled for now
+  const options = ["One-way", "Round Trip", /* "Airport", */ "Intercity"];
 
   return (
     <section id="outstation" className="relative bg-slate-900 py-20 lg:py-28 text-white overflow-hidden border-b border-slate-800">

@@ -32,3 +32,16 @@ export const authRateLimiter = rateLimit({
     }
 });
 
+
+/** Admin money actions (payment confirmation, payouts, commission/fee changes): a mistake loop or a stolen session cannot fire hundreds. */
+export const financeWriteRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: Number(process.env.FINANCE_WRITE_RATE_LIMIT || 30),
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => String(req.user?.userId || req.ip),
+    message: {
+        success: false,
+        message: 'Too many financial actions in a short time. Please wait a minute and try again.'
+    }
+});

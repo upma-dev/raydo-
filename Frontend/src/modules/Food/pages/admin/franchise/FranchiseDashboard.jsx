@@ -198,7 +198,7 @@ export default function FranchiseDashboard() {
 
           <div className="flex items-center gap-2.5 flex-wrap">
             <button
-              onClick={() => window.open('/food/franchise/apply', '_blank')}
+              onClick={() => navigate('/admin/food/franchise-management/create')}
               className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg shadow-blue-600/30 inline-flex items-center gap-2 transition-all hover:scale-105"
             >
               <Plus className="w-4 h-4" />

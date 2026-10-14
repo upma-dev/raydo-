@@ -16,6 +16,22 @@ const getNotificationKey = (payload) =>
     payload?.data?.targetUrl || payload?.data?.link || "",
   ].join("::");
 
+// Only these make the device play a sound: a new order (restaurant / rider), an assignment (rider), a chat message (soft tone).
+// Every other update (accepted, ready, partner assigned, picked up, delivered ...) is shown silently.
+function shouldPlaySound(payload = {}) {
+  const data = payload?.data || {};
+  const type = String(data.type || "").toLowerCase();
+  const title = String(payload?.notification?.title || data.title || "").toLowerCase();
+  const isChat = type.includes("chat") || data.openChat === "true" || Boolean(data.conversationId);
+  if (isChat) return true;
+  return (
+    type.includes("new_order") || type.includes("order_created") || type.includes("place_order") ||
+    type.includes("order_assigned") || type.includes("order_assign") || type.includes("delivery_assigned") ||
+    type.includes("gig_reminder") || type.includes("ring") ||
+    title.includes("new order")
+  );
+}
+
 async function notifyOpenClients(payload) {
   pushDebugLog(PUSH_DEBUG_PREFIX, "Broadcasting push to open clients", { payload });
   const windowClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
@@ -146,7 +162,7 @@ async function loadFirebaseWebConfig() {
         image,
         tag: notificationKey,
         renotify: false,
-        silent: false,
+        silent: !shouldPlaySound(payload),
         requireInteraction: false,
         vibrate: [200, 100, 200, 100, 300],
         data: payload?.data || {},
@@ -191,10 +207,11 @@ self.addEventListener("push", (event) => {
           icon: "/raydo-logo.png",
           badge: "/raydo-logo.png",
           image,
-          tag: notificationKey || `push_${Date.now()}`,
-          renotify: true,
-          silent: false,
-          requireInteraction: true,
+          // same tag as the background-message handler, so the same push is shown once and never re-alerts
+          tag: notificationKey,
+          renotify: false,
+          silent: !shouldPlaySound(payload),
+          requireInteraction: shouldPlaySound(payload),
           vibrate: [200, 100, 200, 100, 300],
           data: payload?.data || {},
         });
@@ -260,16 +277,21 @@ self.addEventListener("notificationclick", (event) => {
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
       const client = windowClients.find((c) => c.url.includes(self.location.origin));
       if (client) {
-        client.focus();
-        try {
-          const clientUrl = new URL(client.url);
-          if (clientUrl.pathname !== targetUrl) {
+        const focused = client.focus ? client.focus() : Promise.resolve(client);
+        return Promise.resolve(focused).then(() => {
+          try {
+            const clientUrl = new URL(client.url);
+            const root = (p) => `/${String(p).split("/").filter(Boolean)[0] || ""}`;
+            // Same app: let the open page switch screen itself (no reload). Different app: open it normally.
+            if (root(clientUrl.pathname) === root(targetUrl)) {
+              client.postMessage({ type: "notification-click-navigate", url: targetUrl });
+              return;
+            }
+            return client.navigate(targetUrl);
+          } catch {
             return client.navigate(targetUrl);
           }
-        } catch {
-          return client.navigate(targetUrl);
-        }
-        return;
+        });
       }
       return clients.openWindow(targetUrl);
     }),

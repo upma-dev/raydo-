@@ -12,7 +12,8 @@
     "worker:order": "node src/queues/workers/order.worker.js",
     "worker:tracking": "node src/queues/workers/tracking.worker.js",
     "worker:payment": "node src/queues/workers/payment.worker.js",
-    "worker:maintenance": "node src/queues/workers/maintenance.worker.js"
+    "worker:maintenance": "node src/queues/workers/maintenance.worker.js",
+    "test": "node --test --test-force-exit --test-concurrency=1 \"test/**/*.test.js\""
   },
   "keywords": [],
   "author": "",
@@ -48,6 +49,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "nodemon": "^3.1.2"
+    "mongodb-memory-server": "^10.4.3",
+    "nodemon": "^3.1.2",
+    "supertest": "^7.3.1"
   }
 }

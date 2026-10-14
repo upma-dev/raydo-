@@ -1,3 +1,4 @@
+import { getGstRatePercent } from '../../admin/services/gst.service.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { FoodNotification } from '../../../../core/notifications/models/notification.model.js';
 import { notifyOwnerSafely, notifyAdminsSafely } from '../../../../core/notifications/firebase.service.js';
@@ -22,7 +23,8 @@ export const processSubscriptionExpiries = async () => {
         errors: 0
     };
 
-    const GST_RATE = 0.18;
+    // The admin's GST rate from Fee Settings (same rate everywhere in Raydo)
+    const GST_RATE = (await getGstRatePercent()) / 100;
 
     for (const restaurant of expiredRestaurants) {
         try {

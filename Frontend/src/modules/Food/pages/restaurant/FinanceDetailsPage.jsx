@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import { motion, AnimatePresence } from "framer-motion"
@@ -441,7 +441,7 @@ export default function FinanceDetailsPage() {
                             <div className="px-4 pb-3 space-y-2 border-t border-dashed border-gray-200">
                               <div className="flex items-center justify-between py-2">
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-sm text-gray-700">GST on service and payment mechanism fees @18%</span>
+                                  <span className="text-sm text-gray-700">GST on service and payment mechanism fees</span>
                                   <Info className="w-3.5 h-3.5 text-gray-400" />
                                 </div>
                                 <span className="text-sm font-medium text-gray-900">

@@ -30,7 +30,9 @@ let globalReverseGeocodeLastSuccess = null
 
 // Default behavior: resolve from cache/DB quickly, and when permission is already granted
 // keep a live geolocation watch so zone/location updates react without page refresh.
-const AUTO_START_LIVE_WATCH = true
+// The GPS is read once when the app opens / comes back to the front (like Zomato). A permanent live watch re-rendered the
+// whole home screen and called reverse-geocoding on every movement, which made scrolling heavy.
+const AUTO_START_LIVE_WATCH = false
 
 const reverseGeocodeDirect = async (latitude, longitude) => {
   const now = Date.now()
@@ -1647,8 +1649,21 @@ export function useLocation() {
             } catch {}
           }
 
-          setLoading(true);
-          getLocation(true, true, true)
+          // The user picked another place with the search bar: keep it (do not jump back to the GPS spot)
+          let pickedByUser = false
+          try {
+            const rawPick = localStorage.getItem("userLocation")
+            pickedByUser = rawPick ? JSON.parse(rawPick)?.isManual === true : false
+          } catch { /* ignore */ }
+          if (pickedByUser) {
+            setLoading(false)
+            return
+          }
+
+          // Already have a place on screen -> refresh in the background without any loading state / re-render flash
+          const haveShownLocation = Boolean(localStorage.getItem("userLocation"))
+          if (!haveShownLocation) setLoading(true);
+          getLocation(true, true, !haveShownLocation)
             .then((loc) => {
               if (loc && loc.latitude && loc.longitude) {
                 debugLog("?? Auto GPS location fetched successfully:", loc);

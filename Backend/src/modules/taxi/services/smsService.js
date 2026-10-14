@@ -203,7 +203,13 @@ export const sendOtpSms = async ({ phone, otp, purpose = 'otp' }) => {
   const templateId = (env.sms?.indiaHub?.dltTemplateId || process.env.SMS_INDIA_HUB_DLT_TEMPLATE_ID || '1007282516644508833').trim();
   const message = `Welcome to the Raydo powered by Appzeto.Your OTP for registration is ${otp}.BGADEC`;
 
-  console.log(`[SMS] Dispatching live SMS OTP ${otp} to ${msisdn} via SMS India Hub...`);
+  console.log(`[SMS] Dispatching OTP to ${msisdn.slice(0, 4)}******${msisdn.slice(-2)} via SMS India Hub...`);   // the OTP itself is never logged
+
+  // No SMS key and not production (a developer machine / tests): do not call the provider with an empty key.
+  // The test OTP (see core/otp/masterOtp.js) lets the developer sign in.
+  if (!apiKey && String(process.env.NODE_ENV || 'development').toLowerCase() !== 'production') {
+    return { mode: 'skipped', message: 'SMS provider is not configured (development)', providerResponse: '', jobId: null };
+  }
 
   // Primary: GET request on /api/mt/SendSMS (exact method as user sign in)
   const sendUrl = new URL('http://cloud.smsindiahub.in/api/mt/SendSMS');

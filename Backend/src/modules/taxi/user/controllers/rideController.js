@@ -19,6 +19,7 @@ import {
   increaseRideBidCeiling,
   listRideBidsForUser,
   listRideHistoryForIdentity,
+  resolveSetPriceForRide,
   serializeRideRealtime,
   submitRideFeedback,
   updateRideLifecycle,
@@ -34,6 +35,7 @@ import {
   startDispatchFlow,
 } from '../../services/dispatchService.js';
 import { getTipSettings } from '../../services/appSettingsService.js';
+import { quoteIntercityFare } from '../../services/intercityFareService.js';
 
 const formatMoneyDisplay = (val) => (Number.isInteger(Number(val)) ? String(val) : Number(val).toFixed(2));
 import { calculateCancellationBill } from '../../services/cancellationService.js';
@@ -1257,6 +1259,39 @@ export const getPendingCancellationDues = async (req, res) => {
         cancellationFee: Number(r.cancellation?.cancellation_charge || 0),
         cancelledAt: r.cancellation?.cancelled_at || r.createdAt,
       })),
+    },
+  });
+};
+
+
+/**
+ * POST /rides/intercity-quote  { packageId, vehicleTypeId, tripType, pickup:[lng,lat], drop:[lng,lat], service_location_id? }
+ * What the outstation trip will cost, worked out on the server from the real map distance. The booking itself prices the
+ * trip again the same way, so this is exactly what the rider will be charged.
+ */
+export const getIntercityQuote = async (req, res) => {
+  const { packageId, vehicleTypeId, tripType, pickup, drop, service_location_id, transport_type } = req.body || {};
+  if (!pickup || !drop) {
+    throw new ApiError(400, 'pickup and drop are required');
+  }
+  const serviceLocationId = service_location_id && mongoose.Types.ObjectId.isValid(service_location_id)
+    ? new mongoose.Types.ObjectId(service_location_id)
+    : null;
+  const rideRule = vehicleTypeId && mongoose.Types.ObjectId.isValid(vehicleTypeId)
+    ? await resolveSetPriceForRide({ serviceLocationId, transportType: transport_type || 'intercity', vehicleTypeId })
+    : null;
+  const quote = await quoteIntercityFare({ packageId, vehicleTypeId, tripType, pickup: normalizePoint(pickup, 'pickup'), drop: normalizePoint(drop, 'drop'), rideRule });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      fare: quote.fare,
+      distanceKm: Math.round((quote.breakdown.distanceKm || 0) * 100) / 100,
+      distanceMeters: quote.distanceMeters,
+      durationMinutes: quote.breakdown.durationMinutes,
+      distanceSource: quote.distanceSource,
+      breakdown: quote.breakdown,
+      waiting: quote.waiting,
     },
   });
 };

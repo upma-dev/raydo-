@@ -13,6 +13,7 @@ import {
   getMyActiveRide,
   getRideById,
   getPendingCancellationDues,
+  getIntercityQuote,
   listMyRides,
   listAvailableDrivers,
   payRideCompletionWithWallet,
@@ -27,6 +28,7 @@ export const rideRouter = Router();
 
 rideRouter.post('/', authenticateOrResolveUser(['user']), asyncHandler(createRide));
 rideRouter.get('/', authenticateOrResolveUser(['user', 'driver']), asyncHandler(listMyRides));
+rideRouter.post('/intercity-quote', authenticateOrResolveUser(['user']), asyncHandler(getIntercityQuote));
 rideRouter.get('/pending-cancellation-dues', authenticate(['user']), asyncHandler(getPendingCancellationDues));
 rideRouter.get('/app-settings/tip', asyncHandler(getRideAppTipSettings));
 rideRouter.get('/available-drivers', asyncHandler(listAvailableDrivers));

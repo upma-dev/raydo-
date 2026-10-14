@@ -86,6 +86,16 @@ export const parseTripDateTime = (travelDate, timeValue) => {
   return null;
 };
 
+// Seats without a label get a readable one (1, 2, 3 ... lower deck; U1, U2 ... upper deck) instead of an internal id.
+const withReadableLabels = (cells = []) => {
+  const counters = { lower: 0, upper: 0 };
+  return cells.map((cell) => {
+    counters[cell.deck] = (counters[cell.deck] || 0) + 1;
+    const fallback = `${cell.deck === 'upper' ? 'U' : ''}${counters[cell.deck]}`;
+    return { ...cell, label: String(cell.label || '').trim() || fallback };
+  });
+};
+
 const extractBlueprintSeatCells = (blueprint = {}) => {
   const lowerSeats = (Array.isArray(blueprint?.lowerDeck) ? blueprint.lowerDeck : [])
     .flatMap((row) => (Array.isArray(row) ? row : []))
@@ -97,7 +107,7 @@ const extractBlueprintSeatCells = (blueprint = {}) => {
     .filter((cell) => cell?.kind === 'seat' && cell?.id)
     .map((cell) => ({ ...cell, deck: 'upper' }));
 
-  return [...lowerSeats, ...upperSeats];
+  return withReadableLabels([...lowerSeats, ...upperSeats]);
 };
 
 const resolveSeatPrice = (busService = {}, seatCell = {}) => {

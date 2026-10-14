@@ -32,6 +32,7 @@ import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotificatio
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import ResendNotificationButton from "@food/components/restaurant/ResendNotificationButton";
+import { printLiveOrderBill } from "@food/utils/printOrderBill";
 const debugLog = (...args) => { };
 const debugWarn = (...args) => { };
 const debugError = (...args) => { };
@@ -103,6 +104,15 @@ const transformOrderForList = (order) => {
           return `${item.quantity}x ${item.name}${v ? ` (${v})` : ""}`;
         })
         .join(", ") || "No items",
+    itemsList: (order.items || []).map((item) => ({
+      quantity: item.quantity || 1,
+      name: item.name || "Item",
+      variant: item.variantName || item.variant || item.variation || item.selectedVariant?.name || item.optionName || "",
+      addons: Array.isArray(item.addons) ? item.addons.map((a) => a?.name || a?.title || a).filter(Boolean) : [],
+      notes: item.notes || item.note || item.instructions || "",
+    })),
+    orderNote: order.note || "",
+    rawOrder: order,
     photoUrl: order.items?.[0]?.image || null,
     photoAlt: order.items?.[0]?.name || "Order",
     paymentMethod: order.paymentMethod || order.payment?.method || null,
@@ -1378,6 +1388,7 @@ export default function OrdersMain() {
                 orderToPopup.payment?.method ||
                 null,
               payment: orderToPopup.payment,
+              rawOrder: orderToPopup,
             };
 
             debugLog("?? Found order ready for popup:", orderForPopup);
@@ -1702,173 +1713,11 @@ export default function OrdersMain() {
     }
   };
 
-  // Handle PDF download
+  // Print the full bill (restaurant, customer location, all items, instructions)
   const handlePrint = async () => {
-    if (!newOrder) {
-      debugWarn("No order data available for PDF generation");
-      return;
-    }
-
-    try {
-      // Create new PDF document
-      const doc = new jsPDF();
-
-      // Set font
-      doc.setFont("helvetica", "bold");
-
-      // Header
-      doc.setFontSize(20);
-      doc.text("Order Receipt", 105, 20, { align: "center" });
-
-      // Restaurant name
-      doc.setFontSize(14);
-      doc.setFont("helvetica", "normal");
-      doc.text(orderToPrint.restaurantName || "Restaurant", 105, 30, {
-        align: "center",
-      });
-
-      // Order details
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.text(`Order ID: ${orderToPrint.orderId || "N/A"}`, 20, 45);
-      doc.setFont("helvetica", "normal");
-
-      const orderDate = orderToPrint.createdAt
-        ? new Date(orderToPrint.createdAt).toLocaleString("en-GB", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-        : new Date().toLocaleString("en-GB");
-
-      doc.text(`Date: ${orderDate}`, 20, 52);
-
-      // Customer address
-      if (orderToPrint.customerAddress) {
-        doc.setFont("helvetica", "bold");
-        doc.text("Delivery Address:", 20, 62);
-        doc.setFont("helvetica", "normal");
-        const addressText =
-          [
-            orderToPrint.customerAddress.street,
-            orderToPrint.customerAddress.city,
-            orderToPrint.customerAddress.state,
-          ]
-            .filter(Boolean)
-            .join(", ") || "Address not available";
-        const addressLines = doc.splitTextToSize(addressText, 170);
-        doc.text(addressLines, 20, 69);
-      }
-
-      // Items table
-      let yPos = 85;
-      if (orderToPrint.items && orderToPrint.items.length > 0) {
-        doc.setFont("helvetica", "bold");
-        doc.text("Items:", 20, yPos);
-        yPos += 8;
-
-        // Prepare table data
-        const tableData = orderToPrint.items.map((item) => {
-          const v = item.variantName || item.variant || item.variation || item.selectedVariant?.name || item.optionName;
-          const nameWithVariant = v && String(v).trim() ? `${item.name || "Item"} (${String(v).trim()})` : (item.name || "Item");
-          return [
-            nameWithVariant,
-            item.quantity || 1,
-            `₹${(item.price || 0).toFixed(2)}`,
-            `₹${((item.price || 0) * (item.quantity || 1)).toFixed(2)}`,
-          ];
-        });
-
-        autoTable(doc, {
-          startY: yPos,
-          head: [["Item", "Qty", "Price", "Total"]],
-          body: tableData,
-          theme: "striped",
-          headStyles: {
-            fillColor: [0, 0, 0],
-            textColor: 255,
-            fontStyle: "bold",
-          },
-          styles: { fontSize: 9 },
-          columnStyles: {
-            0: { cellWidth: 80 },
-            1: { cellWidth: 30, halign: "center" },
-            2: { cellWidth: 35, halign: "right" },
-            3: { cellWidth: 35, halign: "right" },
-          },
-        });
-
-        yPos = doc.lastAutoTable.finalY + 10;
-      }
-
-      // Total
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text(`Total: ₹${(orderToPrint.total || 0).toFixed(2)}`, 20, yPos);
-
-      // Payment status
-      yPos += 10;
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text(
-        `Payment Status: ${orderToPrint.status === "confirmed" ? "Paid" : "Pending"}`,
-        20,
-        yPos,
-      );
-
-      // Estimated delivery time
-      if (orderToPrint.estimatedDeliveryTime) {
-        yPos += 8;
-        doc.text(
-          `Estimated Delivery: ${orderToPrint.estimatedDeliveryTime} minutes`,
-          20,
-          yPos,
-        );
-      }
-
-      // Notes
-      if (orderToPrint.note) {
-        yPos += 10;
-        doc.setFont("helvetica", "bold");
-        doc.text("Note:", 20, yPos);
-        doc.setFont("helvetica", "normal");
-        const noteLines = doc.splitTextToSize(orderToPrint.note, 170);
-        doc.text(noteLines, 20, yPos + 7);
-      }
-
-      // Cutlery preference
-      yPos += 15;
-      doc.setFont("helvetica", "normal");
-      doc.text(
-        orderToPrint.sendCutlery === false
-          ? "? Don't send cutlery"
-          : "? Send cutlery requested",
-        20,
-        yPos,
-      );
-
-      // Footer
-      const pageHeight = doc.internal.pageSize.height;
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "italic");
-      doc.text(
-        `Generated on ${new Date().toLocaleString("en-GB")}`,
-        105,
-        pageHeight - 10,
-        { align: "center" },
-      );
-
-      // Download PDF
-      const fileName = `Order-${orderToPrint.orderId || "Receipt"}-${Date.now()}.pdf`;
-      doc.save(fileName);
-
-      debugLog("? PDF generated successfully:", fileName);
-    } catch (error) {
-      debugError("? Error generating PDF:", error);
-      alert("Failed to generate PDF. Please try again.");
-    }
+    const orderToPrint = popupOrder || newOrder;
+    if (!orderToPrint) return;
+    await printLiveOrderBill(orderToPrint.rawOrder || orderToPrint, restaurantAPI);
   };
 
   // Handle swipe gestures with smooth animations
@@ -2958,6 +2807,9 @@ function OrderCard({
   timePlaced,
   eta,
   itemsSummary,
+  itemsList = [],
+  orderNote = "",
+  rawOrder = null,
   paymentMethod,
   photoUrl,
   photoAlt,
@@ -2970,6 +2822,11 @@ function OrderCard({
   onAccept,
   isAccepting = false,
 }) {
+  const handlePrintBill = async (e) => {
+    e.stopPropagation();
+    if (!rawOrder) return;
+    await printLiveOrderBill(rawOrder, restaurantAPI);
+  };
   const normalizedStatus = String(status || "").toLowerCase();
   const isReady = normalizedStatus === "ready";
   const isPreparing = normalizedStatus === "preparing";
@@ -3036,6 +2893,12 @@ function OrderCard({
 
         {/* Right: status badge + time */}
         <div className="flex flex-col items-end gap-0.5 shrink-0">
+          {rawOrder && (
+            <button type="button" onClick={handlePrintBill} title="Print bill" aria-label="Print bill"
+              className="mb-1 inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-gray-300 bg-white text-gray-700 text-[10px] font-bold active:bg-gray-100">
+              <Printer className="w-3.5 h-3.5" /> Print
+            </button>
+          )}
           <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap ${
             isReady
               ? "bg-green-50 border border-green-400 text-green-700"
@@ -3078,7 +2941,7 @@ function OrderCard({
       {/* ── Body: photo + items ── */}
       <div
         onClick={() => onSelect?.({ orderId, status, customerName, type, tableOrToken, timePlaced, eta, itemsSummary, paymentMethod })}
-        className="flex items-center gap-3 px-3 pb-3 cursor-pointer">
+        className="flex items-start gap-3 px-3 pb-3 cursor-pointer">
         {/* Food image */}
         <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 shrink-0">
           {photoUrl ? (
@@ -3092,7 +2955,23 @@ function OrderCard({
 
         {/* Items + delivery type */}
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-gray-800 line-clamp-2 leading-snug">{itemsSummary}</p>
+          {itemsList.length > 0 ? (
+            <ul className="space-y-0.5">
+              {itemsList.map((it, idx) => (
+                <li key={idx} className="text-xs text-gray-800 leading-snug">
+                  <span className="font-bold">{it.quantity} x</span> <span className="font-medium">{it.name}</span>
+                  {it.variant ? <span className="text-emerald-600"> ({it.variant})</span> : null}
+                  {it.addons.length > 0 && <span className="text-gray-500"> + {it.addons.join(", ")}</span>}
+                  {it.notes && <div className="text-[10px] italic text-gray-500">Note: {it.notes}</div>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs font-medium text-gray-800 leading-snug">{itemsSummary}</p>
+          )}
+          {orderNote && (
+            <p className="mt-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">Customer instructions: {orderNote}</p>
+          )}
           <p className="text-[11px] text-gray-400 mt-1">{type}{tableOrToken ? ` · ${tableOrToken}` : ""}</p>
         </div>
       </div>
@@ -3118,7 +2997,7 @@ function OrderCard({
             </span>
           )}
           {dispatchStatus !== "accepted" && (isPreparing || isReady || normalizedStatus === "confirmed") && (
-            <ResendNotificationButton orderId={orderId} mongoId={mongoId} onSuccess={onSelect} />
+            <ResendNotificationButton orderId={orderId} mongoId={mongoId} />
           )}
         </div>
 
@@ -3460,6 +3339,9 @@ function PreparingOrders({
                 timePlaced={order.timePlaced}
                 eta={etaDisplay}
                 itemsSummary={order.itemsSummary}
+                itemsList={order.itemsList}
+                orderNote={order.orderNote}
+                rawOrder={order.rawOrder}
                 photoUrl={order.photoUrl}
                 photoAlt={order.photoAlt}
                 paymentMethod={order.paymentMethod}

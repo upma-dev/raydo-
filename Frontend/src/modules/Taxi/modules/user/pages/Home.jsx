@@ -6,6 +6,7 @@ import CinematicTaxiHero from '../components/CinematicTaxiHero';
 import ServiceGrid from '../components/ServiceGrid';
 import LocationMapSection from '../components/LocationMapSection';
 import ExplorerSection from '../components/ExplorerSection';
+import RideEssentials from '../components/RideEssentials';
 
 import BottomNavbar from '../components/BottomNavbar';
 import carIcon from '@/assets/hero_sedan.png';
@@ -577,14 +578,14 @@ const Home = ({ embedded = false }) => {
     maskSize: '100% 100%',
   };
 
-  const pageBgClass = 'bg-[#F0F5FD]';
+  const pageBgClass = 'bg-gradient-to-b from-[#CFE2FF] via-[#DDEAFF] to-[#EAF2FF]';
 
   return (
     <div className={`${embedded ? 'relative' : 'min-h-screen'} ${pageBgClass} ${embedded ? 'pb-6' : 'pb-24'} w-full relative font-sans no-scrollbar`}>
       {/* Light mix blue draped ambient background elements */}
-      <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-full max-w-lg h-[450px] bg-[radial-gradient(ellipse_at_top,_rgba(147,197,253,0.35)_0%,_rgba(240,245,253,0.6)_50%,_rgba(240,245,253,0)_80%)] blur-2xl pointer-events-none" />
-      <div className="absolute top-44 -left-20 h-80 w-80 rounded-full bg-indigo-200/25 blur-3xl pointer-events-none" />
-      <div className="absolute top-[32rem] -right-20 h-96 w-96 rounded-full bg-blue-200/20 blur-3xl pointer-events-none" />
+      <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-full max-w-lg h-[450px] bg-[radial-gradient(ellipse_at_top,_rgba(96,165,250,0.45)_0%,_rgba(207,226,255,0.6)_50%,_rgba(207,226,255,0)_80%)] blur-2xl pointer-events-none" />
+      <div className="absolute top-44 -left-20 h-80 w-80 rounded-full bg-blue-300/30 blur-3xl pointer-events-none" />
+      <div className="absolute top-[32rem] -right-20 h-96 w-96 rounded-full bg-sky-300/30 blur-3xl pointer-events-none" />
 
       <div className="relative z-10 space-y-0 pb-6">
         {!embedded && (
@@ -717,6 +718,7 @@ const Home = ({ embedded = false }) => {
           <div className="relative z-10 flex flex-col gap-4 pb-6">
             <ServiceGrid plain={true} />
             <LocationMapSection plain={true} />
+            <RideEssentials plain={true} />
             <ExplorerSection plain={true} />
           </div>
         ) : (

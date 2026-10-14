@@ -7,6 +7,7 @@ import loginBanner2 from "@food/assets/restaurant/loginbanner2.png"
 import loginBanner3 from "@food/assets/restaurant/loginbanner3.png"
 import loginBanner4 from "@food/assets/restaurant/loginbanner4.png"
 import { isModuleAuthenticated } from "@food/utils/auth"
+import { useCompanyName } from "@food/hooks/useCompanyName"
 
 // Carousel data with images and taglines
 const carouselData = [

@@ -76,15 +76,24 @@ export const cancelTripInstance = async ({ tripId, reason = 'Trip cancelled by o
     booking.failureReason = 'trip_cancelled_by_operator';
     booking.notes = reason;
 
-    if (isConfirmed && booking.payment?.paymentId && gatewayCreds?.keyId && gatewayCreds?.keySecret) {
-      if (booking.cancellation?.refundStatus !== 'completed') {
+    // Seats the customer already cancelled (and was refunded for) must not be refunded a second time
+    const alreadyRefunded = Math.round(Number(booking.financialSnapshot?.refundedAmount || 0) * 100) / 100;
+    const refundableAmount = Math.max(0, Math.round((Number(booking.amount || 0) - alreadyRefunded) * 100) / 100);
+
+    if (isConfirmed && booking.payment?.paymentId && refundableAmount > 0 && !(gatewayCreds?.keyId && gatewayCreds?.keySecret)) {
+      booking.cancellation.refundStatus = 'failed';
+      booking.failureReason = 'trip_cancelled_refund_failed';
+    }
+
+    if (isConfirmed && booking.payment?.paymentId && refundableAmount > 0 && gatewayCreds?.keyId && gatewayCreds?.keySecret) {
+      if (booking.cancellation?.refundStatus !== 'completed' || alreadyRefunded > 0) {
         booking.cancellation.refundStatus = 'processing';
         await booking.save();
 
         try {
           const refundPayload = await razorpayRefund({
             paymentId: booking.payment.paymentId,
-            amount: booking.amount,
+            amount: refundableAmount,
             notes: {
               tripId: String(trip._id),
               bookingCode: booking.bookingCode,
@@ -96,9 +105,10 @@ export const cancelTripInstance = async ({ tripId, reason = 'Trip cancelled by o
 
           booking.cancellation.refundStatus = 'completed';
           booking.cancellation.refundId = refundPayload?.id || '';
-          booking.cancellation.refundAmount = booking.amount;
+          booking.cancellation.refundAmount = refundableAmount;
           booking.cancellation.refundProcessedAt = new Date();
-          booking.financialSnapshot.refundedAmount = booking.amount;
+          booking.financialSnapshot.refundedAmount = Math.round((alreadyRefunded + refundableAmount) * 100) / 100;
+          booking.payment.status = 'refunded';
         } catch (refundErr) {
           booking.cancellation.refundStatus = 'failed';
           booking.failureReason = 'trip_cancelled_refund_failed';
@@ -115,7 +125,9 @@ export const cancelTripInstance = async ({ tripId, reason = 'Trip cancelled by o
         entityType: 'user',
         entityIds: [booking.userId],
         title: 'Trip Cancelled',
-        body: `Your bus trip from ${booking.routeSnapshot?.originCity} to ${booking.routeSnapshot?.destinationCity} was cancelled by the operator. A 100% refund of ₹${booking.amount} has been processed.`,
+        body: booking.cancellation?.refundStatus === 'failed'
+          ? `Your bus trip from ${booking.routeSnapshot?.originCity} to ${booking.routeSnapshot?.destinationCity} was cancelled by the operator. Your refund could not be sent automatically; our team will refund you shortly.`
+          : `Your bus trip from ${booking.routeSnapshot?.originCity} to ${booking.routeSnapshot?.destinationCity} was cancelled by the operator.${refundableAmount > 0 && isConfirmed ? ` A refund of ₹${refundableAmount} has been processed.` : ''}`,
         data: { bookingId: String(booking._id), scope: 'bus' },
       });
     } catch (pushErr) {

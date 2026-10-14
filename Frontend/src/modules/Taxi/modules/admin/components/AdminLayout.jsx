@@ -60,6 +60,7 @@ import {
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import quickSpicyLogo from "@food/assets/raydo-logo.png";
+import { isFranchiseLogin } from "@food/utils/auth";
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -761,7 +762,7 @@ const AdminLayout = () => {
             subItems: [
               { label: 'Service Location', path: '/taxi/admin/pricing/service-location', permission: 'service_locations.view' },
               { label: 'Zone', path: '/taxi/admin/pricing/zone', permission: 'zones.view' },
-              { label: 'Airport', path: '/taxi/admin/pricing/airport', permission: 'airports.view' },
+              // { label: 'Airport', path: '/taxi/admin/pricing/airport', permission: 'airports.view' },   // airport disabled for now
               { label: 'App Modules', path: '/taxi/admin/pricing/app-modules', permission: 'settings.view' },
               { label: 'Vehicle Type', path: '/taxi/admin/pricing/vehicle-type', permission: 'vehicle_types.view' },
               { label: 'Rental Package Types', path: '/taxi/admin/pricing/rental-packages', permission: 'rental.view' },
@@ -1379,6 +1380,12 @@ const AdminLayout = () => {
     }
 
     if (!token) return undefined;
+
+    // Franchise partners use the franchise portal; the taxi admin panel is for platform / taxi admins only
+    if (isFranchiseLogin()) {
+      navigate('/food/franchise/dashboard', { replace: true });
+      return undefined;
+    }
 
     socketService.connect({ role: 'admin', token });
 

@@ -123,8 +123,9 @@ const normalizeVehicleEntry = (pkg, vehicle, index) => ({
 const calculateFare = (vehicle, tripType, passengers = 1) => {
   const baseFare = Number(vehicle.baseFare || 0);
   const tripMultiplier = tripType === 'Round Trip' ? 1.8 : 1.0;
-  const safePassengers = Math.max(1, Number(passengers || 1));
-  return Math.round(baseFare * tripMultiplier * safePassengers);
+  // A cab costs the same for 1 or 4 people, so the number of passengers does not change the fare.
+  // This is only the STARTING price; the exact fare (from the real map distance) is shown on the next page.
+  return Math.round(baseFare * tripMultiplier);
 };
 
 const calculateDefaultBidCeiling = (fare, stepAmount = DEFAULT_BID_STEP_AMOUNT, headroomPercent = DEFAULT_BID_HEADROOM_PERCENT) => {
@@ -545,8 +546,8 @@ const IntercityVehicle = () => {
                           <p className="mt-1 text-sm text-slate-500">{vehicle.seats} seats · {vehicle.packageTypeName}</p>
                         </div>
                         <div className="text-right">
+                          <p className="text-xs text-slate-500">starts from</p>
                           <p className="text-lg font-semibold text-slate-900">Rs {vehicleFare.toLocaleString()}</p>
-                          <p className="text-xs text-slate-500">estimated</p>
                         </div>
                       </div>
                     </div>
@@ -561,8 +562,9 @@ const IntercityVehicle = () => {
       <div className="fixed bottom-0 left-1/2 w-full max-w-lg -translate-x-1/2 border-t border-slate-200 bg-white px-5 py-4">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-medium text-slate-500">{tripType} · {getDisplayDate(rideMode, travelDate)}</p>
+            <p className="text-xs font-medium text-slate-500">{tripType} · {getDisplayDate(rideMode, travelDate)} · starting fare</p>
             <p className="mt-1 text-xl font-semibold text-slate-900">Rs {finalFare.toLocaleString()}</p>
+            <p className="text-[11px] text-slate-400">Exact fare from the map distance is shown on the next page</p>
           </div>
           <motion.button
             type="button"

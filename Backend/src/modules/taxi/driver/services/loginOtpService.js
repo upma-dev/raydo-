@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { isMasterOtp as isMasterOtpFor } from '../../../../core/otp/masterOtp.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { env } from '../../../../config/env.js';
 import { Owner } from '../../admin/models/Owner.js';
@@ -73,6 +74,13 @@ const normalizeRole = (role) => {
   }
   return 'driver';
 };
+
+// deleted, or switched off by the admin (pending approval is still allowed: the app shows the registration status)
+const isAccountSwitchedOff = (account) =>
+  Boolean(account?.deletedAt)
+  || account?.isActive === false
+  || account?.active === false
+  || ['blocked', 'inactive', 'suspended', 'deleted'].includes(String(account?.status || '').toLowerCase());
 
 const hashOtp = (otp) => crypto.createHash('sha256').update(String(otp)).digest('hex');
 
@@ -226,6 +234,11 @@ export const startDriverLoginOtp = async ({ phone, role = 'driver' }) => {
     );
   }
 
+  // A deleted / switched-off account must not get an OTP or a token (the app would only fail later with 403s)
+  if (isAccountSwitchedOff(account)) {
+    throw new ApiError(403, 'This account is not active. Please contact support.');
+  }
+
   // Allow login even if account is pending approval to show registration status
   // if (
   //   (normalizedRole === 'owner' && !isApprovedOwner(account)) ||
@@ -262,6 +275,7 @@ export const startDriverLoginOtp = async ({ phone, role = 'driver' }) => {
       otpHash: hashOtp(otp),
       otpExpiresAt: new Date(now + LOGIN_OTP_TTL_MS),
       verifiedAt: null,
+      otpAttempts: 0,
       expiresAt: new Date(now + LOGIN_OTP_TTL_MS),
     },
     { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
@@ -288,16 +302,18 @@ export const verifyDriverLoginOtp = async ({ phone, otp }) => {
     throw new ApiError(400, 'A valid 4-digit or 6-digit OTP is required');
   }
 
-  const isMasterOtp =
-    normalizedOtp === '1234' ||
-    normalizedOtp === '123456' ||
-    (env.staticOtpCode && normalizedOtp === env.staticOtpCode);
+  const isMasterOtp = isMasterOtpFor(normalizedOtp, phone);
 
   if (!isMasterOtp && (!session.otpExpiresAt || new Date(session.otpExpiresAt).getTime() < Date.now())) {
     throw new ApiError(410, 'OTP has expired');
   }
 
   if (!isMasterOtp && session.otpHash !== hashOtp(normalizedOtp)) {
+    const updated = await DriverLoginSession.findOneAndUpdate({ _id: session._id }, { $inc: { otpAttempts: 1 } }, { returnDocument: 'after' });
+    if (Number(updated?.otpAttempts || 0) >= 5) {
+      await DriverLoginSession.deleteOne({ _id: session._id });
+      throw new ApiError(429, 'Too many wrong OTP attempts. Please request a new OTP.');
+    }
     throw new ApiError(401, 'Invalid OTP');
   }
 
@@ -326,6 +342,10 @@ export const verifyDriverLoginOtp = async ({ phone, otp }) => {
               : 'Driver'
       } account not found`,
     );
+  }
+
+  if (isAccountSwitchedOff(account)) {
+    throw new ApiError(403, 'This account is not active. Please contact support.');
   }
 
   // Allow verification even if account is pending approval

@@ -16,8 +16,8 @@ export async function initiateRefund({ paymentId, orderId, userId, amount, reaso
     if (payment.status !== 'success') throw new Error('Can only refund successful payments');
 
     // Determine refund path
-    const to = refundTo || (payment.method === 'wallet' ? 'wallet' : 'wallet');
-    // Default to wallet refund for all methods — safer, faster. Admin can override to gateway.
+    // Default to a wallet refund for every payment method - safer and faster. Gateway refunds go through processGatewayRefund().
+    const to = refundTo || 'wallet';
 
     const refund = await Refund.create({
         paymentId: new mongoose.Types.ObjectId(paymentId),

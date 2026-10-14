@@ -25,6 +25,9 @@ import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
 import OutOfServiceView from "@food/components/user/OutOfServiceView"
 import { getMenuFromResponse } from "@food/utils/menuItems"
 import CategoryDishCardSlider from "@food/components/user/CategoryDishCardSlider"
+import { extractCoords } from "@food/utils/geoDistance"
+const debugError = (...args) => { console.error(...args) }
+const debugWarn = (...args) => { console.warn(...args) }
 
 // Filter options
 const filterOptions = [

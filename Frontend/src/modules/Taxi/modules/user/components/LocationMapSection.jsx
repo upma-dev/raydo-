@@ -227,7 +227,7 @@ const LocationMapSection = ({ plain = false }) => {
 
   const containerClass = plain
     ? 'relative z-10 px-[18px] mt-1'
-    : 'mx-[18px] my-4 rounded-[28px] bg-white border border-indigo-100/90 shadow-[0_10px_30px_rgba(30,41,59,0.04)] relative overflow-visible px-4.5 py-5';
+    : 'mx-[18px] my-4 rounded-[28px] bg-[#E3EEFF] border border-blue-200/80 shadow-[0_10px_30px_rgba(30,41,59,0.04)] relative overflow-visible px-4.5 py-5';
 
   return (
     <motion.section

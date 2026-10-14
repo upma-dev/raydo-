@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -212,10 +212,6 @@ const RentalSchedule = () => {
   const location = useLocation();
   const { vehicle, duration, selectedPackage, serviceLocation } = location.state || {};
 
-  if (!vehicle) {
-    navigate('/rental');
-    return null;
-  }
 
   const now = new Date();
   const roundedNow = new Date(now);
@@ -264,19 +260,19 @@ const RentalSchedule = () => {
     let packageIncludedHours = 0;
 
     if (selectedPackage?.price && selectedPackage?.durationHours) {
-      packageIncludedHours = Math.max(1, Number(selectedPackage.durationHours || 0));
-      packageBasePrice = Number(selectedPackage.price || 0);
-      hourlyOverrunRate = Math.max(0, Number(selectedPackage.extraHourPrice || 0));
+      packageIncludedHours = Math.max(1, Number(selectedPackage?.durationHours || 0));
+      packageBasePrice = Number(selectedPackage?.price || 0);
+      hourlyOverrunRate = Math.max(0, Number(selectedPackage?.extraHourPrice || 0));
       overrunHours = Math.max(0, hrs - packageIncludedHours);
       cost =
         packageBasePrice +
         Math.ceil(overrunHours) * hourlyOverrunRate;
     } else if (duration === 'Hourly') {
-      cost = Math.ceil(hrs) * vehicle.prices['Hourly'];
+      cost = Math.ceil(hrs) * vehicle?.prices['Hourly'];
     } else if (duration === 'Half-Day') {
-      cost = Math.ceil(hrs / 6) * vehicle.prices['Half-Day'];
+      cost = Math.ceil(hrs / 6) * vehicle?.prices['Half-Day'];
     } else {
-      cost = Math.ceil(hrs / 24) * vehicle.prices['Daily'];
+      cost = Math.ceil(hrs / 24) * vehicle?.prices['Daily'];
     }
 
     return {
@@ -291,7 +287,7 @@ const RentalSchedule = () => {
   }, [duration, pickup, returnDateTimeValue, selectedPackage, vehicle]);
 
   const suffix = selectedPackage?.durationHours
-    ? `${selectedPackage.durationHours}hr block`
+    ? `${selectedPackage?.durationHours}hr block`
     : { Hourly: 'hr', 'Half-Day': '6hr block', Daily: 'day' }[duration];
 
   const minimumPickupTime = isSameDay(pickupDate, roundedNow)
@@ -323,6 +319,13 @@ const RentalSchedule = () => {
       setReturnTime(time);
     }
   };
+  // go back when the page was opened without its data (done in an effect, not while rendering)
+  useEffect(() => {
+    if (!vehicle) navigate('/rental', { replace: true });
+  }, [vehicle, navigate]);
+
+  // every hook has run above, so it is safe to stop here
+  if (!vehicle) return null;
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#F8FAFC_0%,#F3F4F6_38%,#EEF2F7_100%)] max-w-lg mx-auto font-sans pb-28 relative overflow-hidden">

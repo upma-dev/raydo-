@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Save, Timer, UserX, ShieldCheck, Info } from "lucide-react";
+import { Loader2, Save, Timer, UserX, ShieldCheck, Info, Banknote } from "lucide-react";
 import { adminAPI } from "@food/api";
 
 const errMsg = (e, fb) => e?.response?.data?.message || fb;
@@ -75,7 +75,7 @@ export default function OrderCancellationSettings() {
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen text-slate-900 space-y-5 max-w-3xl">
       <div>
         <h1 className="text-2xl font-black tracking-tight">Order Cancellation Rules</h1>
-        <p className="text-xs font-semibold text-slate-500 mt-1">Decide what happens when a restaurant does not respond, and when a customer may cancel. Refunds are always automatic.</p>
+        <p className="text-xs font-semibold text-slate-500 mt-1">Decide what happens when a restaurant does not respond, and when a customer may cancel. Choose below how card / UPI refunds are done. Wallet refunds are always automatic.</p>
       </div>
 
       <Card icon={Timer} title="Auto-cancel if the restaurant does not accept" desc="When the restaurant ignores a new order, it is cancelled for them and the customer gets a full refund.">
@@ -86,6 +86,20 @@ export default function OrderCancellationSettings() {
         <label className="block text-xs font-bold text-slate-600 uppercase mb-1.5">Restaurant must accept within (minutes)</label>
         <input type="number" min={1} max={120} className={inputCls} disabled={!rules.autoCancelEnabled} value={rules.restaurantAcceptTimeoutMinutes} onChange={(e) => set("restaurantAcceptTimeoutMinutes", e.target.value)} />
         <p className="text-[11px] text-slate-400 mt-1.5">Between 1 and 120. The clock starts when the restaurant is first notified (scheduled orders start when they are sent to the restaurant).</p>
+      </Card>
+
+      <Card icon={Banknote} title="How card / UPI orders are refunded" desc="This applies to every cancellation: by the customer, the restaurant, the admin or the automatic timer.">
+        <div className="space-y-2.5">
+          {[
+            ["manual", "Manual (Razorpay dashboard)", "The order is cancelled. The order list then shows \"Refund in Razorpay\": it opens that payment in your Razorpay account, you press Refund there, then click \"Mark refunded\" here."],
+            ["auto", "Automatic (Razorpay API)", "Our server sends the refund to Razorpay by itself the moment the order is cancelled. Needs balance in your Razorpay account."],
+          ].map(([value, label, hint]) => (
+            <label key={value} className={`flex gap-3 p-3.5 rounded-xl border cursor-pointer ${rules.refundMode === value ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`}>
+              <input type="radio" name="refundMode" className="mt-1" checked={rules.refundMode === value} onChange={() => set("refundMode", value)} />
+              <span><span className="block text-sm font-extrabold">{label}</span><span className="block text-xs text-slate-500 mt-0.5">{hint}</span></span>
+            </label>
+          ))}
+        </div>
       </Card>
 
       <Card icon={UserX} title="Customer cancellation" desc="When may a customer cancel their own order?">
@@ -101,7 +115,7 @@ export default function OrderCancellationSettings() {
       <div className="flex items-start gap-2 p-4 rounded-xl bg-blue-50 border border-blue-100 text-blue-900 text-xs font-semibold">
         <Info className="w-4 h-4 mt-0.5 shrink-0" />
         <div>
-          Every cancellation (customer, restaurant, admin or automatic) does the same: refunds card/UPI payments through Razorpay and wallet payments to the wallet, puts the stock back, gives the coupon use back, and tells the customer, restaurant and rider. COD orders have nothing to refund.
+          Every cancellation (customer, restaurant, admin or automatic) does the same: refunds card/UPI payments (manually in Razorpay or automatically, as you chose above) and wallet payments to the wallet, puts the stock back, gives the coupon use back, and tells the customer, restaurant and rider. COD orders have nothing to refund.
         </div>
       </div>
 

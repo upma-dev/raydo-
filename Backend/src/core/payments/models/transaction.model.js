@@ -74,6 +74,11 @@ const transactionSchema = new mongoose.Schema(
                 'platform_fee',
                 'settlement_payout',
                 'referral_reward',
+                'order_payout',
+                'order_payout_reversal',
+                'delivery_payout',
+                'delivery_payout_reversal',
+                'cancel_penalty',
                 'adjustment',
                 'other'
             ],

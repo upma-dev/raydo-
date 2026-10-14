@@ -3,7 +3,7 @@ import { FoodOrder, FoodSettings } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
 import { FoodDeliveryCashDeposit } from '../../delivery/models/foodDeliveryCashDeposit.model.js';
-import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
+import { getCashLimit, getRiderCashPositions } from '../../delivery/services/riderCash.service.js';
 import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js';
 import { logger } from '../../../../utils/logger.js';
 import { config } from '../../../../config/env.js';
@@ -124,7 +124,7 @@ async function listNearbyOnlineDeliveryPartners(
   return { partners: picked };
 }
 
-async function filterPartnersByCodCashLimit(partners = [], order = null) {
+export async function filterPartnersByCodCashLimit(partners = [], order = null) {
   if (!Array.isArray(partners) || partners.length === 0) return [];
 
   const paymentMethod = String(order?.payment?.method || '').trim().toLowerCase();
@@ -132,75 +132,22 @@ async function filterPartnersByCodCashLimit(partners = [], order = null) {
     return partners;
   }
 
-  const cashLimitSettings = await getDeliveryCashLimitSettings();
-  const totalCashLimit = Number(cashLimitSettings?.deliveryCashLimit) || 0;
+  const totalCashLimit = await getCashLimit();
   if (totalCashLimit <= 0) {
     return partners;
   }
 
   const orderCashImpact = Math.max(0, Number(order?.pricing?.total) || 0);
-
-  const partnerIds = partners
-    .map((partner) => partner?.partnerId)
-    .filter((partnerId) => mongoose.Types.ObjectId.isValid(partnerId))
-    .map((partnerId) => new mongoose.Types.ObjectId(partnerId));
-
-  if (partnerIds.length === 0) {
-    return partners;
-  }
-
-  const [cashCollectedAgg, cashDepositsAgg] = await Promise.all([
-    FoodOrder.aggregate([
-      {
-        $match: {
-          'dispatch.deliveryPartnerId': { $in: partnerIds },
-          orderStatus: 'delivered',
-          'payment.method': 'cash',
-        },
-      },
-      {
-        $group: {
-          _id: '$dispatch.deliveryPartnerId',
-          cashCollected: { $sum: { $ifNull: ['$pricing.total', 0] } },
-        },
-      },
-    ]),
-    FoodDeliveryCashDeposit.aggregate([
-      {
-        $match: {
-          deliveryPartnerId: { $in: partnerIds },
-          status: 'Completed',
-        },
-      },
-      {
-        $group: {
-          _id: '$deliveryPartnerId',
-          depositedCash: { $sum: { $ifNull: ['$amount', 0] } },
-        },
-      },
-    ]),
-  ]);
-
-  const cashCollectedMap = new Map(
-    (cashCollectedAgg || []).map((entry) => [
-      String(entry?._id || ''),
-      Number(entry?.cashCollected) || 0,
-    ]),
-  );
-  const cashDepositsMap = new Map(
-    (cashDepositsAgg || []).map((entry) => [
-      String(entry?._id || ''),
-      Number(entry?.depositedCash) || 0,
-    ]),
+  const positions = await getRiderCashPositions(
+    partners.map((partner) => partner?.partnerId).filter(Boolean),
+    { excludeOrderId: order?._id },
   );
 
+  // cash already held + COD orders this rider already accepted + this order must fit under the limit
   const eligiblePartners = partners.filter((partner) => {
-    const partnerId = String(partner?.partnerId || '');
-    const cashCollected = cashCollectedMap.get(partnerId) || 0;
-    const depositedCash = cashDepositsMap.get(partnerId) || 0;
-    const cashInHand = Math.max(0, cashCollected - depositedCash);
-    const projectedCashInHand = cashInHand + orderCashImpact;
-    return projectedCashInHand <= totalCashLimit;
+    const pos = positions.get(String(partner?.partnerId || ''));
+    const projected = (pos?.cashInHand || 0) + (pos?.activeCod || 0) + orderCashImpact;
+    return projected <= totalCashLimit;
   });
 
   const skippedCount = partners.length - eligiblePartners.length;
@@ -482,6 +429,9 @@ export async function resendDeliveryNotificationRestaurant(orderId, restaurantId
 
   await tryAutoAssign(order._id, { forceRebroadcast: true, attempt: 1 });
   const finalOrder = await FoodOrder.findById(order._id).select('dispatch.offeredTo').lean();
-  const notifiedCount = finalOrder?.dispatch?.offeredTo?.length || 0;
-  return { success: true, notifiedCount };
+  const offered = finalOrder?.dispatch?.offeredTo || [];
+  const notifiedCount = offered.length;
+  // Is anyone who got the offer actually connected right now? (false = their app is closed / offline: only a push can reach them)
+  const connectedCount = offered.filter((o) => liveSocketCount(o.partnerId) > 0).length;
+  return { success: true, notifiedCount, connectedCount };
 }

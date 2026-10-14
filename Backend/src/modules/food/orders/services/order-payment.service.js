@@ -13,6 +13,7 @@ import {
   isRazorpayConfigured,
 } from '../helpers/razorpay.helper.js';
 import * as foodTransactionService from './foodTransaction.service.js';
+import { assertRiderCanTakeCod } from '../../delivery/services/riderCash.service.js';
 import {
   buildOrderIdentityFilter,
   enqueueOrderEvent,
@@ -317,6 +318,19 @@ export async function switchToCash(orderId, deliveryPartnerId) {
   if (order.dispatch.deliveryPartnerId?.toString() !== deliveryPartnerId.toString()) {
     throw new ForbiddenError('Not your order');
   }
+
+  // Money already received online can never be turned into a cash order
+  if (['paid', 'refunded'].includes(String(order.payment?.status || '').toLowerCase())) {
+    throw new ValidationError('This order is already paid online, so cash cannot be collected for it.');
+  }
+  // Cash collected by hand counts against the rider's cash limit like any other COD order
+  await assertRiderCanTakeCod(deliveryPartnerId, { _id: order._id, payment: { method: 'cash' }, pricing: order.pricing });
+
+  // The order itself is now a cash order (so it is counted as cash in hand once delivered)
+  await FoodOrder.updateOne(
+    { _id: order._id },
+    { $set: { 'payment.method': 'cash', 'payment.status': 'cod_pending', 'payment.qr': {} } },
+  );
 
   // Reset payment method to cash in FoodTransaction
   await FoodTransaction.updateOne(

@@ -69,14 +69,14 @@ export const NewOrderModal = ({ order, onAccept, onReject, onMinimize }) => {
     };
   }, [order, riderLocation]);
 
-  if (!order) return null;
+  // (the hooks above and below must run on every render, so `return null` waits until the last hook has run)
 
   const earnings = useMemo(() => {
-    if (order?.riderEarning != null && Number(order.riderEarning) > 0) {
-      return Number(order.riderEarning);
+    if (order?.riderEarning != null && Number(order?.riderEarning) > 0) {
+      return Number(order?.riderEarning);
     }
-    if (order?.earnings != null && Number(order.earnings) > 0) {
-      return Number(order.earnings);
+    if (order?.earnings != null && Number(order?.earnings) > 0) {
+      return Number(order?.earnings);
     }
     const baseFee = Number(
       order?.pricing?.riderDeliveryEarningAfterAdminCommission ??
@@ -92,13 +92,13 @@ export const NewOrderModal = ({ order, onAccept, onReject, onMinimize }) => {
     return baseFee + surge + tip;
   }, [order]);
 
-  const restaurantName = order.restaurantName || order.restaurant_name || (order.restaurantId?.restaurantName || order.restaurantId?.name) || 'Restaurant';
-  const restaurantAddress = order.restaurantAddress || order.restaurant_address || (order.restaurantId?.location?.formattedAddress || order.restaurantId?.location?.address || [order.restaurantId?.addressLine1, order.restaurantId?.area, order.restaurantId?.city].filter(Boolean).join(', ')) || 'Address not available';
+  const restaurantName = order?.restaurantName || order?.restaurant_name || (order?.restaurantId?.restaurantName || order?.restaurantId?.name) || 'Restaurant';
+  const restaurantAddress = order?.restaurantAddress || order?.restaurant_address || (order?.restaurantId?.location?.formattedAddress || order?.restaurantId?.location?.address || [order?.restaurantId?.addressLine1, order?.restaurantId?.area, order?.restaurantId?.city].filter(Boolean).join(', ')) || 'Address not available';
   const restaurantPhone =
-    order.restaurantPhone ||
-    order.restaurant_phone ||
-    order.restaurantId?.phone ||
-    order.restaurantId?.ownerPhone ||
+    order?.restaurantPhone ||
+    order?.restaurant_phone ||
+    order?.restaurantId?.phone ||
+    order?.restaurantId?.ownerPhone ||
     '';
   const orderDeliveryAddress = order?.deliveryAddress || {};
 
@@ -111,13 +111,13 @@ export const NewOrderModal = ({ order, onAccept, onReject, onMinimize }) => {
       }
       : null;
 
-  const customerLocation = order.customerLocation || order.deliveryLocation || geoCoords || null;
+  const customerLocation = order?.customerLocation || order?.deliveryLocation || geoCoords || null;
 
   const restToCustomerDistKm = useMemo(() => {
-    const rest = order.restaurantLocation || order.restaurantId?.location || {};
+    const rest = order?.restaurantLocation || order?.restaurantId?.location || {};
     const coords = Array.isArray(rest.coordinates) ? rest.coordinates : [];
-    const resLat = parseFloat(order.restaurant_lat || order.restaurantLat || rest.latitude || rest.lat || (coords.length >= 2 ? coords[1] : NaN));
-    const resLng = parseFloat(order.restaurant_lng || order.restaurantLng || rest.longitude || rest.lng || (coords.length >= 2 ? coords[0] : NaN));
+    const resLat = parseFloat(order?.restaurant_lat || order?.restaurantLat || rest.latitude || rest.lat || (coords.length >= 2 ? coords[1] : NaN));
+    const resLng = parseFloat(order?.restaurant_lng || order?.restaurantLng || rest.longitude || rest.lng || (coords.length >= 2 ? coords[0] : NaN));
 
     const cusLat = parseFloat(customerLocation?.lat || customerLocation?.latitude || (Array.isArray(customerLocation?.coordinates) ? customerLocation.coordinates[1] : NaN));
     const cusLng = parseFloat(customerLocation?.lng || customerLocation?.longitude || (Array.isArray(customerLocation?.coordinates) ? customerLocation.coordinates[0] : NaN));
@@ -129,12 +129,13 @@ export const NewOrderModal = ({ order, onAccept, onReject, onMinimize }) => {
         return km.toFixed(1);
       }
     }
-    if (order.pricing?.deliveryFeeBreakdown?.distanceKm != null) {
-      const distBreakdown = Number(order.pricing.deliveryFeeBreakdown.distanceKm);
+    if (order?.pricing?.deliveryFeeBreakdown?.distanceKm != null) {
+      const distBreakdown = Number(order?.pricing.deliveryFeeBreakdown.distanceKm);
       if (distBreakdown < 50) return distBreakdown.toFixed(1);
     }
     return '0.8';
   }, [order, customerLocation]);
+  if (!order) return null;
 
   const customerName =
     order.userId?.name ||

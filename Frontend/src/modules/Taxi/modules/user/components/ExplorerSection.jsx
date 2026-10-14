@@ -110,8 +110,8 @@ const ExplorerSection = ({ plain = false }) => {
         {/* Infinite Auto-Scrolling Marquee (No Scrollbars, Pauses on Hover) */}
         <div className="marquee-wrapper w-full overflow-hidden relative py-2 select-none mask-gradient">
           {/* Subtle horizontal mask gradient for soft fading edges */}
-          <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-slate-50 to-transparent z-10 pointer-events-none" />
-          <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-slate-50 to-transparent z-10 pointer-events-none" />
+          <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[#DDEAFF] to-transparent z-10 pointer-events-none" />
+          <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#DDEAFF] to-transparent z-10 pointer-events-none" />
 
           <div className="animate-marquee-left flex gap-4">
             {doubledCities.map((city, idx) => (
@@ -121,7 +121,7 @@ const ExplorerSection = ({ plain = false }) => {
                 onClick={() => handleExploreDestination(city)}
                 className="flex-shrink-0 w-[190px] group text-left transition-all active:scale-[0.98] cursor-pointer"
               >
-                <div className="rounded-[18px] bg-white border border-slate-100 shadow-[0_8px_20px_rgba(15,23,42,0.04)] overflow-hidden h-[120px] transition-all relative">
+                <div className="rounded-[18px] bg-[#E3EEFF] border border-blue-200/70 shadow-[0_8px_20px_rgba(15,23,42,0.04)] overflow-hidden h-[120px] transition-all relative">
                   <img
                     src={city.image}
                     alt={city.title}

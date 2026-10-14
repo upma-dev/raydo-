@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireTaxiPanelAdmin } from '../../middlewares/adminPanelAccess.js';
 import { asyncHandler } from '../../../../utils/asyncHandler.js';
 import { authenticate } from '../../middlewares/authMiddleware.js';
 import {
@@ -48,47 +49,47 @@ supportRouter.post(
 
 supportRouter.get(
   '/admin/support/titles',
-  authenticate(['admin']),
+  authenticate(['admin']), requireTaxiPanelAdmin,
   asyncHandler(adminListSupportTitles),
 );
 supportRouter.post(
   '/admin/support/titles',
-  authenticate(['admin']),
+  authenticate(['admin']), requireTaxiPanelAdmin,
   asyncHandler(adminCreateSupportTitle),
 );
 supportRouter.patch(
   '/admin/support/titles/:titleId',
-  authenticate(['admin']),
+  authenticate(['admin']), requireTaxiPanelAdmin,
   asyncHandler(adminUpdateSupportTitle),
 );
 supportRouter.delete(
   '/admin/support/titles/:titleId',
-  authenticate(['admin']),
+  authenticate(['admin']), requireTaxiPanelAdmin,
   asyncHandler(adminDeleteSupportTitle),
 );
 
 supportRouter.get(
   '/admin/support/tickets/stats',
-  authenticate(['admin']),
+  authenticate(['admin']), requireTaxiPanelAdmin,
   asyncHandler(adminSupportTicketStats),
 );
 supportRouter.get(
   '/admin/support/tickets',
-  authenticate(['admin']),
+  authenticate(['admin']), requireTaxiPanelAdmin,
   asyncHandler(adminListSupportTickets),
 );
 supportRouter.get(
   '/admin/support/tickets/:ticketCode',
-  authenticate(['admin']),
+  authenticate(['admin']), requireTaxiPanelAdmin,
   asyncHandler(adminGetSupportTicketDetail),
 );
 supportRouter.patch(
   '/admin/support/tickets/:ticketCode',
-  authenticate(['admin']),
+  authenticate(['admin']), requireTaxiPanelAdmin,
   asyncHandler(adminUpdateSupportTicket),
 );
 supportRouter.post(
   '/admin/support/tickets/:ticketCode/reply',
-  authenticate(['admin']),
+  authenticate(['admin']), requireTaxiPanelAdmin,
   asyncHandler(adminReplySupportTicket),
 );

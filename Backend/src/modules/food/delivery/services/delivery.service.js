@@ -8,6 +8,7 @@ import { FoodOrder } from '../../orders/models/order.model.js';
 import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
+import { getRiderCashPosition } from './riderCash.service.js';
 import { emitToAdmins } from '../../../taxi/services/dispatchService.js';
 
 export const registerDeliveryPartner = async (payload, files) => {
@@ -478,7 +479,7 @@ export const getDeliveryPartnerWallet = async (deliveryPartnerId) => {
     const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
 
     // Earnings paid to rider through completed deliveries
-    const [earningsAgg, cashAgg] = await Promise.all([
+    const [earningsAgg, cashPos] = await Promise.all([
         FoodOrder.aggregate([
             {
                 $match: {
@@ -493,26 +494,12 @@ export const getDeliveryPartnerWallet = async (deliveryPartnerId) => {
                 }
             }
         ]),
-        FoodOrder.aggregate([
-            {
-                $match: {
-                    'dispatch.deliveryPartnerId': partnerId,
-                    orderStatus: 'delivered',
-                    'payment.method': 'cash',
-                    'payment.status': 'paid'
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    cashInHand: { $sum: { $ifNull: ['$riderEarning', 0] } }
-                }
-            }
-        ])
+        getRiderCashPosition(partnerId)
     ]);
 
     const totalEarned = Number(earningsAgg?.[0]?.totalEarned) || 0;
-    const cashInHand = Number(cashAgg?.[0]?.cashInHand) || 0;
+    // COD cash really held = cash of delivered COD orders - cash already deposited (same number dispatch uses)
+    const cashInHand = cashPos.cashInHand;
 
     // Admin-set delivery bonuses / earning addons
     const bonusAgg = await DeliveryBonusTransaction.aggregate([
@@ -568,7 +555,7 @@ export const getDeliveryPartnerWallet = async (deliveryPartnerId) => {
 
     const totalWithdrawn = 0;
     const totalBalance = totalEarned + totalBonus;
-    const availableCashLimit = Math.max(0, totalCashLimit - cashInHand);
+    const availableCashLimit = Math.max(0, totalCashLimit - cashInHand - cashPos.activeCod);
 
     return {
         totalBalance,

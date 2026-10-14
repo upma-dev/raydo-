@@ -10,10 +10,18 @@ const errorHandler = (err, req, res, next) => {
         statusCode = 400;
         message = 'Invalid ID format provided';
     }
+    // Mongoose schema validation (min/max/enum...) is a bad request, not a server crash
+    if (!err.statusCode && err.name === 'ValidationError' && err.errors) {
+        statusCode = 400;
+    }
 
     logger.error(
         `[${requestId}] ${req.method} ${req.originalUrl} ${statusCode} - ${err.name || 'Error'} - ${message}`
     );
+    // Never send internal error text (DB / driver messages) to clients in production
+    if (statusCode >= 500 && config.nodeEnv === 'production') {
+        message = 'Server Error';
+    }
     if (config.nodeEnv === 'development' && err.stack) {
         logger.error(`[${requestId}] ${err.stack}`);
     }

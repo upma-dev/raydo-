@@ -34,13 +34,14 @@ const STATUS_STYLE = {
 };
 const statusStyle = (s) => (String(s).startsWith("cancelled") || s === "rejected" ? STATUS_STYLE.cancelled : STATUS_STYLE[s] || STATUS_STYLE.default);
 
-function Stat({ label, value, sub, tone = "text-slate-900" }) {
+function Stat({ label, value, sub, tone = "text-slate-900", onClick }) {
+  const Tag = onClick ? "button" : "div";
   return (
-    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+    <Tag type={onClick ? "button" : undefined} onClick={onClick} className={`text-left bg-slate-50 p-3.5 rounded-xl border border-slate-200 ${onClick ? "hover:border-blue-400 hover:bg-blue-50 cursor-pointer transition-colors" : ""}`}>
       <div className="text-[10px] font-bold text-slate-500 uppercase">{label}</div>
       <div className={`text-xl font-black mt-1 ${tone}`}>{value}</div>
       {sub && <div className="text-[11px] text-slate-400 mt-0.5">{sub}</div>}
-    </div>
+    </Tag>
   );
 }
 
@@ -88,6 +89,7 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
 
   const [form, setForm] = useState({});
   const [suspendReason, setSuspendReason] = useState("");
+  const [terminateReason, setTerminateReason] = useState("");
 
   const loadOverview = async () => {
     setLoading(true);
@@ -133,6 +135,7 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
     if (res) { setOv(res.data.data); onChanged?.(); }
   };
   const suspend = async () => {
+    if (suspendReason.trim().length < 3) { toast.error("Enter a reason for the suspension"); return; }
     if (!window.confirm("Suspend this franchise? Their login stops working immediately. Their data and money stay safe.")) return;
     const res = await run(() => adminAPI.suspendFranchise(id, suspendReason), "Franchise suspended");
     if (res) { setOv(res.data.data); setSuspendReason(""); onChanged?.(); }
@@ -144,6 +147,13 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
       if (res.data.data?.note) toast.info(res.data.data.note, { duration: 8000 });
       onChanged?.();
     }
+  };
+  const terminate = async () => {
+    if (terminateReason.trim().length < 5) { toast.error("Enter a reason for the termination"); return; }
+    const name = ov?.franchise?.applicantName || "this franchise";
+    if (!window.confirm(`Terminate ${name}?\n\nThe login is locked for good, its zones are freed for a new franchise and no new orders/rides go to it. History and money stay. The deposit can then be refunded in "Fees & deposit". This cannot be undone.`)) return;
+    const res = await run(() => adminAPI.terminateFranchise(id, terminateReason), "Franchise terminated");
+    if (res) { setOv(res.data.data); setTerminateReason(""); onChanged?.(); }
   };
   const restore = async () => {
     const res = await run(() => adminAPI.restoreFranchise(id), "Franchise restored");
@@ -171,6 +181,7 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
   const hasTaxi = mods.includes("taxi");
   const TABS = tabsFor(mods);
   const suspended = f.accountStatus === "suspended";
+  const terminated = f.accountStatus === "terminated";
   const loginOk = ov.login?.active;
 
   return (
@@ -181,8 +192,8 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
           <p className="text-xs text-slate-500 mt-0.5">Live view of everything under this franchise. Figures are matched by franchise id only.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`px-2.5 py-1 rounded-full text-[11px] font-extrabold ${f.archived ? "bg-slate-200 text-slate-700" : suspended ? "bg-red-100 text-red-800" : loginOk ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
-            {f.archived ? "ARCHIVED" : suspended ? "SUSPENDED" : loginOk ? "ACTIVE" : "LOGIN NOT ACTIVE"}
+          <span className={`px-2.5 py-1 rounded-full text-[11px] font-extrabold ${f.archived ? "bg-slate-200 text-slate-700" : terminated || suspended ? "bg-red-100 text-red-800" : loginOk ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+            {f.archived ? "ARCHIVED" : terminated ? "TERMINATED" : suspended ? "SUSPENDED" : loginOk ? "ACTIVE" : "LOGIN NOT ACTIVE"}
           </span>
           <button onClick={loadOverview} className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5">
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
@@ -207,13 +218,13 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
             <div>
               <div className="text-[11px] font-extrabold text-amber-700 uppercase mb-2 flex items-center gap-1.5"><Store className="w-3.5 h-3.5" /> Food</div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Stat label="Restaurants" value={ov.restaurants.total} sub={`${ov.restaurants.active} active`} tone="text-blue-600" />
-                <Stat label="Menu items" value={ov.restaurants.menuItems} />
-                <Stat label="Orders (all time)" value={ov.orders.total} sub={`${ov.orders.delivered} delivered`} />
-                <Stat label="Orders today" value={ov.orders.today} sub={inr(ov.orders.todayGMV)} tone="text-amber-600" />
-                <Stat label="In progress" value={ov.orders.inProgress} />
-                <Stat label="Cancelled" value={ov.orders.cancelled} tone="text-red-600" />
-                <Stat label="Delivered GMV" value={inr(ov.orders.deliveredGMV)} />
+                <Stat label="Restaurants" onClick={() => { setTab("restaurants"); }} value={ov.restaurants.total} sub={`${ov.restaurants.active} active`} tone="text-blue-600" />
+                <Stat label="Menu items" onClick={() => { setTab("restaurants"); }} value={ov.restaurants.menuItems} />
+                <Stat label="Orders (all time)" onClick={() => { setOrderStatus(""); setTab("orders"); }} value={ov.orders.total} sub={`${ov.orders.delivered} delivered`} />
+                <Stat label="Orders today" onClick={() => { setTab("orders"); }} value={ov.orders.today} sub={inr(ov.orders.todayGMV)} tone="text-amber-600" />
+                <Stat label="In progress" onClick={() => { setTab("orders"); }} value={ov.orders.inProgress} />
+                <Stat label="Cancelled" onClick={() => { setTab("orders"); }} value={ov.orders.cancelled} tone="text-red-600" />
+                <Stat label="Delivered GMV" onClick={() => { setOrderStatus("delivered"); setTab("orders"); }} value={inr(ov.orders.deliveredGMV)} />
               </div>
             </div>
           )}
@@ -223,10 +234,10 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
               <div className="text-[11px] font-extrabold text-blue-700 uppercase mb-2 flex items-center gap-1.5"><Car className="w-3.5 h-3.5" /> Taxi {ov.taxi?.zone?.name ? `· ${ov.taxi.zone.name}` : ""}</div>
               {!ov.taxi?.taxiZoneId && <div className="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-800">No taxi zone assigned yet. Choose one in "Zones & login" so this franchise can see and earn from taxi rides.</div>}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Stat label="Drivers" value={ov.taxi?.drivers?.total ?? 0} sub={`${ov.taxi?.drivers?.online ?? 0} online · ${ov.taxi?.drivers?.approved ?? 0} approved`} tone="text-blue-600" />
-                <Stat label="Rides completed" value={ov.taxi?.rides?.completed ?? 0} sub={`${ov.taxi?.rides?.today ?? 0} today`} />
-                <Stat label="Ride value" value={inr(ov.taxi?.rides?.gmv)} sub={`${inr(ov.taxi?.rides?.todayGMV)} today`} tone="text-amber-600" />
-                <Stat label="Taxi earned" value={inr(ov.taxi?.earned)} tone="text-emerald-600" sub={`${ov.taxi?.commissionRate ?? 0}% commission`} />
+                <Stat label="Drivers" onClick={() => { setTab("drivers"); }} value={ov.taxi?.drivers?.total ?? 0} sub={`${ov.taxi?.drivers?.online ?? 0} online · ${ov.taxi?.drivers?.approved ?? 0} approved`} tone="text-blue-600" />
+                <Stat label="Rides completed" onClick={() => { setTab("rides"); }} value={ov.taxi?.rides?.completed ?? 0} sub={`${ov.taxi?.rides?.today ?? 0} today`} />
+                <Stat label="Ride value" onClick={() => { setTab("rides"); }} value={inr(ov.taxi?.rides?.gmv)} sub={`${inr(ov.taxi?.rides?.todayGMV)} today`} tone="text-amber-600" />
+                <Stat label="Taxi earned" onClick={() => { setTab("rides"); }} value={inr(ov.taxi?.earned)} tone="text-emerald-600" sub={`${ov.taxi?.commissionRate ?? 0}% commission`} />
               </div>
               <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {(ov.taxi?.services || []).map((s) => (
@@ -243,11 +254,18 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
           <div>
             <div className="text-[11px] font-extrabold text-slate-600 uppercase mb-2 flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5" /> Money</div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Franchise earned" value={inr(ov.money.totalEarned)} tone="text-emerald-600" sub={hasFood ? `${f.commissionRate}% commission` : undefined} />
-            <Stat label="Wallet balance" value={inr(ov.money.walletBalance)} />
-            <Stat label="Paid out" value={inr(ov.money.totalPaidOut)} />
+            <Stat label="Earnings (all time)" onClick={() => { setTab("money"); }} value={inr(ov.money.grossEarnings)} sub="Platform revenue in this territory" />
+            <Stat label="Platform commission" onClick={() => { setTab("money"); }} value={inr(ov.money.platformCommission)} tone="text-red-600"
+              sub={f.rates ? (f.rates.mode === "combined" ? `${f.rates.food.rate}% on total now` : [hasFood && `Food ${f.rates.food.rate}%`, hasTaxi && `Taxi ${f.rates.taxi.rate}%`].filter(Boolean).join(" · ") + " now") : undefined} />
+            <Stat label="Credited to franchise" onClick={() => { setTab("money"); }} value={inr(ov.money.totalEarned)} tone="text-emerald-600" sub="Net of commission" />
+            <Stat label="Wallet balance" onClick={() => { setTab("money"); }} value={inr(ov.money.walletBalance)} />
+            <Stat label="Paid out" onClick={() => { setTab("money"); }} value={inr(ov.money.totalPaidOut)} />
             <Stat label="Pending payouts" value={ov.money.pendingPayoutRequests} sub={inr(ov.money.pendingPayoutAmount)} tone="text-amber-600" />
-            <Stat label="Franchise fee" value={inr(f.franchiseFee)} sub={String(f.franchiseFeeStatus).toUpperCase()} />
+            {(ov.charges || []).map((c) => (
+              <Stat key={c.id} label={c.label} value={inr(c.expected)}
+                sub={c.kind === "security_deposit" ? `${inr(c.held)} held${c.outstanding ? ` · ${inr(c.outstanding)} due` : ""}` : c.outstanding ? `${inr(c.outstanding)} due` : String(c.status).replace("_", " ").toUpperCase()}
+                tone={c.outstanding ? "text-amber-700" : "text-slate-900"} />
+            ))}
             </div>
           </div>
 
@@ -258,6 +276,8 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
               <div><b>Location:</b> {f.area ? `${f.area}, ` : ""}{f.city}, {f.state} {f.pincode}</div>
               <div><b>Applied:</b> {when(f.createdAt)}</div>
               <div><b>Fee paid:</b> {when(f.franchiseFeePaidAt)}</div>
+              <div><b>Created by:</b> {f.origin === "admin" ? "Admin (manual)" : "Application form"}</div>
+              {terminated && <div className="text-red-700"><b>Terminated:</b> {when(f.terminatedAt)} {f.terminationReason ? `- ${f.terminationReason}` : ""}</div>}
             </div>
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-1">
               <div className="font-bold text-slate-700 uppercase text-[10px]">Franchise login</div>
@@ -514,7 +534,9 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
 
           <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
             <div className="text-xs font-bold text-slate-700 uppercase mb-2 flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> Account access</div>
-            {suspended ? (
+            {terminated ? (
+              <p className="text-xs text-red-700">This franchise was terminated on {when(f.terminatedAt)}{f.terminationReason ? ` (${f.terminationReason})` : ""}. It cannot be re-activated.</p>
+            ) : suspended ? (
               <>
                 <p className="text-xs text-red-700 mb-3">This franchise is suspended{f.suspendReason ? `: ${f.suspendReason}` : ""}. They cannot log in.</p>
                 <button onClick={activate} disabled={busy || f.archived} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold inline-flex items-center gap-2">
@@ -523,7 +545,7 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
               </>
             ) : (
               <>
-                <input className={`${inputCls} mb-2`} placeholder="Reason (optional, visible to admins only)" value={suspendReason} onChange={(e) => setSuspendReason(e.target.value)} />
+                <input className={`${inputCls} mb-2`} placeholder="Reason (required, visible to admins only)" value={suspendReason} onChange={(e) => setSuspendReason(e.target.value)} />
                 <button onClick={suspend} disabled={busy} className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-bold inline-flex items-center gap-2">
                   <Ban className="w-4 h-4" /> Suspend account
                 </button>
@@ -531,6 +553,17 @@ export default function FranchiseControlCenter({ id, onChanged, onRemoved }) {
               </>
             )}
           </div>
+
+          {!terminated && !f.archived && (
+            <div className="p-4 rounded-xl border border-red-200 bg-white">
+              <div className="text-xs font-bold text-red-800 uppercase mb-2 flex items-center gap-1.5"><Ban className="w-4 h-4" /> Terminate franchise</div>
+              <input className={`${inputCls} mb-2`} placeholder="Reason (required)" value={terminateReason} onChange={(e) => setTerminateReason(e.target.value)} />
+              <button onClick={terminate} disabled={busy} className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-xs font-bold inline-flex items-center gap-2">
+                <Ban className="w-4 h-4" /> Terminate
+              </button>
+              <p className="text-[11px] text-slate-500 mt-1.5">Ends the agreement: login locked, zones freed, history kept. Then settle the deposit in "Fees & deposit".</p>
+            </div>
+          )}
 
           <div className="p-4 rounded-xl border border-red-200 bg-red-50">
             <div className="text-xs font-bold text-red-800 uppercase mb-2 flex items-center gap-1.5"><Trash2 className="w-4 h-4" /> Danger zone</div>

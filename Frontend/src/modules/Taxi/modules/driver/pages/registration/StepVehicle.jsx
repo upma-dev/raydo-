@@ -152,6 +152,27 @@ const StepVehicle = () => {
         taxNumber: session.taxNumber || session.vehicleSession?.vehicle?.taxNumber || '',
         customFields: session.customFields || session.vehicleSession?.vehicle?.customFields || {},
     });
+    // Only vehicle types that are switched on AND made for the service the driver chose
+    // (taxi / outstation -> taxi vehicles, delivery -> delivery vehicles, pooling -> pooling vehicles; 'both' fits all)
+    const selectableVehicleTypes = vehicleTypes.filter((type) => {
+        if (type?.active === false || Number(type?.status ?? 1) === 0) return false;
+        const transport = String(type?.transport_type || 'taxi').toLowerCase();
+        const chosen = (Array.isArray(formData?.serviceCategories) && formData.serviceCategories.length
+            ? formData.serviceCategories
+            : [formData?.registerFor || 'taxi']).map((item) => String(item).toLowerCase());
+        return chosen.every((service) => {
+            const allowed = service === 'delivery' ? ['delivery', 'both'] : service === 'pooling' ? ['pooling', 'both'] : ['taxi', 'both'];
+            return allowed.includes(transport);
+        });
+    });
+    // a vehicle type picked earlier that no longer fits the chosen service is cleared (so it cannot be saved by mistake)
+    useEffect(() => {
+        if (!formData.vehicleTypeId || vehicleTypes.length === 0) return;
+        if (!selectableVehicleTypes.some((type) => String(type._id || type.id) === String(formData.vehicleTypeId))) {
+            setFormData((p) => ({ ...p, vehicleTypeId: '' }));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [vehicleTypes, formData.serviceCategories, formData.registerFor]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const trimmedModel = String(formData.model || '').trim();
@@ -602,7 +623,7 @@ const StepVehicle = () => {
                                                      <div key={i} className="h-32 bg-slate-50/50 rounded-2xl animate-pulse" />
                                                  ))
                                              ) : (
-                                                 vehicleTypes.map((type) => (
+                                                 selectableVehicleTypes.map((type) => (
                                                      <button
                                                          key={type._id || type.id}
                                                          type="button"

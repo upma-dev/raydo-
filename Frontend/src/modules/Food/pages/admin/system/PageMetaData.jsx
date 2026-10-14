@@ -29,6 +29,7 @@ const seoPages = [
 ]
 
 export default function PageMetaDataPageMetaData() {
+  const companyName = useCompanyName() || "Raydo"
   const [searchQuery, setSearchQuery] = useState("")
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)

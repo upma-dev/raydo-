@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../../../utils/asyncHandler.js';
-import { authenticateOrResolveUser } from '../../middlewares/authMiddleware.js';
+import { authenticateOrResolveUser, authenticateOptional } from '../../middlewares/authMiddleware.js';
+import { authRateLimiter } from '../../../../middleware/rateLimit.js';
 import {
   cancelMyBusBooking,
   createBusBookingOrder,
@@ -74,13 +75,13 @@ userRouter.get('/rental-bookings', authenticateOrResolveUser(['user']), asyncHan
 userRouter.get('/rental-bookings/active', authenticateOrResolveUser(['user']), asyncHandler(getMyActiveRentalBooking));
 userRouter.post('/rental-bookings/:id/end', authenticateOrResolveUser(['user']), asyncHandler(endMyActiveRentalRide));
 userRouter.post('/rental-bookings/:id/location', authenticateOrResolveUser(['user']), asyncHandler(updateMyActiveRentalLocation));
-userRouter.post('/register', asyncHandler(registerUser));
-userRouter.post('/signup', asyncHandler(signupUser));
-userRouter.post('/login', asyncHandler(loginUser));
+userRouter.post('/register', authRateLimiter, asyncHandler(registerUser));
+userRouter.post('/signup', authRateLimiter, asyncHandler(signupUser));
+userRouter.post('/login', authRateLimiter, asyncHandler(loginUser));
 userRouter.post('/profile-image', asyncHandler(uploadUserProfileImage));
-userRouter.post('/auth/send-otp', asyncHandler(startUserOtpRequest));
-userRouter.post('/auth/verify-otp', asyncHandler(verifyUserOtpRequest));
-userRouter.post('/otp-login', asyncHandler(verifyUserPhoneForOtpLogin));
+userRouter.post('/auth/send-otp', authRateLimiter, asyncHandler(startUserOtpRequest));
+userRouter.post('/auth/verify-otp', authRateLimiter, asyncHandler(verifyUserOtpRequest));
+userRouter.post('/otp-login', authRateLimiter, asyncHandler(verifyUserPhoneForOtpLogin));
 userRouter.get('/me', authenticateOrResolveUser(['user']), asyncHandler(getCurrentUser));
 userRouter.patch('/me', authenticateOrResolveUser(['user']), asyncHandler(updateCurrentUser));
 userRouter.get('/subscriptions/plans', authenticateOrResolveUser(['user']), asyncHandler(getAvailableSubscriptionPlans));
@@ -102,9 +103,9 @@ userRouter.get('/wallet/phonepe/status/:merchantTransactionId', authenticateOrRe
 userRouter.post('/rental-advance/razorpay/order', authenticateOrResolveUser(['user']), asyncHandler(createRentalAdvancePaymentOrder));
 userRouter.post('/rental-advance/razorpay/verify', authenticateOrResolveUser(['user']), asyncHandler(verifyRentalAdvancePayment));
 userRouter.post('/rental-advance/wallet', authenticateOrResolveUser(['user']), asyncHandler(payRentalAdvanceWithWallet));
-userRouter.get('/buses/routes', authenticateOrResolveUser(['user']), asyncHandler(getBusRouteSuggestions));
-userRouter.get('/buses/search', authenticateOrResolveUser(['user']), asyncHandler(searchBuses));
-userRouter.get('/buses/:id/seats', authenticateOrResolveUser(['user']), asyncHandler(getBusSeatLayout));
+userRouter.get('/buses/routes', authenticateOptional(['user']), asyncHandler(getBusRouteSuggestions));
+userRouter.get('/buses/search', authenticateOptional(['user']), asyncHandler(searchBuses));
+userRouter.get('/buses/:id/seats', authenticateOptional(['user']), asyncHandler(getBusSeatLayout));
 userRouter.get('/bus-bookings', authenticateOrResolveUser(['user']), asyncHandler(listMyBusBookings));
 userRouter.get('/bus-bookings/:id', authenticateOrResolveUser(['user']), asyncHandler(getMyBusBookingById));
 userRouter.post('/bus-bookings/:id/review', authenticateOrResolveUser(['user']), asyncHandler(submitMyBusBookingReview));
@@ -112,8 +113,8 @@ userRouter.post('/bus-bookings/order', authenticateOrResolveUser(['user']), asyn
 userRouter.post('/bus-bookings/verify', authenticateOrResolveUser(['user']), asyncHandler(verifyBusBookingPayment));
 userRouter.post('/bus-bookings/:id/cancel', authenticateOrResolveUser(['user']), asyncHandler(cancelMyBusBooking));
 
-userRouter.get('/pooling/search', authenticateOrResolveUser(['user']), asyncHandler(searchPoolingRoutes));
-userRouter.get('/pooling/routes/:id', authenticateOrResolveUser(['user']), asyncHandler(getPoolingRouteDetails));
+userRouter.get('/pooling/search', authenticateOptional(['user']), asyncHandler(searchPoolingRoutes));
+userRouter.get('/pooling/routes/:id', authenticateOptional(['user']), asyncHandler(getPoolingRouteDetails));
 userRouter.post('/pooling/bookings/order', authenticateOrResolveUser(['user']), asyncHandler(createPoolingBookingOrder));
 userRouter.post('/pooling/bookings/verify', authenticateOrResolveUser(['user']), asyncHandler(verifyPoolingBookingPayment));
 userRouter.post('/pooling/bookings', authenticateOrResolveUser(['user']), asyncHandler(createPoolingBooking));

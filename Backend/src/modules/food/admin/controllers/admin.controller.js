@@ -677,7 +677,7 @@ export async function updateSupportTicketController(req, res, next) {
 
 export async function getPendingRestaurants(req, res, next) {
     try {
-        const pending = await adminService.getPendingRestaurants();
+        const pending = await adminService.getPendingRestaurants(req.query || {});
         res.status(200).json({
             success: true,
             message: 'Pending restaurants fetched successfully',
@@ -1463,32 +1463,49 @@ export async function processRefund(req, res, next) {
             return res.status(400).json({ success: false, message: 'Invalid order id' });
         }
 
-        // This is a stub for the actual refund logic.
-        // We will assume adminService.processRefund exists and handles the refund.
         const updated = await adminService.processRefund(orderId, refundAmount, { deductFromRestaurant: deductFromRestaurant === true || deductFromRestaurant === 'true' });
 
-        // Let's add the push notification here if we have access to the user ID
-        // First we need to get the order to find the user ID
-        const order = await mongoose.model('FoodOrder').findById(orderId).lean();
-
-        if (order && order.userId) {
-            const { notifyOwnersSafely } = await import('../../notifications/firebase.service.js');
+        // Only tell the customer when the money has really been sent. A refund parked for a manual payout notifies the
+        // customer itself once the admin records it.
+        const refund = updated.refund || {};
+        const order = updated.order;
+        if (refund.status === 'processed' && order?.userId) {
+            const { notifyOwnersSafely } = await import('../../orders/services/order.helpers.js');
             await notifyOwnersSafely(
                 [{ ownerType: 'USER', ownerId: order.userId }],
                 {
                     title: 'Refund Processed! 💸',
-                    body: `Your refund of ₹${refundAmount || order.totalAmount || order.total || 0} for Order #${order.orderId} has been processed successfully.`,
+                    body: `Your refund of ₹${refund.amount} for Order #${order.order_id || order._id} has been processed successfully.`,
                     image: 'https://i.ibb.co/5GzXz7r/Raydo-Brand-Image.png',
                     data: {
                         type: 'refund_processed',
-                        orderId: String(order.orderId),
+                        orderId: String(order.order_id || order._id),
                         orderMongoId: String(order._id)
                     }
                 }
             );
         }
 
-        res.status(200).json({ success: true, message: 'Refund processed successfully', data: updated });
+        const message = refund.status === 'manual_pending'
+            ? 'Refund is waiting for the manual payout. Pay it from the Razorpay dashboard and record it, or refund via API.'
+            : 'Refund processed successfully';
+        res.status(200).json({ success: true, message, data: updated });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function decideRefundRequest(req, res, next) {
+    try {
+        const { orderId } = req.params;
+        if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
+            return res.status(400).json({ success: false, message: 'Invalid order id' });
+        }
+        const { approve, amount, deductFromRestaurant, note } = req.body || {};
+        const data = await adminService.decideRefundRequest(orderId, {
+            approve: approve === true || approve === 'true', amount, deductFromRestaurant, note,
+        }, req.user?.userId);
+        res.status(200).json({ success: true, message: `Refund request ${data.status}`, data });
     } catch (error) {
         next(error);
     }

@@ -21,16 +21,17 @@ const services = [
     tag: '50% cheaper',
     tagColor: 'bg-emerald-50 text-emerald-600 border-emerald-100',
   },
-  {
-    id: 'airport',
-    title: 'Airport Cab',
-    sub: 'On-time airport transfers',
-    img: imgAirport,
-    path: '/cab/airport',
-    accent: 'bg-[linear-gradient(135deg,#EFF6FF_0%,#DBEAFE_100%)]',
-    tag: 'Fixed fare',
-    tagColor: 'bg-blue-50 text-blue-600 border-blue-100',
-  },
+  // AIRPORT Cab disabled for now:
+  // {
+  //   id: 'airport',
+  //   title: 'Airport Cab',
+  //   sub: 'On-time airport transfers',
+  //   img: imgAirport,
+  //   path: '/cab/airport',
+  //   accent: 'bg-[linear-gradient(135deg,#EFF6FF_0%,#DBEAFE_100%)]',
+  //   tag: 'Fixed fare',
+  //   tagColor: 'bg-blue-50 text-blue-600 border-blue-100',
+  // },
   {
     id: 'spiritual',
     title: 'Spiritual Trips',

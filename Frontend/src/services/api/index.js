@@ -1003,6 +1003,8 @@ export const adminAPI = {
     apiClient.get(`/food/admin/franchise/applications/${String(id)}`, { contextModule: "admin" }),
   updateFranchiseApplicationStatus: (id, body) =>
     apiClient.patch(`/food/admin/franchise/applications/${String(id)}/status`, body ?? {}, { contextModule: "admin" }),
+  decideFranchiseRequest: (id, requestId, body) =>
+    apiClient.post(`/food/admin/franchise/applications/${String(id)}/requests/${String(requestId)}`, body ?? {}, { contextModule: "admin" }),
   syncFranchiseSubAdmin: (id, body = {}) =>
     apiClient.post(`/food/admin/franchise/applications/${String(id)}/subadmin`, body, { contextModule: "admin" }),
   updateFranchiseCommission: (id, body) =>
@@ -1045,6 +1047,50 @@ export const adminAPI = {
     apiClient.post(`/food/admin/franchise/applications/${String(id)}/activate`, {}, { contextModule: "admin" }),
   restoreFranchise: (id) =>
     apiClient.post(`/food/admin/franchise/applications/${String(id)}/restore`, {}, { contextModule: "admin" }),
+  terminateFranchise: (id, reason) =>
+    apiClient.post(`/food/admin/franchise/applications/${String(id)}/terminate`, { reason }, { contextModule: "admin" }),
+  changeFranchiseTerritory: (id, body) =>
+    apiClient.post(`/food/admin/franchise/applications/${String(id)}/territory`, body ?? {}, { contextModule: "admin" }),
+
+  /** Franchise finance: earnings, platform commission, fees & deposit (amounts are always calculated on the server) */
+  getFranchiseFinanceSummary: (params = {}) =>
+    apiClient.get("/food/admin/franchise/finance/summary", { params, contextModule: "admin" }),
+  getFranchiseFinance: (id, params = {}) =>
+    apiClient.get(`/food/admin/franchise/applications/${String(id)}/finance`, { params, contextModule: "admin" }),
+  getFranchiseFinanceEntries: (id, params = {}) =>
+    apiClient.get(`/food/admin/franchise/applications/${String(id)}/finance/entries`, { params, contextModule: "admin" }),
+  getFranchiseCharges: (id) =>
+    apiClient.get(`/food/admin/franchise/applications/${String(id)}/charges`, { contextModule: "admin" }),
+  confirmFranchiseChargePayment: (chargeId, body) =>
+    apiClient.post(`/food/admin/franchise/charges/${String(chargeId)}/confirm-payment`, body ?? {}, { contextModule: "admin" }),
+  waiveFranchiseCharge: (chargeId, body) =>
+    apiClient.post(`/food/admin/franchise/charges/${String(chargeId)}/waive`, body ?? {}, { contextModule: "admin" }),
+  updateFranchiseChargeAmount: (chargeId, body) =>
+    apiClient.patch(`/food/admin/franchise/charges/${String(chargeId)}`, body ?? {}, { contextModule: "admin" }),
+  refundFranchiseDeposit: (chargeId, body) =>
+    apiClient.post(`/food/admin/franchise/charges/${String(chargeId)}/refund`, body ?? {}, { contextModule: "admin" }),
+  deductFranchiseDeposit: (chargeId, body) =>
+    apiClient.post(`/food/admin/franchise/charges/${String(chargeId)}/deduct`, body ?? {}, { contextModule: "admin" }),
+  getFranchiseEffectiveCommission: (id) =>
+    apiClient.get(`/food/admin/franchise/applications/${String(id)}/commission/effective`, { contextModule: "admin" }),
+  getFranchiseCommissionRules: (scope, scopeId) =>
+    apiClient.get(`/food/admin/franchise/commission-rules/${scope}${scopeId ? `/${String(scopeId)}` : ""}`, { contextModule: "admin" }),
+  createFranchiseCommissionRule: (scope, scopeId, body) =>
+    apiClient.post(`/food/admin/franchise/commission-rules/${scope}${scopeId ? `/${String(scopeId)}` : ""}`, body ?? {}, { contextModule: "admin" }),
+  getFranchiseAudit: (id, params = {}) =>
+    apiClient.get(`/food/admin/franchise/applications/${String(id)}/audit`, { params, contextModule: "admin" }),
+  getFranchiseReconciliation: (id) =>
+    apiClient.get(`/food/admin/franchise/applications/${String(id)}/reconcile`, { contextModule: "admin" }),
+  fixFranchiseReconciliation: (id, reason) =>
+    apiClient.post(`/food/admin/franchise/applications/${String(id)}/reconcile`, { reason }, { contextModule: "admin" }),
+  getFranchiseTerritories: () =>
+    apiClient.get("/food/admin/franchise/territories", { contextModule: "admin" }),
+  getFranchiseZoneOptions: () =>
+    apiClient.get("/food/admin/franchise/territories/zones", { contextModule: "admin" }),
+  createFranchiseTerritory: (body) =>
+    apiClient.post("/food/admin/franchise/territories", body ?? {}, { contextModule: "admin" }),
+  updateFranchiseTerritory: (territoryId, body) =>
+    apiClient.patch(`/food/admin/franchise/territories/${String(territoryId)}`, body ?? {}, { contextModule: "admin" }),
 
   /** Global settings: one screen for Food + Taxi (brand, contact, colours, legal text) */
   getGlobalSettings: () =>
@@ -1056,6 +1102,11 @@ export const adminAPI = {
     apiClient.post(`/food/admin/orders/${String(orderId)}/cancel`, body ?? {}, { contextModule: "admin" }),
   rejectOrder: (orderId, reason = "") =>
     apiClient.post(`/food/admin/orders/${String(orderId)}/cancel`, { reason }, { contextModule: "admin" }),
+  /** Manual Razorpay refund: record that the admin refunded in the Razorpay dashboard / ask the server to refund through the API */
+  markRefundDone: (orderId, body = {}) =>
+    apiClient.post(`/food/admin/orders/${String(orderId)}/refund/manual-done`, body ?? {}, { contextModule: "admin" }),
+  refundViaApi: (orderId) =>
+    apiClient.post(`/food/admin/orders/${String(orderId)}/refund/via-api`, {}, { contextModule: "admin" }),
   processRefund: (orderId, body = {}) =>
     apiClient.post(`/food/admin/orders/${String(orderId)}/refund`, body ?? {}, { contextModule: "admin" }),
   /** Order cancellation rules (restaurant accept timeout, customer cancel window) */
@@ -2997,6 +3048,40 @@ export const franchiseAPI = {
   /** Logged-in franchise partner: its own dashboard (no params) and its taxi data */
   getMyDashboard: () =>
     apiClient.get("/franchise/partner-dashboard"),
+  /** Own earnings / platform commission / wallet / fee & deposit (franchise id comes from the login token) */
+  getMyFinance: (params = {}) =>
+    apiClient.get("/franchise/finance", { params }),
+  /** Food riders (delivery partners) of the franchise's zone */
+  getRiders: (params = {}) =>
+    apiClient.get("/franchise/food/riders", { params }),
+  getRider: (id) =>
+    apiClient.get(`/franchise/food/riders/${String(id)}`),
+  decideRider: (id, action, body = {}) =>
+    apiClient.post(`/franchise/food/riders/${String(id)}/${action}`, body),
+  /** Own profile + requests to admin (zone change, deactivate account) */
+  getProfile: () =>
+    apiClient.get("/franchise/profile"),
+  getIssues: (params = {}) =>
+    apiClient.get("/franchise/issues", { params }),
+  respondIssue: (source, id, body) =>
+    apiClient.patch(`/franchise/issues/${source}/${id}`, body ?? {}),
+  createRequest: (body) =>
+    apiClient.post("/franchise/requests", body ?? {}),
+  /** Delivery fee slabs of the franchise's own food zone */
+  getDeliveryFees: () =>
+    apiClient.get("/franchise/food/delivery-fees"),
+  saveDeliveryFees: (body) =>
+    apiClient.put("/franchise/food/delivery-fees", body ?? {}),
+  resetDeliveryFees: () =>
+    apiClient.delete("/franchise/food/delivery-fees"),
+  /** Payments of the franchise's food orders (read-only) */
+  getFoodPayments: (params = {}) =>
+    apiClient.get("/franchise/food/payments", { params }),
+  /** Taxi drivers of the franchise's taxi zone */
+  getTaxiDriver: (id) =>
+    apiClient.get(`/franchise/taxi/drivers/${String(id)}`),
+  decideTaxiDriver: (id, action, body = {}) =>
+    apiClient.post(`/franchise/taxi/drivers/${String(id)}/${action}`, body),
   getTaxiOverview: () =>
     apiClient.get("/franchise/taxi/overview"),
   getTaxiRides: (params = {}) =>
@@ -3027,6 +3112,12 @@ export const franchisePartnerAPI = {
     apiClient.get("/food/admin/zones", { params, contextModule: "franchise" }),
   getOrders: (params = {}) =>
     apiClient.get("/food/admin/orders", { params, contextModule: "franchise" }),
+  /** Stuck / delayed order of the franchise zone: cancel it (customer refund is then done manually) */
+  cancelOrder: (orderId, reason = "") =>
+    apiClient.post(`/food/admin/orders/${String(orderId)}/cancel`, { reason }, { contextModule: "franchise" }),
+  /** Record that the franchise refunded the customer by hand (UPI / bank). referenceId = the transaction reference */
+  markRefundDone: (orderId, body = {}) =>
+    apiClient.post(`/food/admin/orders/${String(orderId)}/refund/manual-done`, body ?? {}, { contextModule: "franchise" }),
   getPendingFoodApprovals: (params = {}) =>
     apiClient.get("/food/admin/foods/pending-approvals", { params, contextModule: "franchise" }),
   getAddons: (params = {}) =>

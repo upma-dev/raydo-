@@ -2162,52 +2162,13 @@ const serializeDriverScheduledRide = (ride = {}, currentDriverId = "") => ({
   updatedAt: ride.updatedAt || null,
 });
 
-export const registerDriver = async (req, res) => {
-  const { name, phone, password, vehicleType, location } = req.body;
-
-  if (!name || !phone || !password || !vehicleType || !location) {
-    throw new ApiError(
-      400,
-      "name, phone, password, vehicleType and location are required",
-    );
-  }
-
-  const existingDriver = await Driver.findOne({ phone });
-
-  if (existingDriver) {
-    throw new ApiError(409, "Phone number is already registered");
-  }
-
-  const coordinates = normalizePoint(location, "location");
-  const zone = await findZoneByPickup(coordinates);
-
-  const driver = await Driver.create({
-    name,
-    phone,
-    password: await hashPassword(password),
-    vehicleType,
-    approve: true,
-    status: "approved",
-    zoneId: zone?._id || null,
-    location: toPoint(coordinates, "location"),
-  });
-
-  const token = signAccessToken({ sub: String(driver._id), role: "driver" });
-
-  res.status(201).json({
-    success: true,
-    data: {
-      token,
-      driver: {
-        id: driver._id,
-        name: driver.name,
-        phone: driver.phone,
-        vehicleType: driver.vehicleType,
-        rating: driver.rating,
-        status: driver.status,
-      },
-    },
-  });
+/**
+ * DISABLED. This old endpoint created a driver that was already APPROVED, with no OTP, no documents and no admin check,
+ * and handed back a login token - anybody could become an approved driver. Drivers register through the onboarding flow
+ * (OTP -> personal -> vehicle -> documents) and are approved by the admin.
+ */
+export const registerDriver = async () => {
+  throw new ApiError(410, "This registration is no longer available. Please register through the driver app (OTP and documents).");
 };
 
 export const loginDriver = async (req, res) => {
@@ -2221,6 +2182,13 @@ export const loginDriver = async (req, res) => {
 
   if (!driver || !(await comparePassword(password, driver.password))) {
     throw new ApiError(401, "Invalid phone or password");
+  }
+
+  if (
+    driver.deletedAt ||
+    ["blocked", "inactive", "suspended", "deleted"].includes(String(driver.status || "").toLowerCase())
+  ) {
+    throw new ApiError(403, "This account is not active. Please contact support.");
   }
 
   if (

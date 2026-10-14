@@ -280,19 +280,28 @@ export function isPushRingEvent(payload = {}) {
     return true;
   }
 
-  // 3. New Order Ring Event (for Restaurant & User)
-  if (
+  const moduleName = normalizeModuleFromPath();
+
+  // The customer never hears an order ring (chat gets its own soft tone above)
+  if (moduleName === 'user') {
+    return false;
+  }
+
+  // 3. New Order Ring Event: the restaurant rings ONLY for a new order, nothing else
+  const isNewOrder =
     type.includes('new_order') ||
     type.includes('order_created') ||
     type.includes('place_order') ||
     title.includes('new order') ||
-    title.includes('order received')
-  ) {
+    title.includes('order received');
+  if (moduleName === 'restaurant') {
+    return isNewOrder;
+  }
+  if (isNewOrder) {
     return true;
   }
 
   // 4. Delivery Partner Ring Event (when a new order is offered/assigned to driver)
-  const moduleName = normalizeModuleFromPath();
   if (moduleName === 'delivery') {
     if (
       type.includes('order_assigned') ||
@@ -752,6 +761,19 @@ function attachServiceWorkerMessageListener() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("message", (event) => {
       const data = isRecord(event?.data) ? event.data : null;
+      // Tapping a notification while the app is open: move inside the app without a page reload
+      if (data?.type === "notification-click-navigate" && typeof data.url === "string" && data.url.startsWith("/")) {
+        try {
+          const current = `${window.location.pathname}${window.location.search}`;
+          if (current !== data.url) {
+            window.history.pushState({}, "", data.url);
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }
+        } catch {
+          window.location.assign(data.url);
+        }
+        return;
+      }
       if (!data || data.type !== "push-notification-received") return;
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         pushDebugLog(PUSH_DEBUG_PREFIX, "Skipping page notification render for SW relay because tab is hidden");
@@ -791,7 +813,19 @@ function attachServiceWorkerMessageListener() {
   serviceWorkerMessageListenerAttached = true;
 }
 
+const MODULE_OWNER_TYPE = { restaurant: "RESTAURANT", delivery: "DELIVERY_PARTNER", user: "USER", admin: "ADMIN" };
+
+// One browser can be logged in as restaurant, rider and customer at once and shares ONE push token and service worker.
+// A push addressed to another role must never ring or pop up in this tab.
+function isPayloadForThisModule(payload = {}) {
+  const target = String(payload?.data?.ownerType || "").toUpperCase();
+  if (!target) return true;
+  const mine = MODULE_OWNER_TYPE[normalizeModuleFromPath()];
+  return !mine || mine === target;
+}
+
 function scheduleForegroundNotification(payload) {
+  if (!isPayloadForThisModule(payload)) return;
   // Keep message handlers fast to avoid Chrome [Violation] warnings.
   // Defer heavier work (toast, audio) to idle time / next tick.
   const run = () => showForegroundNotification(payload);

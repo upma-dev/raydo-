@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { config } from '../../config/env.js';
 
@@ -8,8 +9,11 @@ export const signAccessToken = (payload) => {
 };
 
 export const signRefreshToken = (payload) => {
+    // jwtid makes every refresh token unique: two logins of the same person in the same second used to produce the
+    // SAME token and the second login failed on the unique token index
     return jwt.sign(payload, config.jwtRefreshSecret, {
-        expiresIn: config.jwtRefreshExpiresIn
+        expiresIn: config.jwtRefreshExpiresIn,
+        jwtid: crypto.randomUUID()
     });
 };
 

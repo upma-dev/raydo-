@@ -215,6 +215,11 @@ const IntercityDetails = () => {
   const [driverFetchError, setDriverFetchError] = useState('');
   const [isProceeding, setIsProceeding] = useState(false);
 
+  // The server measures the road distance on the map and prices the trip (so the amount shown is the amount charged)
+  const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
+
   const [googlePickupSuggestions, setGooglePickupSuggestions] = useState([]);
   const [googleDropSuggestions, setGoogleDropSuggestions] = useState([]);
   const [isFetchingPickupSuggestions, setIsFetchingPickupSuggestions] = useState(false);
@@ -309,9 +314,50 @@ const IntercityDetails = () => {
     };
   }, [effectivePickupCoords, serviceLocationId, vehicle]);
 
-  if (!fromCity || !vehicle) {
-    return null;
-  }
+  const requestQuote = async (pickupPoint, dropPoint) => {
+    const response = await api.post('/rides/intercity-quote', {
+      packageId: vehicle?.packageId || '',
+      vehicleTypeId: vehicle?.vehicleTypeId || '',
+      tripType: state.tripType || 'One Way',
+      pickup: pickupPoint,
+      drop: dropPoint,
+      service_location_id: serviceLocationId || undefined,
+    });
+    return unwrapApiPayload(response);
+  };
+
+  useEffect(() => {
+    const pickupPoint = pickupCoords || state.pickupCoords;
+    if (!vehicle?.packageId || !Array.isArray(pickupPoint) || !Array.isArray(dropCoords)) {
+      setQuote(null);
+      setQuoteError('');
+      setQuoteLoading(false);
+      return undefined;
+    }
+
+    let active = true;
+    setQuoteLoading(true);
+    setQuoteError('');
+    const timer = setTimeout(async () => {
+      try {
+        const result = await requestQuote(pickupPoint, dropCoords);
+        if (active) setQuote(result);
+      } catch (error) {
+        if (active) {
+          setQuote(null);
+          setQuoteError(error?.message || 'Could not work out the distance and fare. Please try again.');
+        }
+      } finally {
+        if (active) setQuoteLoading(false);
+      }
+    }, 500);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupCoords, state.pickupCoords, dropCoords, vehicle?.packageId, vehicle?.vehicleTypeId, state.tripType]);
 
   const handleContinue = async () => {
     if (!pickup.trim() || !drop.trim()) {
@@ -319,8 +365,40 @@ const IntercityDetails = () => {
       return;
     }
 
-    const nextPickupCoords = pickupCoords || getCityCoords(fromCity);
-    const nextDropCoords = dropCoords || getCityCoords(toCity);
+    let nextPickupCoords = pickupCoords || state.pickupCoords || null;
+    let nextDropCoords = dropCoords;
+    if (!Array.isArray(nextPickupCoords)) {
+      nextPickupCoords = await resolveCoordsFromAddress(pickup, isLoaded);
+    }
+    if (!Array.isArray(nextDropCoords)) {
+      nextDropCoords = await resolveCoordsFromAddress(drop, isLoaded);
+    }
+    if (!Array.isArray(nextPickupCoords) || !Array.isArray(nextDropCoords)) {
+      alert('Please choose the pickup and drop from the suggestions (or on the map) so we can measure the exact distance.');
+      return;
+    }
+
+    // Distance and fare from the server (the same calculation the booking will use)
+    let finalQuote = quote;
+    if (vehicle?.packageId) {
+      try {
+        setIsProceeding(true);
+        finalQuote = await requestQuote(nextPickupCoords, nextDropCoords);
+        setQuote(finalQuote);
+      } catch (error) {
+        setIsProceeding(false);
+        setQuoteError(error?.message || 'Could not work out the distance and fare.');
+        alert(error?.message || 'Could not work out the distance and fare. Please try again.');
+        return;
+      }
+    }
+    const quotedFare = finalQuote?.fare ? Number(finalQuote.fare) : Number(state.fare || 0);
+    // keep the same bid head-room the app chose on the vehicle page, applied to the real fare
+    const headroom = Number(state.fare) > 0 ? Number(state.userMaxBidFare || state.fare) / Number(state.fare) : 1;
+    const bidStep = Math.max(1, Number(state.bidStepAmount || 10));
+    const quotedBidCeiling = vehicle.supportsBidding
+      ? Math.max(quotedFare, Math.ceil((quotedFare * headroom) / bidStep) * bidStep)
+      : quotedFare;
     const bookingId = state.bookingId || generateIntercityBookingId();
     let availabilitySnapshot = {
       totalDrivers: liveDriverCount,
@@ -358,6 +436,11 @@ const IntercityDetails = () => {
 
     const nextState = {
       ...state,
+      fare: quotedFare,
+      baseFare: quotedFare,
+      distance: finalQuote ? Number(finalQuote.distanceKm || 0) : Number(state.distance || 0),
+      estimatedDistanceMeters: finalQuote ? Number(finalQuote.distanceMeters || 0) : Number(state.estimatedDistanceMeters || 0),
+      estimatedDurationMinutes: finalQuote ? Number(finalQuote.durationMinutes || 0) : Number(state.estimatedDurationMinutes || 0),
       bookingId,
       pickup,
       drop,
@@ -372,9 +455,7 @@ const IntercityDetails = () => {
       transport_type: 'intercity',
       bookingMode: vehicle.supportsBidding ? 'bidding' : (state.bookingMode || 'normal'),
       bidStepAmount: Number(state.bidStepAmount || 10),
-      userMaxBidFare: vehicle.supportsBidding
-        ? Number(state.userMaxBidFare || state.fare || 0)
-        : Number(state.fare || 0),
+      userMaxBidFare: quotedBidCeiling,
       intercity: {
         bookingId,
         fromCity,
@@ -382,7 +463,8 @@ const IntercityDetails = () => {
         tripType: state.tripType || 'One Way',
         travelDate: state.date || 'Ride Now',
         passengers: state.passengers || 1,
-        distance: Number(state.distance || 0),
+        distance: finalQuote ? Number(finalQuote.distanceKm || 0) : Number(state.distance || 0),
+        durationMinutes: finalQuote ? Number(finalQuote.durationMinutes || 0) : 0,
         vehicleName: vehicle.name || vehicle.id || 'Intercity Cab',
         packageId: vehicle.packageId || '',
         packageTypeName: vehicle.packageTypeName || 'Intercity',
@@ -734,6 +816,11 @@ const IntercityDetails = () => {
 
     setShowMapPicker(false);
   };
+
+  // every hook has run above, so it is safe to stop here
+  if (!fromCity || !vehicle) {
+    return null;
+  }
 
   return (
     <div 
@@ -1152,6 +1239,48 @@ const IntercityDetails = () => {
 
       {/* Book CTA */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg px-6 pb-10 pt-4 bg-gradient-to-t from-[#FAFBFF] via-[#FAFBFF]/95 to-transparent z-40">
+        {vehicle?.packageId ? (
+          <div className="mb-3 rounded-2xl bg-white/95 px-4 py-3 shadow-lg shadow-slate-200/60 border border-slate-100">
+            {quoteLoading ? (
+              <p className="flex items-center gap-2 text-[12px] font-bold text-slate-500">
+                <LoaderCircle size={16} className="animate-spin text-blue-500" /> Measuring the route on the map...
+              </p>
+            ) : quote ? (
+              <>
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">
+                      {quote.breakdown?.tripType || 'One Way'} · {Number(quote.distanceKm || 0).toFixed(1)} km · {Math.floor(Number(quote.durationMinutes || 0) / 60)}h {Number(quote.durationMinutes || 0) % 60}m
+                    </p>
+                    <p className="mt-1 text-[20px] font-black text-slate-900">Rs {Number(quote.fare || 0).toLocaleString()}</p>
+                  </div>
+                  {quote.distanceSource === 'estimate' ? (
+                    <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase text-amber-700">Approx. distance</span>
+                  ) : null}
+                </div>
+                <div className="mt-2 space-y-1 text-[11px] font-bold text-slate-500">
+                  <div className="flex justify-between"><span>Base fare (first {Number(quote.breakdown?.freeDistance || 0)} km)</span><span>Rs {Number(quote.breakdown?.basePrice || 0)}</span></div>
+                  {Number(quote.breakdown?.distanceCharge || 0) > 0 ? (
+                    <div className="flex justify-between"><span>{Number(quote.breakdown?.extraKm || 0)} km extra x Rs {Number(quote.breakdown?.pricePerKm || 0)}</span><span>Rs {Number(quote.breakdown?.distanceCharge || 0)}</span></div>
+                  ) : null}
+                  {Number(quote.breakdown?.timeCharge || 0) > 0 ? (
+                    <div className="flex justify-between"><span>{Number(quote.breakdown?.extraMinutes || 0)} min extra x Rs {Number(quote.breakdown?.pricePerMinute || 0)}</span><span>Rs {Number(quote.breakdown?.timeCharge || 0)}</span></div>
+                  ) : null}
+                  {Number(quote.breakdown?.tax || 0) > 0 ? (
+                    <div className="flex justify-between"><span>Tax ({Number(quote.breakdown?.taxPercent || 0)}%)</span><span>Rs {Number(quote.breakdown?.tax || 0)}</span></div>
+                  ) : null}
+                  {Number(quote.waiting?.ratePerMinute || 0) > 0 ? (
+                    <div className="flex justify-between text-amber-700"><span>Waiting at pickup: {Number(quote.waiting?.freeMinutes || 0)} min free, then Rs {Number(quote.waiting?.ratePerMinute || 0)}/min (added at the end if you wait)</span></div>
+                  ) : null}
+                </div>
+              </>
+            ) : quoteError ? (
+              <p className="text-[12px] font-bold text-rose-500">{quoteError}</p>
+            ) : (
+              <p className="text-[12px] font-bold text-slate-500">Choose your exact pickup and drop to see the distance and fare.</p>
+            )}
+          </div>
+        ) : null}
         <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl bg-white/95 px-4 py-3 shadow-lg shadow-slate-200/60 border border-slate-100">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">Live Fetching</p>

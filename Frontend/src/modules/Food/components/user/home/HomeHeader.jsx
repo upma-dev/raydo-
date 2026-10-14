@@ -41,7 +41,7 @@ const FOOD_PLACEHOLDERS = [
 ];
 
 const TAXI_PLACEHOLDERS = [
-  'Search "airport cab"',
+  // 'Search "airport cab"',   // airport disabled for now
   'Search "shared taxi"',
   'Search "bike taxi"',
   'Search "rental ride"',

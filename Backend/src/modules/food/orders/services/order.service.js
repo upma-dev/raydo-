@@ -1552,6 +1552,10 @@ export async function listOrdersAdmin(query = {}, adminContext = null) {
       case "refunded":
         filter["payment.status"] = "refunded";
         break;
+      case "refund-pending":
+        // cancelled orders whose money still has to go back to the customer (manual refund waiting, or the automatic one failed)
+        filter["payment.refund.status"] = { $in: ["manual_pending", "failed"] };
+        break;
       case "offline-payments":
         filter["payment.method"] = "cash";
         filter.orderStatus = { $in: ["created", "confirmed", "delivered"] };

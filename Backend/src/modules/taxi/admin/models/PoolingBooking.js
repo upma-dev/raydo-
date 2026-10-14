@@ -79,7 +79,7 @@ const poolingBookingSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ['pending', 'paid', 'failed', 'refunded'],
+      enum: ['pending', 'paid', 'failed', 'refunding', 'refunded'],
       default: 'pending',
     },
     bookingStatus: {
@@ -124,9 +124,24 @@ const poolingBookingSchema = new mongoose.Schema(
         type: Date,
         default: null,
       },
+      refundId: {
+        type: String,
+        default: '',
+        trim: true,
+      },
+      refundedAt: {
+        type: Date,
+        default: null,
+      },
     },
   },
   { timestamps: true },
+);
+
+// One Razorpay payment can only ever make ONE booking (app "verify" and the webhook may both try)
+poolingBookingSchema.index(
+  { 'payment.paymentId': 1 },
+  { unique: true, partialFilterExpression: { 'payment.paymentId': { $type: 'string', $gt: '' } } },
 );
 
 // Franchise that was credited for this booking (see franchiseTaxi.service.js)
@@ -139,7 +154,6 @@ poolingBookingSchema.index({ user: 1 });
 poolingBookingSchema.index({ route: 1 });
 poolingBookingSchema.index({ travelDate: 1 });
 poolingBookingSchema.index({ 'payment.orderId': 1 });
-poolingBookingSchema.index({ 'payment.paymentId': 1 });
 
 export const PoolingBooking =
   mongoose.models.TaxiPoolingBooking ||

@@ -71,7 +71,9 @@ export function createRazorpayOrder(amountPaise, currency = 'INR', receipt = '')
         .create({
             amount: Math.round(amountPaise),
             currency,
-            receipt: receipt || undefined
+            receipt: receipt || undefined,
+            // Capture the money at once. An authorized-but-not-captured payment CANNOT be refunded (Razorpay only voids it after days).
+            payment_capture: 1
         })
         .catch((error) => {
             throw new Error(getRazorpayErrorMessage(error));
@@ -162,6 +164,16 @@ export async function fetchRazorpayPaymentLink(paymentLinkId) {
     if (!instance) throw new Error('Razorpay not configured');
     if (!paymentLinkId) throw new Error('paymentLinkId is required');
     return instance.paymentLink.fetch(String(paymentLinkId)).catch((error) => {
+        throw new Error(getRazorpayErrorMessage(error));
+    });
+}
+
+/** Fetch a Razorpay REFUND (rfnd_...) so a hand-entered refund id can be checked against the real payment. */
+export async function fetchRazorpayRefund(refundId) {
+    const instance = getRazorpayInstance();
+    if (!instance) throw new Error('Razorpay not configured');
+    if (!refundId) throw new Error('refundId is required');
+    return instance.refunds.fetch(String(refundId)).catch((error) => {
         throw new Error(getRazorpayErrorMessage(error));
     });
 }

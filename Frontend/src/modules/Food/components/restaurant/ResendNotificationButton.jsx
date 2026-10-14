@@ -22,9 +22,15 @@ export default function ResendNotificationButton({ orderId, mongoId, onSuccess }
       const response = await restaurantAPI.resendDeliveryNotification(id);
 
       if (response.data?.success) {
-        toast.success(
-          `Notification sent to ${response.data.data?.notifiedCount || 0} delivery partners`,
-        );
+        const sent = response.data.data?.notifiedCount || 0;
+        const connected = response.data.data?.connectedCount;
+        if (sent === 0) {
+          toast.error("No delivery partner is available right now. Please try again in a minute.");
+        } else if (connected === 0) {
+          toast.warning(`Request sent to ${sent} delivery partner(s), but their app is not open or is offline, so they may not see it yet.`);
+        } else {
+          toast.success(`Request sent to ${sent} delivery partner(s)`);
+        }
         // Refresh orders if onSuccess callback is provided
         if (onSuccess) {
            onSuccess();

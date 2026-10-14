@@ -5,6 +5,7 @@ import {
   Store, ShoppingBag, MessageSquare, BusFront,
 } from "lucide-react";
 import { franchiseAPI } from "@food/api";
+import FranchiseFinancePanel from "@food/pages/admin/franchise/finance/FranchiseFinancePanel";
 
 const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const when = (d) => (d ? new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-");
@@ -228,8 +229,11 @@ export function EarningsPage({ dash, modules }) {
   const ledger = (dash.ledger || []).filter((l) => filter === "all" || l.module === filter);
   return (
     <div className="space-y-6">
+      <Card title="Daily earnings & platform commission" icon={IndianRupee}>
+        <FranchiseFinancePanel partner load={(params) => franchiseAPI.getMyFinance(params)} />
+      </Card>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-        <StatCard label="Total earned" value={inr((by.food || 0) + (by.taxi || 0))} icon={TrendingUp} tone="emerald" />
+        <StatCard label="Total credited (net)" value={inr((by.food || 0) + (by.taxi || 0))} sub="After platform commission" icon={TrendingUp} tone="emerald" />
         {modules.includes("food") && <StatCard label="Food earnings" value={inr(by.food)} sub={`${dash.territoryMetrics?.deliveredOrders || 0} delivered orders`} icon={Store} tone="amber" />}
         {modules.includes("taxi") && <StatCard label="Taxi earnings" value={inr(by.taxi)} sub={`${dash.taxi?.rides?.completed || 0} rides`} icon={Car} tone="blue" />}
         <StatCard label="Wallet balance" value={inr(dash.financialSettings?.walletBalance)} sub={`Available ${inr(dash.financialSettings?.availableBalance)}`} icon={Wallet} tone="indigo" />

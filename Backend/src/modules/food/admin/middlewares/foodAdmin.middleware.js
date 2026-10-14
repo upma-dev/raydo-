@@ -43,13 +43,22 @@ export const attachFoodAdminContext = async (req, _res, next) => {
         const { default: FranchiseApplication } = await import('../models/franchiseApplication.model.js');
         const { normalizeModules } = await import('../services/franchisePlan.js');
         const franchise = await FranchiseApplication.findById(context.franchiseId).select('selectedModules accountStatus archived').lean();
-        if (!franchise || franchise.archived || franchise.accountStatus === 'suspended') {
+        if (!franchise || franchise.archived || ['suspended', 'terminated'].includes(franchise.accountStatus)) {
           return next(new ForbiddenError('This franchise account is not active'));
         }
         context.franchiseModules = normalizeModules(franchise.selectedModules);
         if (!context.franchiseModules.includes('food')) {
           return next(new ForbiddenError('Your franchise does not include the Food module'));
         }
+        // A franchise login gets exactly the franchise feature set, whatever is stored on the account
+        // (never '*', zones, platform delivery settings, withdrawals, promotions...). Data is scoped per record
+        // by franchiseScope.middleware.
+        const FRANCHISE_FOOD_PERMISSIONS = ['orders', 'restaurants', 'categories', 'foods', 'earnings', 'dashboard', 'reports'];
+        const stored = new Set((context.permissions || []).map((p) => String(p).replace(/\.(read|write|view|manage)$/, '')));
+        const granted = FRANCHISE_FOOD_PERMISSIONS.filter((p) => stored.has(p) || stored.has('*'));
+        // ".write" = read + write. Bare names count as read-only in the permission parser, which silently
+        // broke every franchise write (add restaurant / food, approve join requests...).
+        context.permissions = (granted.length ? granted : FRANCHISE_FOOD_PERMISSIONS).map((p) => `${p}.write`);
       } catch (err) {
         return next(err);
       }

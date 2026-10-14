@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import ms from 'ms';
 import { FoodOtp } from './otp.model.js';
+import { isMasterOtp as isMasterOtpFor } from './masterOtp.js';
 import { config } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { ValidationError } from '../auth/errors.js';
@@ -150,10 +151,7 @@ export const verifyOtp = async (phone, otp, scope = 'default') => {
         return { valid: false, reason: 'Invalid phone format' };
     }
 
-    const isMasterOtp =
-        otp === '1234' ||
-        otp === '123456' ||
-        (config.staticOtpCode && otp === config.staticOtpCode);
+    const isMasterOtp = isMasterOtpFor(otp, normalizedPhone);
 
     const record = await FoodOtp.findOne({
         phone: normalizedPhone,

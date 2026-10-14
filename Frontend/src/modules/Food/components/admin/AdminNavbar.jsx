@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Menu,
   Search,
@@ -54,6 +54,7 @@ import { adminAPI } from "@food/api";
 import { clearModuleAuth } from "@food/utils/auth";
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings";
 import useAdminNotifications from "@food/hooks/useAdminNotifications";
+import { isGlobalAdminPath } from "@food/utils/adminSidebarMenu";
 import HandoverApprovalModal from "./HandoverApprovalModal";
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -75,7 +76,17 @@ export default function AdminNavbar({ onMenuClick }) {
   const [adminData, setAdminData] = useState(null);
   const [businessSettings, setBusinessSettings] = useState(() => getCachedSettings() || null);
   const searchInputRef = useRef(null);
-  const { items: adminNotifications, dismissOne, clearAll, approveHandover, rejectHandover, approveEmergencyOffline } = useAdminNotifications();
+  const { items: allNotifications, dismissOne, approveHandover, rejectHandover, approveEmergencyOffline } = useAdminNotifications();
+  const { pathname: currentPath } = useLocation();
+  // The Global tab only shows global items (franchise, zones...), the Food tab only food items. A notification belongs
+  // to the tab that owns the page it opens.
+  const onGlobalTab = isGlobalAdminPath(currentPath);
+  const adminNotifications = useMemo(
+    () => allNotifications.filter((i) => isGlobalAdminPath(String(i.path || "")) === onGlobalTab),
+    [allNotifications, onGlobalTab]
+  );
+  // CLEAR only removes what this tab shows, not the other tab's items
+  const clearAll = useCallback(() => { adminNotifications.forEach((i) => dismissOne(i.id)); }, [adminNotifications, dismissOne]);
 
   const handoverCount = useMemo(() => adminNotifications.filter(i => i.category === "handover_approval" || i.isEmergencyOffline).length, [adminNotifications]);
   const approvalCount = useMemo(() => adminNotifications.filter(i => ["restaurant_approval", "delivery_approval", "food_approval", "handover_approval"].includes(i.category) || i.isEmergencyOffline).length, [adminNotifications]);

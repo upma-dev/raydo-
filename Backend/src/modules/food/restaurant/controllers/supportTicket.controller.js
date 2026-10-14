@@ -31,7 +31,11 @@ export const createRestaurantSupportTicketController = async (req, res, next) =>
             return sendError(res, 400, 'Invalid priority');
         }
 
+        const { franchiseIdForRestaurant, notifyFranchiseOfTicket } = await import('../../admin/services/franchiseIssues.service.js');
+        const franchiseId = await franchiseIdForRestaurant(restaurantId);
+        notifyFranchiseOfTicket(franchiseId, `Restaurant issue: ${issueType}`, description);
         const created = await FoodRestaurantSupportTicket.create({
+            franchiseId,
             restaurantId: new mongoose.Types.ObjectId(restaurantId),
             category,
             issueType,

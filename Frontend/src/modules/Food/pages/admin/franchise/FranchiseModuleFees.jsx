@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { adminAPI } from "@food/api";
 import { Settings, Save, Loader2, Percent, DollarSign, CreditCard } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 export default function FranchiseModuleFees() {
   const [moduleFees, setModuleFees] = useState({ food: 50000, taxi: 50000, both: 80000 });
@@ -46,9 +47,8 @@ export default function FranchiseModuleFees() {
     try {
       await adminAPI.updateFranchiseFormConfig({
         moduleFranchiseFees: moduleFees,
-        moduleCommissions: moduleComms,
         paymentDetails: paymentDetails,
-        taxiSettings,
+        taxiSettings: { ...taxiSettings, commissionBase: 'platform_commission' },
       });
       toast.success("🎉 Global Module Onboarding Fees & Rates Saved!");
     } catch (err) {
@@ -69,9 +69,9 @@ export default function FranchiseModuleFees() {
               <Percent className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Module Fees & Commission Settings</h1>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Application Fees & Taxi Rules</h1>
               <p className="text-xs font-semibold text-slate-500 mt-0.5">
-                Configure standard base onboarding fees, commission percentages & bank UPI payment details for partners
+                Fees shown on the public application form, the bank / UPI details applicants pay to, and which taxi services earn for franchises
               </p>
             </div>
           </div>
@@ -101,6 +101,11 @@ export default function FranchiseModuleFees() {
             </button>
           </div>
 
+          <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-slate-700 font-semibold">
+            Franchises created by you use <Link to="/admin/food/franchise-management/territories" className="text-blue-700 underline">Zone pricing</Link> (joining fee + deposit per zone) and the{" "}
+            <Link to="/admin/food/franchise-management/commission" className="text-blue-700 underline">Platform commission</Link> rules. The fees below are only what the public application form shows.
+          </div>
+
           {/* Module Pricing Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
@@ -124,15 +129,6 @@ export default function FranchiseModuleFees() {
                   />
                 </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Default Franchise Commission Rate (%)</label>
-                  <input
-                    type="number"
-                    value={moduleComms[mod.key] ?? 10}
-                    onChange={e => setModuleComms({ ...moduleComms, [mod.key]: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-extrabold bg-white text-slate-900 focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
               </div>
             ))}
           </div>
@@ -161,22 +157,7 @@ export default function FranchiseModuleFees() {
           {/* How taxi franchises earn: dynamic rules */}
           <div className="p-5 rounded-2xl border border-blue-200 bg-blue-50/50 space-y-4">
             <div className="font-extrabold text-slate-900 text-sm">Taxi franchise earning rules</div>
-            <p className="text-slate-600 font-semibold">The taxi commission % above is applied on the base you choose here, only for the services you switch on. Changes apply to rides and bus trips credited from now on.</p>
-            <div>
-              <label className="block font-bold text-slate-700 mb-1.5">Commission is calculated on</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  ['platform_commission', 'What the platform earns', 'Franchise gets the rate % of Raydo\'s commission on the ride / booking (same as food).'],
-                  ['fare', 'What the customer paid', 'Franchise gets the rate % of the ride fare / bus ticket amount.'],
-                ].map(([value, title, desc]) => (
-                  <button key={value} type="button" onClick={() => setTaxiSettings({ ...taxiSettings, commissionBase: value })}
-                    className={`text-left p-4 rounded-xl border-2 transition ${taxiSettings.commissionBase === value ? 'border-blue-600 bg-white shadow' : 'border-slate-200 bg-white/60'}`}>
-                    <div className="font-extrabold text-slate-900">{title}</div>
-                    <div className="text-[11px] font-semibold text-slate-500 mt-1">{desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="text-slate-600 font-semibold">A franchise's taxi earning = what the platform earns on the ride / booking (its commission from the driver), never the fare. Only the services switched on below count. Changes apply to rides and bookings credited from now on.</p>
             <div>
               <label className="block font-bold text-slate-700 mb-1.5">Franchises earn on</label>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

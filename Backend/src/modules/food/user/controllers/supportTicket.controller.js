@@ -41,7 +41,10 @@ export async function createSupportTicketController(req, res, next) {
             }
             doc.restaurantId = new mongoose.Types.ObjectId(body.restaurantId);
         }
+        const { franchiseIdForRestaurant, notifyFranchiseOfTicket } = await import('../../admin/services/franchiseIssues.service.js');
+        doc.franchiseId = await franchiseIdForRestaurant(doc.restaurantId);
         const created = await FoodSupportTicket.create(doc);
+        notifyFranchiseOfTicket(doc.franchiseId, `User issue: ${issueType}`, description);
         return sendResponse(res, 201, 'Ticket created', { ticket: created.toObject() });
     } catch (e) {
         next(e);

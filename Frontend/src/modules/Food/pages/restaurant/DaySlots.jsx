@@ -552,6 +552,7 @@ export default function DaySlots() {
   }
 
   const handleSave = () => {
+    const STORAGE_KEY = "restaurant_outlet_timings"   // was never defined: saving threw a ReferenceError
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
       let allDays = saved ? JSON.parse(saved) : {}

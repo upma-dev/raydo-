@@ -116,7 +116,9 @@ export const getInboxNotifications = async ({ ownerType, ownerId, page = 1, limi
     const filter = {
         ownerType: normalizedOwnerType,
         ownerId: normalizedOwnerId,
-        dismissedAt: null
+        dismissedAt: null,
+        // the gig (shift) feature is discontinued: old shift reminders must not show up any more
+        category: { $nin: ['gig_reminder'] }
     };
 
     const [items, total, unreadCount] = await Promise.all([

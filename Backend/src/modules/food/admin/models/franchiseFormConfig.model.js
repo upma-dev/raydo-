@@ -67,6 +67,13 @@ const franchiseFormConfigSchema = new mongoose.Schema({
             rental: { type: Number, default: 10, min: 0, max: 100 },
         },
     },
+    // Admin switch for the public (automatic) application form. When off, the user side shows closedTitle / closedMessage.
+    // Manual franchises (Create Franchise in admin) are never affected by this switch.
+    applicationSettings: {
+        automaticFormEnabled: { type: Boolean, default: true },
+        closedTitle: { type: String, default: 'Franchise applications are paused', maxlength: 120 },
+        closedMessage: { type: String, default: 'We are not taking new franchise applications right now. Please check back soon.', maxlength: 1000 },
+    },
     paymentDetails: {
         upiId: { type: String, default: '' },
         qrCodeUrl: { type: String, default: '' },

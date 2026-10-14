@@ -297,7 +297,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
   }, []);
 
   return (
-    <div className="relative w-full bg-[#050714] text-white select-none min-h-[440px] sm:min-h-[460px] flex flex-col justify-between pb-3.5 transition-all duration-300">
+    <div className="relative w-full bg-gradient-to-b from-[#0B2F7A] via-[#1450B8] to-[#2B6FE0] text-white select-none min-h-[440px] sm:min-h-[460px] flex flex-col justify-between pb-3.5 transition-all duration-300">
       {/* ========================================================================= */}
       {/* 1. FLOATING MINIMAL HEADER (RAYDO LOGO | LOCATION | WALLET) */}
       {/* ========================================================================= */}
@@ -346,7 +346,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
       {/* 2. FOOD / TAXI SWITCHER BUTTON */}
       {/* ========================================================================= */}
       <div className="relative z-40 flex justify-center mt-0.5 px-3">
-        <div className="bg-black/60 p-1 rounded-full flex items-center gap-1 border border-white/20 backdrop-blur-xl shadow-lg">
+        <div className="bg-[#0B2F7A]/55 p-1 rounded-full flex items-center gap-1 border border-white/20 backdrop-blur-xl shadow-lg">
           <button
             type="button"
             onClick={() => {
@@ -387,16 +387,16 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
           transition={{ duration: loopDuration, repeat: Infinity, ease: 'linear', times: timeTimes }}
           className="absolute inset-0 pointer-events-none"
         >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_25%,#0F1535_0%,#070A18_70%,#03040B_100%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_25%,#3B82F6_0%,#1D5FD1_45%,#0B2F7A_100%)]" />
 
           {/* Ambient Sky Glows */}
-          <div className="absolute top-2 left-1/4 w-72 h-72 rounded-full bg-[#6D28D9]/25 blur-[95px]" />
-          <div className="absolute bottom-4 right-8 w-80 h-80 rounded-full bg-blue-600/18 blur-[105px]" />
+          <div className="absolute top-2 left-1/4 w-72 h-72 rounded-full bg-sky-300/30 blur-[95px]" />
+          <div className="absolute bottom-4 right-8 w-80 h-80 rounded-full bg-blue-300/25 blur-[105px]" />
           <div className="absolute top-8 right-1/3 w-44 h-44 rounded-full bg-[#FFC400]/12 blur-[75px]" />
 
           {/* City Silhouette */}
           <div className="absolute inset-x-0 bottom-12 h-40 opacity-25 flex items-end justify-between px-1 blur-[1px]">
-            <svg className="w-full h-full text-indigo-300" viewBox="0 0 800 180" preserveAspectRatio="none" fill="currentColor">
+            <svg className="w-full h-full text-sky-200" viewBox="0 0 800 180" preserveAspectRatio="none" fill="currentColor">
               <path d="M0 180 L0 100 L30 100 L30 75 L50 75 L50 100 L75 100 L75 180 Z" opacity="0.4" />
               <path d="M70 180 L70 65 L100 65 L100 40 L120 40 L120 65 L150 65 L150 180 Z" opacity="0.6" />
               <path d="M160 180 L160 95 L190 95 L190 180 Z" opacity="0.3" />
@@ -421,7 +421,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
               clipPath: 'polygon(16% 0%, 84% 0%, 100% 100%, 0% 100%)',
             }}
           >
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,rgba(109,40,217,0.22)_0%,transparent_75%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,rgba(125,211,252,0.28)_0%,transparent_75%)]" />
             <svg className="w-full h-full" viewBox="0 0 400 140" preserveAspectRatio="none">
               <line x1="200" y1="0" x2="200" y2="140" stroke="#FFC400" strokeWidth="1.5" strokeDasharray="6 10" opacity="0.35" />
               <line x1="135" y1="0" x2="65" y2="140" stroke="#FFFFFF" strokeWidth="0.8" opacity="0.18" />
@@ -499,7 +499,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
                 y: [0, 0, 0, -8, -8, 0, 0, 0],
               }}
               transition={{ duration: loopDuration, repeat: Infinity, ease: 'easeInOut', times: timeTimes }}
-              className="mb-1 bg-slate-950/90 border border-[#FFC400]/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-[0_0_12px_rgba(255,196,0,0.3)] flex items-center gap-1.5"
+              className="mb-1 bg-[#0B2F7A]/90 border border-[#FFC400]/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-[0_0_12px_rgba(255,196,0,0.3)] flex items-center gap-1.5"
             >
               <div className="w-1.5 h-1.5 rounded-full bg-[#FFC400] animate-ping" />
               <span className="text-[10.5px] font-black text-[#FFC400] tracking-wide whitespace-nowrap">
@@ -518,7 +518,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
                 className="absolute w-8 h-8 rounded-full bg-[#FFC400]/30 blur-sm pointer-events-none"
               />
 
-              <div className="flex items-center gap-1.5 bg-slate-950/85 border border-white/20 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg whitespace-nowrap">
+              <div className="flex items-center gap-1.5 bg-[#0B2F7A]/85 border border-white/20 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg whitespace-nowrap">
                 <div className="w-2.5 h-2.5 rounded-full bg-[#FFC400]" />
                 <span className="text-[10px] font-black text-[#FFC400] tracking-wider uppercase">
                   {currentServiceObj.id === 'parcel' ? 'Sender' : isPool ? 'Pickup A' : 'Pickup'}
@@ -536,13 +536,13 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
                   scale: [0.8, 0.8, 0.8, 0.8, 1, 0.8, 0.8, 0.8],
                 }}
                 transition={{ duration: loopDuration, repeat: Infinity, ease: 'easeInOut', times: timeTimes }}
-                className="mb-1 bg-purple-950/90 border border-purple-400/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg"
+                className="mb-1 bg-[#123E96]/90 border border-sky-300/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg"
               >
-                <span className="text-[10px] font-black text-purple-300">Pickup B</span>
+                <span className="text-[10px] font-black text-sky-200">Pickup B</span>
               </motion.div>
-              <div className="flex items-center gap-1 bg-slate-950/85 border border-purple-500/30 backdrop-blur-md px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap">
-                <div className="w-2 h-2 rounded-full bg-purple-400" />
-                <span className="text-[9px] font-black text-purple-300 uppercase">Pickup B</span>
+              <div className="flex items-center gap-1 bg-[#0B2F7A]/85 border border-sky-300/30 backdrop-blur-md px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap">
+                <div className="w-2 h-2 rounded-full bg-sky-300" />
+                <span className="text-[9px] font-black text-sky-200 uppercase">Pickup B</span>
               </div>
             </div>
           )}
@@ -556,15 +556,15 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
                 scale: [0.8, 0.8, 0.8, 0.8, 0.8, 1, 1, 0.8],
               }}
               transition={{ duration: loopDuration, repeat: Infinity, ease: 'easeInOut', times: timeTimes }}
-              className="mb-1 bg-purple-950/90 border border-purple-400/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1.5"
+              className="mb-1 bg-[#123E96]/90 border border-sky-300/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1.5"
             >
-              <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-              <span className="text-[10px] font-black text-purple-200 whitespace-nowrap">Arriving</span>
+              <div className="w-1.5 h-1.5 rounded-full bg-sky-300 animate-pulse" />
+              <span className="text-[10px] font-black text-sky-100 whitespace-nowrap">Arriving</span>
             </motion.div>
 
-            <div className="flex items-center gap-1.5 bg-slate-950/85 border border-purple-500/30 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg whitespace-nowrap">
-              <div className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse" />
-              <span className="text-[10px] font-black text-purple-300 tracking-wider uppercase">
+            <div className="flex items-center gap-1.5 bg-[#0B2F7A]/85 border border-sky-300/30 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg whitespace-nowrap">
+              <div className="w-2.5 h-2.5 rounded-full bg-sky-300 animate-pulse" />
+              <span className="text-[10px] font-black text-sky-200 tracking-wider uppercase">
                 {currentServiceObj.id === 'parcel' ? 'Receiver' : 'Destination'}
               </span>
             </div>

@@ -209,6 +209,7 @@ export const serializeCategoryForResponse = (category = {}, options = {}) => {
             }
             : null,
         zoneId: category.zoneId || null,
+        zoneName: category?.zoneId?.name || category?.zoneId?.zoneName || category.zoneName || '',
         sortOrder: category.sortOrder || 0,
         itemCount: options.includeCounts ? Number(stats?.totalFoods || 0) : undefined,
         approvedFoodCount: options.includeCounts ? Number(stats?.approvedFoods || 0) : undefined,

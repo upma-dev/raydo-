@@ -328,18 +328,25 @@ export const PocketV2 = () => {
                    </div>
                 </div>
                 <div className="flex items-center gap-2">
-                   <span className="text-base font-black text-black">₹{walletState.availableCashLimit.toFixed(2)}</span>
+                   <span className="text-base font-black text-black">{walletState.totalCashLimit > 0 ? `₹${walletState.availableCashLimit.toFixed(2)}` : 'No limit set'}</span>
                    <ChevronRight className="w-4 h-4 text-gray-300" />
                 </div>
              </button>
 
+             {/* Depositing means handing over COD cash the rider is holding. No cash in hand = nothing to deposit. */}
              <div className="p-5">
-                <button 
-                   onClick={() => setShowDepositPopup(true)}
-                   className="w-full py-4 bg-[#ff8100] hover:bg-orange-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 active:scale-95 transition-all"
-                >
-                   Deposit Cash
-                </button>
+                {walletState.cashInHand > 0 ? (
+                  <button 
+                     onClick={() => setShowDepositPopup(true)}
+                     className="w-full py-4 bg-[#ff8100] hover:bg-orange-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 active:scale-95 transition-all"
+                  >
+                     Deposit Cash (₹{walletState.cashInHand.toFixed(2)} in hand)
+                  </button>
+                ) : (
+                  <div className="w-full py-4 bg-gray-50 border border-gray-100 text-gray-400 rounded-xl font-bold text-xs text-center">
+                     You are not holding any cash. Nothing to deposit.
+                  </div>
+                )}
              </div>
           </div>
 

@@ -17,7 +17,6 @@ import { NewOrderModal } from '@/modules/DeliveryV2/components/modals/NewOrderMo
 import { PickupActionModal } from '@/modules/DeliveryV2/components/modals/PickupActionModal';
 import { DeliveryVerificationModal } from '@/modules/DeliveryV2/components/modals/DeliveryVerificationModal';
 import { OrderSummaryModal } from '@/modules/DeliveryV2/components/modals/OrderSummaryModal';
-import { BookGigModal } from '@/modules/DeliveryV2/components/modals/BookGigModal';
 import { SelfieVerificationModal } from '@/modules/DeliveryV2/components/modals/SelfieVerificationModal';
 import FoodOrderChatScreen from '@food/pages/user/orders/FoodOrderChatScreen';
 import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
@@ -258,7 +257,6 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
   const [showVerification, setShowVerification] = useState(false);
   const [showEmergencyPopup, setShowEmergencyPopup] = useState(false);
-  const [showBookGigModal, setShowBookGigModal] = useState(false);
   const [showSelfieVerificationModal, setShowSelfieVerificationModal] = useState(false);
   const [showGpsModal, setShowGpsModal] = useState(false);
   const [gpsErrorMessage, setGpsErrorMessage] = useState('');
@@ -284,7 +282,6 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   const [partnerUnreadChatCount, setPartnerUnreadChatCount] = useState(0);
   const [searchParams] = useSearchParams();
   const [showEmbeddedChatModal, setShowEmbeddedChatModal] = useState(false);
-  const [gigEarlyLoginInfo, setGigEarlyLoginInfo] = useState({ isOpen: false, startTime: '', message: '' });
 
   // Automatically open embedded chat modal if openChat=true query param is present
   useEffect(() => {
@@ -726,18 +723,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       const details = data?.details;
       const message = data?.message || data?.error || error?.message || 'Failed to go online';
 
-      if (errCode === 'GIG_LOGIN_TOO_EARLY' || String(message).includes('30 minute pehle') || String(message).includes('scheduled time')) {
-        setGigEarlyLoginInfo({
-          isOpen: true,
-          startTime: details?.startTime || 'upcoming shift',
-          message,
-        });
-      } else if (errCode === 'NO_ACTIVE_GIG' || String(message).includes('active gig nahi') || String(message).includes('gig book')) {
-        setShowBookGigModal(true);
-        toast.warning(message);
-      } else {
-        toast.error(message);
-      }
+      toast.error(message);
 
       if (String(message).toLowerCase().includes('selfie')) {
         setShowOnlineSelfiePrompt(true);
@@ -1030,48 +1016,6 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [isOnline, setRiderLocation, isSimMode, publishLiveRiderLocation]);
 
-  // 3.1 Auto-Recovery Effect: Automatically restore ONLINE status when GPS Location is re-enabled during a booked gig or active order!
-  useEffect(() => {
-    if (isOnline) return;
-
-    let isSubscribed = true;
-
-    const checkAndAutoRestoreOnline = () => {
-      if (typeof window === 'undefined' || !navigator.geolocation) return;
-
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          if (!isSubscribed) return;
-          try {
-            const gigRes = await deliveryAPI.getActiveGig();
-            const activeGigData = gigRes?.data?.data?.activeGig || gigRes?.data?.data?.order || null;
-            if (activeGigData && typeof activeGigData === 'object' && (activeGigData._id || activeGigData.id)) {
-              const { latitude: lat, longitude: lng } = pos.coords;
-              setRiderLocation({ lat, lng });
-              setShowGpsModal(false);
-              setGpsErrorMessage('');
-              await goOnline();
-              toast.success('GPS restored! You are back Online 🟢');
-            }
-          } catch (err) {
-            // quiet catch if no active gig or network error
-          }
-        },
-        () => {},
-        { enableHighAccuracy: false, maximumAge: 10000, timeout: 5000 }
-      );
-    };
-
-    // Check immediately on mount/offline transition and poll every 5 seconds
-    checkAndAutoRestoreOnline();
-    const interval = setInterval(checkAndAutoRestoreOnline, 5000);
-
-    return () => {
-      isSubscribed = false;
-      clearInterval(interval);
-    };
-  }, [isOnline, goOnline, setRiderLocation]);
-
   // 1-Hour Periodic Selfie Security Guard: Force re-verification every 60 minutes
   useEffect(() => {
     if (!isOnline) return;
@@ -1085,32 +1029,6 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
     return () => clearInterval(interval);
   }, [isOnline, onlineSelfie]);
-
-  // Periodic active gig check (COMMENTED OUT - direct online mode enabled)
-  /*
-  useEffect(() => {
-    if (!isOnline) return;
-
-    const checkGigStatus = async () => {
-      try {
-        const gigRes = await deliveryAPI.getActiveGig();
-        const activeGig = gigRes?.data?.data?.activeGig;
-        const serverStatus = gigRes?.data?.data?.availabilityStatus;
-
-        if (!activeGig || serverStatus === 'offline') {
-          setOnline(false);
-          localStorage.setItem('delivery_online_status', 'false');
-          toast.warning('Your shift has ended and you have no upcoming active gig. You are now offline.');
-        }
-      } catch (err) {
-        // ignore network error during polling
-      }
-    };
-
-    const interval = setInterval(checkGigStatus, 30000);
-    return () => clearInterval(interval);
-  }, [isOnline, setOnline]);
-  */
 
   // 3.5. Background Ping / Heartbeat
   // If watchPosition stops firing (e.g. app in background or device stationary),
@@ -1206,6 +1124,15 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     if (activeOrder) return;
 
     let cancelled = false;
+
+    // who am I (to skip orders I already rejected / that timed out for me)
+    let deliveryPartnerId = '';
+    try {
+      const stored = JSON.parse(localStorage.getItem('delivery_user') || '{}');
+      deliveryPartnerId = String(stored?._id || stored?.id || stored?.userId || '');
+    } catch {
+      deliveryPartnerId = '';
+    }
 
     const hydrateAvailableOrder = async () => {
       try {
@@ -1917,75 +1844,6 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Gig Early Login Alert Modal */}
-      <AnimatePresence>
-        {gigEarlyLoginInfo.isOpen && (
-          <div className="fixed inset-0 z-[550] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => setGigEarlyLoginInfo((prev) => ({ ...prev, isOpen: false }))}
-            />
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl z-10 text-center space-y-4 border border-orange-100"
-            >
-              <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto text-orange-600 shadow-inner">
-                <Clock className="w-8 h-8 animate-pulse" />
-              </div>
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-orange-500 bg-orange-50 px-3 py-1 rounded-full border border-orange-200">
-                  Shift Timing Alert
-                </span>
-                <h3 className="text-xl font-black text-gray-900 mt-2.5 tracking-tight">Shift Starts at {gigEarlyLoginInfo.startTime}</h3>
-                <p className="text-xs font-semibold text-gray-600 leading-relaxed mt-2">
-                  Aapki booked gig shift <span className="font-bold text-gray-900">{gigEarlyLoginInfo.startTime}</span> baje start hogi. Aap shift start hone ke <span className="font-bold text-orange-600">30 minute pehle</span> hi online ja sakte hain.
-                </p>
-              </div>
-
-              <div className="bg-orange-50/80 border border-orange-200 rounded-2xl p-3.5 text-xs text-orange-950 font-bold flex items-center justify-center gap-2">
-                <Clock className="w-4 h-4 text-orange-600 shrink-0" />
-                <span>Shift shuru hone ke 30 min pehle Online button dabayein</span>
-              </div>
-
-              <div className="pt-2 flex flex-col gap-2">
-                <button
-                  onClick={() => {
-                    setGigEarlyLoginInfo((prev) => ({ ...prev, isOpen: false }));
-                    setShowBookGigModal(true);
-                  }}
-                  className="w-full py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all"
-                >
-                  View Booked Gigs
-                </button>
-                <button
-                  onClick={() => setGigEarlyLoginInfo((prev) => ({ ...prev, isOpen: false }))}
-                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-2xl active:scale-95 transition-all"
-                >
-                  Got it, Thanks
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Gig Booking Modal (Commented Out) */}
-      {/*
-      <BookGigModal
-        isOpen={showBookGigModal}
-        onClose={() => setShowBookGigModal(false)}
-        onGigBooked={() => {
-          setShowBookGigModal(false);
-          setShowSelfieVerificationModal(true);
-        }}
-      />
-      */}
 
       {/* Selfie Verification Modal */}
       <SelfieVerificationModal

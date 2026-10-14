@@ -242,7 +242,32 @@ const isRingEvent = (payload = {}) => {
     return false;
 };
 
-const buildMessagePayload = (payload = {}, token) => {
+const isNewOrderEvent = (payload = {}) => {
+    const data = payload.data || {};
+    const type = String(data.type || payload.type || payload.category || '').toLowerCase();
+    const title = String(payload.title || payload.notification?.title || '').toLowerCase();
+    return (
+        type.includes('new_order') ||
+        type.includes('order_created') ||
+        type.includes('place_order') ||
+        title.includes('new order') ||
+        title.includes('order received')
+    );
+};
+
+/**
+ * Who may hear a RING:
+ *  - RESTAURANT: only a brand-new order (never status updates, delivery-partner-assigned, ready, etc.)
+ *  - USER: never (chat messages only get the soft message tone, handled by the app)
+ *  - everyone else (delivery partner, drivers, admin): the existing rule
+ */
+const ringAllowedFor = (ownerType, payload) => {
+    if (ownerType === 'USER') return false;
+    if (ownerType === 'RESTAURANT') return isNewOrderEvent(payload);
+    return true;
+};
+
+const buildMessagePayload = (payload = {}, token, ownerType = null) => {
     const notification = {
         title: sanitizeString(payload.title || payload.notification?.title || 'New notification'),
         body: sanitizeString(payload.body || payload.notification?.body || '')
@@ -267,7 +292,7 @@ const buildMessagePayload = (payload = {}, token) => {
     }
 
     const targetLink = data.link || payload.link || data.targetUrl || data.url;
-    const ring = isRingEvent(payload);
+    const ring = isRingEvent(payload) && ringAllowedFor(ownerType, payload);
 
     message.android = {
         priority: 'high',
@@ -454,7 +479,7 @@ export const removeFirebaseDeviceToken = async ({ ownerType, ownerId, token, pla
     return { success: true };
 };
 
-export const sendPushNotification = async (tokens, payload = {}) => {
+export const sendPushNotification = async (tokens, payload = {}, { ownerType = null } = {}) => {
     const projectId = getFirebaseProjectId();
     const accessToken = await getFirebaseAccessToken();
     const uniqueTokens = normalizeTokenList(tokens);
@@ -465,7 +490,7 @@ export const sendPushNotification = async (tokens, payload = {}) => {
 
     const results = await Promise.all(
         uniqueTokens.map(async (token) => {
-            const message = buildMessagePayload(payload, token);
+            const message = buildMessagePayload(payload, token, ownerType);
             try {
                 const response = await fetch(FCM_SEND_URL(projectId), {
                     method: 'POST',
@@ -535,7 +560,7 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
     }
 
     // 💡 Clone the payload to avoid side-effects (e.g. adding multiple prefixes to the same object during broadcasting)
-    const enrichedPayload = { ...payload };
+    const enrichedPayload = { ...payload, data: { ...(payload?.data || {}), ownerType: normalizedOwnerType || '' } };
 
     // 🏷️ Add Highlighter Prefix to the Title
     // Zomato/Swiggy style: keep notification title as is without emoji prefixes or custom highlighter
@@ -552,7 +577,7 @@ export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, pla
     }
     try {
         console.log(`[FCM] Sending to ${ownerType}:${ownerId}. Title: "${enrichedPayload.title || 'Data Only'}"`);
-        const response = await sendPushNotification(tokens, enrichedPayload);
+        const response = await sendPushNotification(tokens, enrichedPayload, { ownerType: normalizedOwnerType });
         const invalidTokens = (response.results || [])
 
             .filter((item) => !item.ok && item.remove)

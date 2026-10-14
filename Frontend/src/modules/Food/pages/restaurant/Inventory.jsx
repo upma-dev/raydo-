@@ -812,6 +812,16 @@ export default function Inventory() {
   const isMouseDown = useRef(false)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [addons, setAddons] = useState([])
+
+  // reload the add-ons list (used after an add-on is saved)
+  const fetchAddons = async () => {
+    try {
+      const response = await restaurantAPI.getAddons()
+      if (response?.data?.success) setAddons(response.data.data?.addons || [])
+    } catch (error) {
+      debugError("Error reloading add-ons:", error)
+    }
+  }
   const [loadingAddons, setLoadingAddons] = useState(false)
   const [isAddAddonOpen, setIsAddAddonOpen] = useState(false)
 

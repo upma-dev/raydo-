@@ -23,6 +23,11 @@ const userAuthSessionSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // wrong OTP guesses on this session (5 -> the session is deleted and a new OTP must be requested)
+    otpAttempts: {
+      type: Number,
+      default: 0,
+    },
     expiresAt: {
       type: Date,
       required: true,

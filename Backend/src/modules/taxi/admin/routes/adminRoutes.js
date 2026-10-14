@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireTaxiPanelAdmin } from '../../middlewares/adminPanelAccess.js';
 import { authenticate } from '../../middlewares/authMiddleware.js';
 import {
   approveOwner,
@@ -237,7 +238,7 @@ adminRouter.get('/admin/service-locations/nearby', getNearbyServiceLocations);
 adminRouter.get('/admin/notification-channels', getNotificationChannels);
 adminRouter.get('/admin/types/set-prices', getSetPrices);
 adminRouter.get('/admin/zones', getZones);
-adminRouter.use('/admin', authenticate(['admin']));
+adminRouter.use('/admin', authenticate(['admin']), requireTaxiPanelAdmin);
 
 adminRouter.get('/admin/permissions', getAdminPermissions);
 adminRouter.get('/admin/admin-management/admins', getAdmins);
@@ -465,9 +466,9 @@ adminRouter.patch('/admin/integration-settings/mail', updateMailSettings);
 adminRouter.patch('/admin/general-settings/:category', updateGeneralSettingsCategory);
 
 adminRouter.get('/on-boarding', getUserOnboarding);
-adminRouter.post('/on-boarding', createOnboardingScreen);
-adminRouter.patch('/on-boarding/:id', updateOnboardingScreen);
-adminRouter.delete('/on-boarding/:id', deleteOnboardingScreen);
+adminRouter.post('/on-boarding', authenticate(['admin']), createOnboardingScreen);
+adminRouter.patch('/on-boarding/:id', authenticate(['admin']), updateOnboardingScreen);
+adminRouter.delete('/on-boarding/:id', authenticate(['admin']), deleteOnboardingScreen);
 adminRouter.get('/on-boarding-driver', getDriverOnboarding);
 adminRouter.get('/on-boarding-owner', getOwnerOnboarding);
 

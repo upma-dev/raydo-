@@ -28,8 +28,30 @@ class ErrorBoundary extends React.Component {
     return { hasError: true, error }
   }
 
+  componentDidUpdate(prevProps) {
+    // Page changed -> give the new page a fresh chance to render
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, error: null })
+    }
+  }
+
   componentDidCatch(error, errorInfo) {
     console.error('Unhandled React Error Boundary caught:', error, errorInfo)
+
+    // After a new deploy, old chunk files are gone. Reload once to pick up the new build.
+    const msg = String(error?.message || '')
+    const isChunkError = /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Loading chunk .* failed/i.test(msg)
+    if (isChunkError) {
+      try {
+        if (window.sessionStorage.getItem('chunk-error-reloaded') !== 'true') {
+          window.sessionStorage.setItem('chunk-error-reloaded', 'true')
+          window.location.reload()
+          return
+        }
+      } catch {
+        // ignore
+      }
+    }
   }
 
   handleReload = () => {
@@ -66,7 +88,7 @@ class ErrorBoundary extends React.Component {
       const isModuleFetchError =
         this.state.error?.message?.includes('Failed to fetch dynamically imported module') ||
         this.state.error?.message?.includes('Importing a module script failed') ||
-        this.state.error?.name === 'TypeError'
+        this.state.error?.message?.includes('error loading dynamically imported module')
 
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4 py-8">

@@ -3,9 +3,13 @@ import FranchiseApplication from '../models/franchiseApplication.model.js';
 import FranchiseLedger from '../models/franchiseLedger.model.js';
 import { FoodAdmin } from '../../../../core/admin/admin.model.js';
 import { getTaxiOverview } from './franchiseTaxi.service.js';
-import {
-    normalizeModules, normalizeCommissions, getCommissionRate, roundMoney,
-} from './franchisePlan.js';
+import FranchiseCharge from '../models/franchiseCharge.model.js';
+import { normalizeModules, roundMoney } from './franchisePlan.js';
+import { resolveRates, ratesToDto } from './commissionRules.service.js';
+import { ensureLegacyCharges, chargeToDto } from './franchiseCharges.service.js';
+import { netBySource } from './franchiseTaxi.service.js';
+import { writeAudit } from './franchiseAudit.service.js';
+import { MoneyError } from './franchiseMoney.js';
 
 class FranchiseAdminError extends Error {
     constructor(message, statusCode = 400) {
@@ -89,11 +93,14 @@ export async function getFranchiseOverview(id) {
     });
     orders.deliveredGMV = roundMoney(orders.deliveredGMV);
 
+    // Franchise money = v1 credits/reversals + v2 earnings - platform commission - reversals
     const [ledgerAgg] = await FranchiseLedger.aggregate([
         { $match: { franchiseId: fid } },
         { $group: {
             _id: null,
-            earned: { $sum: { $cond: [{ $in: ['$type', ['credit', 'reversal']] }, '$amount', 0] } },
+            earned: { $sum: { $cond: [{ $in: ['$type', ['credit', 'reversal', 'earning', 'platform_commission', 'earning_reversal', 'commission_reversal']] }, '$amount', 0] } },
+            grossEarnings: { $sum: { $cond: [{ $in: ['$type', ['earning', 'earning_reversal']] }, '$amount', 0] } },
+            platformCommission: { $sum: { $cond: [{ $in: ['$type', ['platform_commission', 'commission_reversal']] }, { $multiply: ['$amount', -1] }, 0] } },
             paidOut: { $sum: { $cond: [{ $eq: ['$type', 'payout'] }, { $multiply: ['$amount', -1] }, 0] } },
         } },
     ]);
@@ -113,6 +120,8 @@ export async function getFranchiseOverview(id) {
     }
 
     const modules = normalizeModules(app.selectedModules);
+    const rates = ratesToDto(await resolveRates(app));
+    const charges = (await ensureLegacyCharges(app.toObject())).map(chargeToDto);
 
     let taxi = null;
     if (modules.includes('taxi')) {
@@ -143,17 +152,24 @@ export async function getFranchiseOverview(id) {
             franchiseFee: app.franchiseFee,
             franchiseFeeStatus: app.franchiseFeeStatus,
             franchiseFeePaidAt: app.franchiseFeePaidAt,
-            commissionRate: getCommissionRate(modules, app.moduleCommissions, 'food'),
-            moduleCommissions: normalizeCommissions(app.moduleCommissions),
+            territoryId: app.territoryId || null,
+            origin: app.origin || 'application',
+            terminatedAt: app.terminatedAt || null,
+            terminationReason: app.terminationReason || '',
+            commissionRate: rates.food.rate,          // platform commission % on Food (current)
+            rates,
             createdAt: app.createdAt,
             approvedAt: app.reviewedAt,
         },
         login,
         restaurants: { ...restaurants, menuItems: itemCount },
         orders: { ...orders, today: todayAgg[0]?.orders || 0, todayGMV: roundMoney(todayAgg[0]?.gmv || 0) },
+        charges,
         money: {
             walletBalance: roundMoney(app.walletBalance || 0),
             totalEarned: roundMoney(ledgerAgg?.earned || 0),
+            grossEarnings: roundMoney(ledgerAgg?.grossEarnings || 0),
+            platformCommission: roundMoney(ledgerAgg?.platformCommission || 0),
             totalPaidOut: roundMoney(ledgerAgg?.paidOut || 0),
             pendingPayoutRequests: payouts.filter(p => p.status === 'pending').length,
             pendingPayoutAmount: roundMoney(pendingPayoutAmount),
@@ -244,11 +260,7 @@ export async function listFranchiseOrders(id, query = {}) {
     const nameById = new Map(rests.map(r => [String(r._id), r.restaurantName || r.name]));
 
     // which of these orders already earned the franchise money
-    const credits = rows.length
-        ? await FranchiseLedger.find({ franchiseId: app._id, refType: 'order', refId: { $in: rows.map(r => String(r._id)) } }).select('refId type amount').lean()
-        : [];
-    const earned = new Map();
-    credits.forEach(c => earned.set(c.refId, (earned.get(c.refId) || 0) + c.amount));
+    const earned = await netBySource(app._id, 'order', rows.map(r => String(r._id)));
 
     return {
         items: rows.map(o => ({
@@ -261,7 +273,8 @@ export async function listFranchiseOrders(id, query = {}) {
             total: o.pricing?.total || 0,
             paymentMethod: o.payment?.method || '',
             paymentStatus: o.payment?.status || '',
-            franchiseEarned: roundMoney(earned.get(String(o._id)) || 0),
+            franchiseEarned: roundMoney(earned.get(String(o._id))?.net || 0),
+            earningBase: roundMoney(earned.get(String(o._id))?.base || 0),
             createdAt: o.createdAt,
         })),
         total, page, limit,
@@ -283,23 +296,30 @@ export async function listFranchiseLedger(id, query = {}) {
 
 // ─── Account control ────────────────────────────────────────────────────────
 
-/** Suspend = franchise login stops working immediately; data and money stay untouched. */
-export async function suspendFranchise(id, reason) {
+/** Suspend = franchise login stops working immediately; data and money (incl. the deposit) stay untouched. */
+export async function suspendFranchise(id, reason, actor = {}) {
     const app = await mustFind(id);
+    if (app.accountStatus === 'terminated') throw new FranchiseAdminError('This franchise is terminated.');
+    const why = String(reason || '').trim().slice(0, 500);
+    if (why.length < 3) throw new FranchiseAdminError('A reason is required to suspend a franchise');
+    const before = { accountStatus: app.accountStatus };
     app.accountStatus = 'suspended';
-    app.suspendReason = String(reason || '').trim();
+    app.suspendReason = why;
     app.suspendedAt = new Date();
     await app.save();
     if (app.subAdminId) {
         await FoodAdmin.findByIdAndUpdate(app.subAdminId, { active: false, isActive: false, status: 'inactive' });
     }
+    await writeAudit({ actor, franchiseId: app._id, entity: 'franchise', entityId: app._id, action: 'franchise.suspend', before, after: { accountStatus: 'suspended' }, reason: why });
     return getFranchiseOverview(id);
 }
 
 /** Activate = login works again, but only if the franchise is approved and its fee is settled. */
-export async function activateFranchise(id) {
+export async function activateFranchise(id, actor = {}, reason = '') {
     const app = await mustFind(id);
     if (app.archived) throw new FranchiseAdminError('This franchise is archived. Restore it first.');
+    if (app.accountStatus === 'terminated') throw new FranchiseAdminError('A terminated franchise cannot be re-activated. Create a new franchise instead.');
+    const before = { accountStatus: app.accountStatus };
     app.accountStatus = 'active';
     app.suspendReason = '';
     app.suspendedAt = null;
@@ -309,24 +329,55 @@ export async function activateFranchise(id) {
     if (app.subAdminId && eligible) {
         await FoodAdmin.findByIdAndUpdate(app.subAdminId, { active: true, isActive: true, status: 'active' });
     }
+    await writeAudit({ actor, franchiseId: app._id, entity: 'franchise', entityId: app._id, action: 'franchise.activate', before, after: { accountStatus: 'active', loginUnlocked: Boolean(app.subAdminId && eligible) }, reason: String(reason || '').slice(0, 500) });
     const overview = await getFranchiseOverview(id);
-    overview.note = eligible || !app.subAdminId ? '' : 'Account marked active, but the login stays locked until the application is approved and the fee is paid or waived.';
+    overview.note = eligible || !app.subAdminId ? '' : 'Account marked active, but the login stays locked until the joining fee and deposit are paid or waived.';
     return overview;
+}
+
+/**
+ * Terminate = the franchise agreement ends. Login locked for good, the zones are freed for a new franchise, no new
+ * orders/rides are assigned to it. History and money stay; the deposit can then be refunded (minus deductions).
+ */
+export async function terminateFranchise(id, reason, actor = {}) {
+    const app = await mustFind(id);
+    if (app.accountStatus === 'terminated') throw new FranchiseAdminError('This franchise is already terminated.');
+    const why = String(reason || '').trim().slice(0, 500);
+    if (why.length < 5) throw new FranchiseAdminError('A reason is required to terminate a franchise');
+    const pending = (app.payoutRequests || []).filter((p) => p.status === 'pending').length;
+    if (pending) throw new FranchiseAdminError(`Approve or reject the ${pending} pending payout request(s) first.`);
+    const before = { accountStatus: app.accountStatus };
+    app.accountStatus = 'terminated';
+    app.terminatedAt = new Date();
+    app.terminationReason = why;
+    await app.save();
+    if (app.subAdminId) {
+        await FoodAdmin.findByIdAndUpdate(app.subAdminId, { active: false, isActive: false, status: 'inactive' });
+    }
+    await writeAudit({ actor, franchiseId: app._id, entity: 'franchise', entityId: app._id, action: 'franchise.terminate', before, after: { accountStatus: 'terminated', walletBalance: app.walletBalance }, reason: why });
+    return getFranchiseOverview(id);
 }
 
 const EDITABLE = ['applicantName', 'phone', 'email', 'companyName', 'state', 'city', 'area', 'pincode'];
 
 /** Edit franchise details; name / phone / email are mirrored to the franchise login. */
-export async function updateFranchiseProfile(id, body = {}) {
+export async function updateFranchiseProfile(id, body = {}, actor = {}) {
     const app = await mustFind(id);
+    const before = { ...Object.fromEntries(EDITABLE.map((k) => [k, app[k]])), zoneId: app.zoneId, selectedModules: normalizeModules(app.selectedModules) };
+    if (body.zoneId !== undefined && String(body.zoneId || '') !== String(app.zoneId || '')) {
+        throw new FranchiseAdminError('Zones change through "Change territory" (or Zones & login) so zone ownership stays unique.');
+    }
+    if (body.email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(body.email).trim())) throw new FranchiseAdminError('Invalid email');
+    if (body.phone !== undefined && !/^\+?\d{10,15}$/.test(String(body.phone).replace(/[\s-]/g, ''))) throw new FranchiseAdminError('Phone must be 10-15 digits');
 
     EDITABLE.forEach((key) => {
-        if (body[key] !== undefined) app[key] = typeof body[key] === 'string' ? body[key].trim() : body[key];
+        if (body[key] !== undefined) app[key] = String(body[key] ?? '').trim().slice(0, 160);
     });
     if (body.zoneId !== undefined) {
         app.zoneId = body.zoneId || null;
     }
     if (body.selectedModules !== undefined) {
+        if (!Array.isArray(body.selectedModules) || !body.selectedModules.length) throw new FranchiseAdminError('Choose at least one service');
         app.selectedModules = normalizeModules(body.selectedModules);
     }
     if (!app.applicantName || !app.phone || !app.email) throw new FranchiseAdminError('Name, phone and email are required');
@@ -343,6 +394,11 @@ export async function updateFranchiseProfile(id, body = {}) {
         if (app.zoneId) patch.$addToSet = { food_zone_ids: app.zoneId };
         await FoodAdmin.findByIdAndUpdate(app.subAdminId, patch);
     }
+    await writeAudit({
+        actor, franchiseId: app._id, entity: 'franchise', entityId: app._id, action: 'franchise.update_profile',
+        before, after: { ...Object.fromEntries(EDITABLE.map((k) => [k, app[k]])), zoneId: app.zoneId, selectedModules: normalizeModules(app.selectedModules) },
+        reason: String(body.reason || '').slice(0, 500),
+    });
     return getFranchiseOverview(id);
 }
 
@@ -351,22 +407,25 @@ export async function updateFranchiseProfile(id, body = {}) {
  *  - No orders, no ledger, no money -> permanently deleted together with its login.
  *  - Otherwise -> archived (hidden, login locked) so order / money history is never lost.
  */
-export async function removeFranchise(id) {
+export async function removeFranchise(id, actor = {}) {
     const app = await mustFind(id);
     const FoodOrder = model('FoodOrder');
     const FoodRestaurant = model('FoodRestaurant');
 
-    const [hasLedger, hasOrders, hasRestaurants] = await Promise.all([
+    const [hasLedger, hasOrders, hasRestaurants, hasPayments] = await Promise.all([
         FranchiseLedger.exists({ franchiseId: app._id }),
         FoodOrder ? FoodOrder.exists({ franchiseId: app._id }) : null,
         FoodRestaurant ? FoodRestaurant.exists({ franchiseId: app._id }) : null,
+        FranchiseCharge.exists({ franchiseId: app._id, $or: [{ paidPaise: { $gt: 0 } }, { 'payments.0': { $exists: true } }] }),
     ]);
     const hasMoney = Number(app.walletBalance) !== 0 || (app.payoutRequests || []).some(p => p.status === 'pending')
-        || app.franchiseFeeStatus === 'paid' || app.franchiseFeeStatus === 'refund_due';
+        || app.franchiseFeeStatus === 'paid' || app.franchiseFeeStatus === 'refund_due' || Boolean(hasPayments);
 
     if (!hasLedger && !hasOrders && !hasRestaurants && !hasMoney) {
         if (app.subAdminId) await FoodAdmin.findByIdAndDelete(app.subAdminId);
+        await FranchiseCharge.deleteMany({ franchiseId: app._id, paidPaise: 0 });
         await FranchiseApplication.findByIdAndDelete(app._id);
+        await writeAudit({ actor, franchiseId: app._id, entity: 'franchise', entityId: app._id, action: 'franchise.delete', before: { name: app.applicantName, applicationId: app.applicationId }, reason: 'Deleted (no orders, money or history)' });
         return { deleted: true, archived: false };
     }
 
@@ -379,6 +438,7 @@ export async function removeFranchise(id) {
     if (app.subAdminId) {
         await FoodAdmin.findByIdAndUpdate(app.subAdminId, { active: false, isActive: false, status: 'inactive' });
     }
+    await writeAudit({ actor, franchiseId: app._id, entity: 'franchise', entityId: app._id, action: 'franchise.archive', after: { archived: true }, reason: 'Archived (has history)' });
     return {
         deleted: false,
         archived: true,
@@ -386,10 +446,11 @@ export async function removeFranchise(id) {
     };
 }
 
-export async function restoreFranchise(id) {
+export async function restoreFranchise(id, actor = {}) {
     const app = await mustFind(id);
     app.archived = false;
     app.archivedAt = null;
     await app.save();
+    await writeAudit({ actor, franchiseId: app._id, entity: 'franchise', entityId: app._id, action: 'franchise.restore', after: { archived: false } });
     return getFranchiseOverview(id);
 }

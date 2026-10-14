@@ -20,6 +20,8 @@ import { FeedbackExperience } from '../models/feedbackExperience.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
 import { FoodRefreshToken } from '../../../../core/refreshTokens/refreshToken.model.js';
 import { FoodDeliveryCashLimit } from '../models/deliveryCashLimit.model.js';
+import { getRiderCashPositions } from '../../delivery/services/riderCash.service.js';
+import { assertLocationInsideZone } from '../../shared/zoneGeometry.js';
 import { FoodRestaurantWithdrawalSetting } from '../models/restaurantWithdrawalSetting.model.js';
 import { FoodDeliveryEmergencyHelp } from '../models/deliveryEmergencyHelp.model.js';
 import { FoodReferralSettings } from '../models/referralSettings.model.js';
@@ -119,19 +121,33 @@ const validateOpeningClosingTimes = (openingTime, closingTime) => {
     }
 };
 
+/**
+ * Franchise-scoped lists: pinFranchiseQuery (franchiseScope.middleware) puts the franchise's restaurant ids in
+ * query.restaurantIds. Returns null when the request is not franchise-scoped.
+ */
+function franchiseRestaurantScope(query = {}) {
+    if (!query.franchiseId) return null;
+    return String(query.restaurantIds || '')
+        .split(',')
+        .filter((id) => mongoose.Types.ObjectId.isValid(id))
+        .map((id) => new mongoose.Types.ObjectId(id));
+}
+
 export async function getRestaurantComplaints(query = {}) {
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 50, 1), 500);
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
 
     const filter = { type: 'order' };
+    const scoped = franchiseRestaurantScope(query);
+    if (scoped) filter.restaurantId = { $in: scoped };
     if (query.status && query.status !== 'all') filter.status = query.status;
     if (query.complaintType && query.complaintType !== 'all') filter.issueType = query.complaintType;
     if (query.restaurantId && mongoose.Types.ObjectId.isValid(query.restaurantId)) {
         filter.restaurantId = new mongoose.Types.ObjectId(query.restaurantId);
     }
     if (query.search) {
-        const searchRegex = { $regex: query.search, $options: 'i' };
+        const searchRegex = { $regex: String(query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
         const restaurantIds = await FoodRestaurant.find({ restaurantName: searchRegex }).select('_id').lean();
         const userIds = await FoodUser.find({ name: searchRegex }).select('_id').lean();
         const orderIds = await FoodOrder.find({ orderId: searchRegex }).select('_id').lean();
@@ -1505,6 +1521,9 @@ export async function getSupportTickets(query = {}) {
             description: t.description,
             status: t.status,
             adminResponse: t.adminResponse,
+            franchiseId: t.franchiseId ? String(t.franchiseId) : null,
+            franchiseResponse: t.franchiseResponse || '',
+            franchiseRespondedAt: t.franchiseRespondedAt || null,
             createdAt: t.createdAt,
             updatedAt: t.updatedAt,
             user,
@@ -1540,6 +1559,9 @@ export async function getSupportTickets(query = {}) {
             priority: t.priority || 'medium',
             status: t.status,
             adminResponse: t.adminResponse,
+            franchiseId: t.franchiseId ? String(t.franchiseId) : null,
+            franchiseResponse: t.franchiseResponse || '',
+            franchiseRespondedAt: t.franchiseRespondedAt || null,
             createdAt: t.createdAt,
             updatedAt: t.updatedAt,
             user: null,
@@ -1562,6 +1584,15 @@ export async function getSupportTickets(query = {}) {
         );
         tickets = merged.slice(skip, skip + limit);
         total = userTotal + restaurantTotal;
+    }
+
+    // Name of the franchise partner that handles each ticket (transparency for the admin)
+    const franchiseIds = [...new Set(tickets.map((t) => t.franchiseId).filter(Boolean))];
+    if (franchiseIds.length) {
+        const FranchiseApplication = mongoose.models.FranchiseApplication;
+        const rows = FranchiseApplication ? await FranchiseApplication.find({ _id: { $in: franchiseIds } }).select('applicantName companyName').lean() : [];
+        const names = new Map(rows.map((r) => [String(r._id), r.companyName || r.applicantName]));
+        tickets.forEach((t) => { t.franchiseName = t.franchiseId ? names.get(t.franchiseId) || '' : ''; });
     }
 
     return { tickets, total, page, limit };
@@ -1683,7 +1714,7 @@ export async function toggleRestaurantCommissionStatus(id) {
 
 // ----- Delivery Boy Commission Rule (admin) -----
 export async function getDeliveryCommissionRules() {
-    const list = await FoodDeliveryCommissionRule.find({}).sort({ createdAt: -1 }).lean();
+    const list = await FoodDeliveryCommissionRule.find(GLOBAL_DELIVERY_RULES).sort({ createdAt: -1 }).lean();
     const commissions = list.map((r, index) => ({
         _id: r._id,
         sl: index + 1,
@@ -1698,7 +1729,10 @@ export async function getDeliveryCommissionRules() {
     return { commissions };
 }
 
-function validateCommissionRuleSet(rules) {
+/** Platform-wide slabs (zone-specific slabs set by a franchise have a zoneId). */
+const GLOBAL_DELIVERY_RULES = { zoneId: null };
+
+export function validateCommissionRuleSet(rules) {
     const active = (rules || []).filter((r) => r && r.status !== false);
     if (!active.length) {
         throw new ValidationError('At least one active distance slab is required');
@@ -1727,7 +1761,7 @@ function validateCommissionRuleSet(rules) {
 }
 
 export async function createDeliveryCommissionRule(body) {
-    const existing = await FoodDeliveryCommissionRule.find({}).lean();
+    const existing = await FoodDeliveryCommissionRule.find(GLOBAL_DELIVERY_RULES).lean();
     const candidate = [
         ...existing,
         {
@@ -1754,7 +1788,7 @@ export async function createDeliveryCommissionRule(body) {
 
 export async function updateDeliveryCommissionRule(id, body) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
-    const existing = await FoodDeliveryCommissionRule.find({}).lean();
+    const existing = await FoodDeliveryCommissionRule.find(GLOBAL_DELIVERY_RULES).lean();
     const candidate = existing.map((r) =>
         String(r._id) === String(id)
             ? {
@@ -2189,6 +2223,8 @@ export async function getRestaurantReviews(query = {}) {
     const filter = {
         'ratings.restaurant.rating': { $exists: true, $ne: null }
     };
+    const scopedReviewRestaurants = franchiseRestaurantScope(query);
+    if (scopedReviewRestaurants) filter.restaurantId = { $in: scopedReviewRestaurants };
 
     if (query.search && String(query.search).trim()) {
         const term = String(query.search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2394,8 +2430,15 @@ export async function updateRestaurantMenuById(id, menu) {
     return doc.menu || { sections: [] };
 }
 
-export async function getPendingRestaurants() {
-    const restaurants = await FoodRestaurant.find({ status: { $in: ['pending', 'rejected'] } })
+export async function getPendingRestaurants(query = {}) {
+    const filter = { status: { $in: ['pending', 'rejected'] } };
+    // A franchise sees join requests of its own zone (new restaurants are not stamped with a franchise until approved)
+    if (query.franchiseId && mongoose.Types.ObjectId.isValid(String(query.franchiseId))) {
+        const FranchiseApplication = mongoose.models.FranchiseApplication;
+        const app = FranchiseApplication ? await FranchiseApplication.findById(query.franchiseId).select('zoneId').lean() : null;
+        filter.$or = [{ franchiseId: new mongoose.Types.ObjectId(String(query.franchiseId)) }, ...(app?.zoneId ? [{ zoneId: app.zoneId, franchiseId: null }] : [])];
+    }
+    const restaurants = await FoodRestaurant.find(filter)
         .populate('zoneId', 'name zoneName')
         .sort({ createdAt: -1 })
         .lean();
@@ -2541,16 +2584,12 @@ export async function updateRestaurantStatus(id, body = {}) {
     const isActive = parseBooleanLike(raw, 'status');
     const status = isActive ? 'approved' : 'rejected';
 
+    // Enabling again clears the "disabled" markers (before, the old rejection reason / date stayed on an enabled restaurant)
     return FoodRestaurant.findByIdAndUpdate(
         id,
-        {
-            $set: {
-                status,
-                approvedAt: isActive ? new Date() : undefined,
-                rejectedAt: isActive ? undefined : new Date(),
-                rejectionReason: isActive ? undefined : 'Disabled by admin'
-            }
-        },
+        isActive
+            ? { $set: { status, approvedAt: new Date() }, $unset: { rejectedAt: '', rejectionReason: '' } }
+            : { $set: { status, rejectedAt: new Date(), rejectionReason: 'Disabled by admin' } },
         { new: true, runValidators: false }
     ).lean();
 }
@@ -2568,6 +2607,17 @@ export async function updateRestaurantLocation(id, body = {}) {
     const latFromCoordinates = toFiniteNumber(coordinates[1]);
     const latitude = toFiniteNumber(source.latitude ?? latFromCoordinates);
     const longitude = toFiniteNumber(source.longitude ?? lngFromCoordinates);
+
+    // New coordinates, or a different zone, must still put the restaurant inside its zone
+    const zoneIdForCheck = body.zoneId !== undefined ? String(body.zoneId || '').trim() : String(doc.zoneId || '');
+    if (zoneIdForCheck && mongoose.Types.ObjectId.isValid(zoneIdForCheck) && (latitude !== null || body.zoneId !== undefined)) {
+        const zoneForCheck = await FoodZone.findById(zoneIdForCheck).lean();
+        assertLocationInsideZone(
+            zoneForCheck,
+            latitude !== null ? latitude : doc.location?.latitude,
+            longitude !== null ? longitude : doc.location?.longitude,
+        );
+    }
 
     const addressLine1 = toStr(source.addressLine1 || source.formattedAddress || source.address);
     const addressLine2 = toStr(source.addressLine2);
@@ -2659,6 +2709,8 @@ export async function getCategories(query) {
         const myRestIds = myRestaurants.map(r => r._id);
         filter.$and = [...(filter.$and || []), {
             $or: [
+                // categories the franchise created itself (createCategory stamps franchiseId)
+                { franchiseId: new mongoose.Types.ObjectId(query.franchiseId) },
                 { restaurantId: { $in: myRestIds } },
                 { createdByRestaurantId: { $in: myRestIds } }
             ]
@@ -2895,6 +2947,8 @@ export async function getRestaurantAddonsAdmin(query = {}) {
     const skip = (page - 1) * limit;
 
     const filter = { isDeleted: { $ne: true } };
+    const scopedAddonRestaurants = franchiseRestaurantScope(query);
+    if (scopedAddonRestaurants) filter.restaurantId = { $in: scopedAddonRestaurants };
 
     const approvalStatus = String(query.approvalStatus || '').trim();
     if (approvalStatus && ['pending', 'approved', 'rejected'].includes(approvalStatus)) {
@@ -2904,7 +2958,9 @@ export async function getRestaurantAddonsAdmin(query = {}) {
     if (query.restaurantId && mongoose.Types.ObjectId.isValid(String(query.restaurantId))) {
         filter.restaurantId = new mongoose.Types.ObjectId(String(query.restaurantId));
     } else if (query.zoneId && mongoose.Types.ObjectId.isValid(String(query.zoneId))) {
-        const zoneRestaurantIds = await FoodRestaurant.find({ zoneId: new mongoose.Types.ObjectId(String(query.zoneId)) }).distinct('_id');
+        const zoneFilter = { zoneId: new mongoose.Types.ObjectId(String(query.zoneId)) };
+        if (scopedAddonRestaurants) zoneFilter._id = { $in: scopedAddonRestaurants }; // never widen a franchise scope
+        const zoneRestaurantIds = await FoodRestaurant.find(zoneFilter).distinct('_id');
         filter.restaurantId = { $in: zoneRestaurantIds };
     }
 
@@ -3459,6 +3515,8 @@ export async function createRestaurantByAdmin(body) {
             const zId = new mongoose.Types.ObjectId(zoneId);
             doc.zoneId = zId;
             const zoneDoc = await FoodZone.findById(zId).lean();
+            // The location the admin searched must lie inside the chosen zone (only a location that was really entered is checked)
+            assertLocationInsideZone(zoneDoc, latitude, longitude);
             if (zoneDoc) {
                 if (!doc.city) doc.city = zoneDoc.serviceLocation || zoneDoc.zoneName || zoneDoc.name || '';
                 if (!doc.area) doc.area = zoneDoc.name || zoneDoc.zoneName || '';
@@ -4800,7 +4858,9 @@ export async function rejectDeliveryPartner(id, reason) {
                 status: 'rejected',
                 rejectedAt: new Date(),
                 rejectionReason: typeof reason === 'string' ? reason.trim() : undefined,
-                approvedAt: null
+                approvedAt: null,
+                // a blocked partner must not stay online / keep getting orders
+                availabilityStatus: 'offline'
             }
         },
         { new: true }
@@ -4933,6 +4993,8 @@ export async function updateZone(id, body) {
     if (zone.name) zone.serviceLocation = zone.serviceLocation || zone.name;
 
     await zone.save();
+    // The zone's categories carry its name too: keep them in step when the zone is renamed
+    await FoodCategory.updateMany({ zoneId: zone._id }, { $set: { zoneName: zone.name || zone.zoneName || '' } });
     return { zone: zone.toObject() };
 }
 
@@ -5190,8 +5252,10 @@ export async function getDeliveryWallets(query = {}) {
     const cashLimitSettings = await FoodDeliveryCashLimit.findOne({ isActive: true }).lean();
     const globalLimit = Number(cashLimitSettings?.deliveryCashLimit || 0);
 
+    const cashPositions = await getRiderCashPositions(partners.map((p) => p._id));
     const wallets = await Promise.all(partners.map(async (p) => {
         const wallet = await FoodDeliveryWallet.findOne({ deliveryPartnerId: p._id }).lean();
+        const cashHeld = cashPositions.get(String(p._id))?.cashInHand || 0;
 
         return {
             walletId: wallet?._id,
@@ -5199,8 +5263,8 @@ export async function getDeliveryWallets(query = {}) {
             name: p.name,
             deliveryIdString: p.phone, // Placeholder or sequential ID if available
             pocketBalance: Number(wallet?.balance || 0),
-            remainingCashLimit: Math.max(0, globalLimit - Number(wallet?.cashInHand || 0)),
-            cashCollected: Number(wallet?.cashInHand || 0),
+            remainingCashLimit: Math.max(0, globalLimit - cashHeld),
+            cashCollected: cashHeld,
             totalEarning: Number(wallet?.totalEarnings || 0),
             bonus: Number(wallet?.totalBonus || 0),
             totalWithdrawn: Number(wallet?.totalSettled || 0)
@@ -5285,6 +5349,7 @@ export async function getSidebarBadges() {
             pendingRestaurantComplaints,
             pendingEmergencyOffline,
             pendingHandovers,
+            pendingRefunds,
         ] = await Promise.all([
             FoodRestaurant.countDocuments({ status: 'pending' }),
             FoodDeliveryPartner.countDocuments({ status: 'pending' }),
@@ -5302,6 +5367,7 @@ export async function getSidebarBadges() {
             FoodSupportTicket.countDocuments({ status: 'open', restaurantId: { $exists: true } }),
             FoodDeliveryPartner.countDocuments({ 'emergencyOfflineRequest.status': 'pending' }),
             FoodOrder.countDocuments({ 'dispatch.handoverRequest.status': 'pending' }),
+            FoodOrder.countDocuments({ 'payment.refund.status': { $in: ['manual_pending', 'failed'] } }),
         ]);
 
         return {
@@ -5309,6 +5375,7 @@ export async function getSidebarBadges() {
             deliveryPartners: pendingDeliveryPartners,
             emergencyOffline: pendingEmergencyOffline,
             handovers: pendingHandovers,
+            refundsPending: pendingRefunds,
             foods: pendingFoods + pendingAddons,
             foodApprovals: pendingFoods,
             orders: pendingOrders,
@@ -5439,14 +5506,15 @@ export async function bulkApproveFoodItems(restaurantId) {
 
 
 /**
- * Admin refund. This function did not exist, so the admin "Refund" button always failed.
- * Refunds the customer through the SAME engine the automatic cancellation refund uses:
- * card/UPI go back through Razorpay, wallet payments go back to the wallet. Retrying a failed refund is allowed.
- * `refundAmount` is optional (default = the whole order) and can never exceed what the customer paid.
+ * Admin refund. Refunds the customer through the SAME engine the automatic cancellation refund uses:
+ * card/UPI go back through Razorpay (or are parked for a manual refund, see the refund mode), wallet payments go back to the
+ * wallet, and a delivered COD order is refunded to the customer's Raydo wallet. Retrying a failed refund is allowed, and an order
+ * can be refunded in several parts as long as the total never goes above what the customer paid.
+ * The books (restaurant share, franchise earning) are only touched once the money has REALLY been refunded; a refund that is
+ * parked for a manual payout does it when the admin records it (order-cancel.service > markRefundDoneManually).
  */
 export async function processRefund(orderId, refundAmount, options = {}) {
-    const { refundOrderPayment } = await import('../../orders/services/order-cancel.service.js');
-    const foodTransactionService = await import('../../orders/services/foodTransaction.service.js');
+    const { refundOrderPayment, applyRefundBooks } = await import('../../orders/services/order-cancel.service.js');
 
     const order = await FoodOrder.findById(orderId).lean();
     if (!order) throw new ValidationError('Order not found');
@@ -5455,31 +5523,64 @@ export async function processRefund(orderId, refundAmount, options = {}) {
     const amount = hasAmount ? Number(refundAmount) : null;
     if (hasAmount && !(Number.isFinite(amount) && amount > 0)) throw new ValidationError('Refund amount must be a positive number');
 
-    const result = await refundOrderPayment(order._id, { amount, retry: true, reasonText: 'Refund approved by admin' });
+    const deductFromRestaurant = options.deductFromRestaurant === true;
+    const result = await refundOrderPayment(order._id, { amount, retry: true, reasonText: 'Refund approved by admin', deductFromRestaurant });
 
-    if (result.status === 'not_required') throw new ValidationError('Nothing to refund: this order was not paid online (cash on delivery or unpaid).');
+    if (result.status === 'not_required') throw new ValidationError('Nothing to refund: this order was not paid online (unpaid, or cash on delivery that was not delivered).');
     if (result.status === 'already_refunded') throw new ValidationError('This order has already been refunded.');
     if (result.status === 'failed') throw new ValidationError(`The refund could not be completed: ${result.error || 'payment gateway error'}. You can try again.`);
 
-    const fullyRefunded = result.amount >= Number(order.pricing?.total || 0);
-
-    // A cancelled order must not stay payable to the restaurant.
-    if (String(order.orderStatus).startsWith('cancelled') && fullyRefunded) {
-        await foodTransactionService.updateTransactionStatus(order._id, 'refunded_by_admin', { status: 'refunded', note: 'Refunded by admin', recordedByRole: 'ADMIN' }).catch(() => null);
-        await foodTransactionService.reverseWalletsForOrder(order._id).catch(() => null);
-    }
-
-    // A DELIVERED order that is refunded: the restaurant did its job, so by default the platform bears the cost.
-    // If the admin chose "deduct from restaurant" (e.g. wrong / bad food), the restaurant's share for this order is taken back
-    // (the delivery partner keeps theirs, they delivered it). Only a full refund can reverse the payout.
-    if (options.deductFromRestaurant && fullyRefunded && ['delivered', 'completed'].includes(String(order.orderStatus))) {
-        await FoodOrder.updateOne({ _id: order._id }, { $set: { payoutReversed: true } });
-        await FoodTransaction.updateOne(
-            { orderId: order._id },
-            { $set: { payoutReversed: true }, $push: { history: { kind: 'restaurant_payout_reversed', amount: Number(order.pricing?.total || 0), at: new Date(), note: 'Restaurant share taken back after a refund of a delivered order', recordedBy: { role: 'ADMIN' } } } }
-        );
-        await foodTransactionService.reverseWalletsForOrder(order._id, { onlyRestaurant: true }).catch(() => null);
+    if (result.status === 'processed') {
+        await applyRefundBooks(order._id, { refundAmount: result.amount, refundedTotal: result.refundedTotal, deductFromRestaurant });
     }
 
     return { refund: result, order: await FoodOrder.findById(order._id).lean() };
+}
+
+/**
+ * The admin decides a refund request of a restaurant / delivery partner.
+ *  approve: an order that is still on its way is cancelled (customer refunded in full); a delivered order is refunded
+ *           (`amount` optional, `deductFromRestaurant` takes the restaurant's share back).
+ *  reject:  the request is closed with the admin's note.
+ */
+export async function decideRefundRequest(orderId, { approve, amount, deductFromRestaurant = false, note = '' } = {}, adminId = null) {
+    const { cancelOrderByAdmin } = await import('../../orders/services/order-cancel.service.js');
+    const { notifyOwnersSafely } = await import('../../orders/services/order.helpers.js');
+
+    const order = await FoodOrder.findById(orderId).lean();
+    if (!order) throw new ValidationError('Order not found');
+    const req = order.refundRequest || {};
+    if (req.status !== 'requested') throw new ValidationError('There is no refund request waiting for this order.');
+
+    const nextStatus = approve ? 'approved' : 'rejected';
+    const claimed = await FoodOrder.updateOne(
+        { _id: order._id, 'refundRequest.status': 'requested' },
+        { $set: { 'refundRequest.status': nextStatus, 'refundRequest.decidedAt': new Date(), 'refundRequest.decidedBy': adminId || undefined, 'refundRequest.decisionNote': String(note || '').trim() } },
+    );
+    if (!claimed.modifiedCount) throw new ValidationError('This request was just decided by someone else.');
+
+    let outcome = null;
+    if (approve) {
+        try {
+            if (['delivered', 'completed'].includes(String(order.orderStatus))) {
+                outcome = await processRefund(order._id, amount ?? req.amount, { deductFromRestaurant: deductFromRestaurant === true || deductFromRestaurant === 'true' });
+            } else {
+                outcome = await cancelOrderByAdmin(order._id, adminId, `Refund approved: ${req.reason || 'requested by ' + String(req.byRole || '').toLowerCase()}`);
+            }
+        } catch (err) {
+            // Nothing moved: put the request back so the admin can retry
+            await FoodOrder.updateOne({ _id: order._id }, { $set: { 'refundRequest.status': 'requested' } });
+            throw err;
+        }
+    }
+
+    const ownerType = req.byRole === 'RESTAURANT' ? 'RESTAURANT' : 'DELIVERY_PARTNER';
+    if (req.byId) {
+        await notifyOwnersSafely([{ ownerType, ownerId: req.byId }], {
+            title: approve ? 'Refund approved' : 'Refund request rejected',
+            body: `Order #${order.order_id || order._id}: your refund request was ${nextStatus}${note ? ` - ${note}` : ''}.`,
+            data: { type: `refund_request_${nextStatus}`, orderMongoId: String(order._id) },
+        });
+    }
+    return { status: nextStatus, outcome, order: await FoodOrder.findById(order._id).lean() };
 }

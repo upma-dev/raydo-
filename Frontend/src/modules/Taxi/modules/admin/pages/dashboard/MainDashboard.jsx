@@ -238,12 +238,11 @@ const MainDashboard = () => {
 
         setDashboardError(`Dashboard data is unavailable right now. Start the backend on ${BACKEND_LABEL} to load live metrics.`);
       } finally {
-        if (!isMounted) {
-          return;
-        }
-
+        // (a `return` inside `finally` swallows errors, so the unmounted case is an `if` instead)
+        if (isMounted) {
         setIsLoading(false);
         setIsRefreshing(false);
+        }
       }
     };
 

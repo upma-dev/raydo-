@@ -33,6 +33,7 @@ export default function OrdersTable({
   onViewOrder,
   onPrintOrder,
   onRefund,
+  onMarkRefundDone,
   onDeleteOrder,
   onAcceptOrder,
   onRejectOrder,
@@ -326,6 +327,16 @@ export default function OrdersTable({
                         </span>
                         <span className="text-xs text-slate-500">{order.deliveryType}</span>
                       </div>
+                      {['manual_pending', 'failed'].includes(order.refundStatus) && (
+                        <span className="inline-flex w-fit items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-100 text-red-700">
+                          Refund pending: ₹{order.payment?.refund?.amount || order.totalAmount}
+                        </span>
+                      )}
+                      {order.refundStatus === 'processed' && (
+                        <span className="inline-flex w-fit items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">
+                          Refunded ₹{order.payment?.refund?.amount || order.totalAmount}
+                        </span>
+                      )}
                       {order.cancellationReason && (
                         <div className="text-xs text-red-600 mt-1">
                           <span className="font-medium">
@@ -357,19 +368,21 @@ export default function OrdersTable({
                           <span>Accept</span>
                         </button>
                       )}
-                      {order.orderStatus === "Pending" && onRejectOrder && (
+                      {order.canAdminCancel && onRejectOrder && (
                         <button
                           onClick={() => onRejectOrder(order)}
                           disabled={actionLoadingOrderId === (order.id || order.orderId)}
                           className="px-2.5 py-1.5 rounded text-xs font-medium text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
-                          title="Reject Order"
+                          title={(String(order.payment?.status || "").toLowerCase() === "paid" && !["cash", "cod"].includes(String(order.payment?.method || "").toLowerCase()))
+                            ? "Cancel order and refund the customer"
+                            : "Cancel order (nothing to refund: the customer has not paid online)"}
                         >
                           {actionLoadingOrderId === (order.id || order.orderId) ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           ) : (
                             <X className="w-3.5 h-3.5" />
                           )}
-                          <span>Reject</span>
+                          <span>{(String(order.payment?.status || "").toLowerCase() === "paid" && !["cash", "cod"].includes(String(order.payment?.method || "").toLowerCase())) ? "Cancel & Refund" : "Cancel Order"}</span>
                         </button>
                       )}
                       <button 
@@ -404,6 +417,8 @@ export default function OrdersTable({
                       {(() => {
                         // Check if order is cancelled by restaurant or user
                         const isCancelled = order.orderStatus === "Cancelled by Restaurant" || 
+                                          order.orderStatus === "Canceled" || 
+                                          String(order.payment?.status || "").toLowerCase() === "refunded" ||
                                           order.orderStatus === "Cancelled" || 
                                           order.orderStatus === "Cancelled by User" ||
                                           (order.status === "cancelled" && (order.cancelledBy === "user" || order.cancelledBy === "restaurant"));
@@ -435,6 +450,30 @@ export default function OrdersTable({
                                 ? "Wallet Refunded" 
                                 : "Refunded"}
                             </span>
+                          ) : ['manual_pending', 'failed'].includes(order.refundStatus) ? (
+                            <div className="flex items-center gap-1.5">
+                              {order.payment?.razorpay?.paymentId && (
+                                <a
+                                  href={`https://dashboard.razorpay.com/app/payments/${order.payment.razorpay.paymentId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-3 py-1.5 rounded-md text-white text-xs font-medium bg-blue-600 hover:bg-blue-700 shadow-sm"
+                                  title="Opens this payment in your Razorpay account. Press Refund there."
+                                >
+                                  Refund in Razorpay ↗
+                                </a>
+                              )}
+                              {onMarkRefundDone && (
+                                <button
+                                  onClick={() => onMarkRefundDone(order)}
+                                  disabled={actionLoadingOrderId === (order.id || order.orderId)}
+                                  className="px-3 py-1.5 rounded-md text-white text-xs font-medium bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 shadow-sm"
+                                  title="Click after you refunded in Razorpay"
+                                >
+                                  Mark refunded
+                                </button>
+                              )}
+                            </div>
                           ) : onRefund ? (
                             <button 
                               onClick={() => onRefund(order)}

@@ -1,13 +1,20 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { adminAPI } from "@food/api";
 import {
   ArrowLeft, Phone, Mail, MapPin, FileText, Loader2, ExternalLink, Save, CreditCard, Store, Car,
   CheckCircle2, Clock, ShieldCheck, UserCheck, Lock, MessageSquare, Send, Wallet, Building2,
-  LayoutDashboard, KeyRound, ClipboardCheck, Percent, AlertTriangle, Copy,
+  LayoutDashboard, KeyRound, ClipboardCheck, Percent, AlertTriangle, Copy, IndianRupee, Landmark, ScrollText, MapPinned,
 } from "lucide-react";
 import { toast } from "sonner";
 import FranchiseControlCenter from "./FranchiseControlCenter";
+import FranchiseSummary from "./FranchiseSummary";
+import FranchiseFinancePanel from "./finance/FranchiseFinancePanel";
+import FranchiseChargesPanel from "./finance/FranchiseChargesPanel";
+import CommissionRuleEditor from "./finance/CommissionRuleEditor";
+import FranchiseAuditPanel from "./finance/FranchiseAuditPanel";
+import { Modal } from "./finance/ui";
+import { InfoList, profileSections } from "./InfoGrid";
 
 const STATUS_OPTIONS = [
   { value: "pending", label: "Pending", color: "bg-amber-50 text-amber-700 border-amber-200" },
@@ -78,10 +85,15 @@ export default function FranchiseApplicationDetail() {
   const [creds, setCreds] = useState(null);
 
   // plan & fees
-  const [fee, setFee] = useState(0);
-  const [feeStatus, setFeeStatus] = useState("pending");
-  const [commissions, setCommissions] = useState({ food: 0, taxi: 0, both: 0 });
-  const [fees, setFees] = useState({ food: 0, taxi: 0, both: 0 });
+  const [searchParams] = useSearchParams();
+  const [territories, setTerritories] = useState([]);
+  const [newTerritoryId, setNewTerritoryId] = useState("");
+  const [territoryReason, setTerritoryReason] = useState("");
+  const [savingTerritory, setSavingTerritory] = useState(false);
+  const [payoutDialog, setPayoutDialog] = useState(null); // { requestId, amount }
+  const [payoutRef, setPayoutRef] = useState("");
+  const [payoutNote, setPayoutNote] = useState("");
+  const [payoutBusy, setPayoutBusy] = useState(false);
   const [payoutCycle, setPayoutCycle] = useState("weekly");
   const [minPayout, setMinPayout] = useState(0);
   const [savingTerms, setSavingTerms] = useState(false);
@@ -90,10 +102,13 @@ export default function FranchiseApplicationDetail() {
   const [reply, setReply] = useState({});
   const [replyingId, setReplyingId] = useState(null);
 
+  // partner requests (zone change / deactivate)
+  const [reqNote, setReqNote] = useState({});
+  const [reqBusy, setReqBusy] = useState("");
+
   const mods = modulesOf(app);
   const hasFood = mods.includes("food");
   const hasTaxi = mods.includes("taxi");
-  const planKey = planKeyOf(mods);
   const approved = app?.status === "approved";
 
   const hydrate = (data) => {
@@ -102,10 +117,6 @@ export default function FranchiseApplicationDetail() {
     setAdminNote(data.adminNote || "");
     setFoodZoneId(data.zoneId?._id || data.zoneId || "");
     setTaxiZoneId(data.taxiZoneId?._id || data.taxiZoneId || "");
-    setFee(Number(data.franchiseFee) || 0);
-    setFeeStatus(data.franchiseFeeStatus || "pending");
-    setCommissions({ food: 0, taxi: 0, both: 0, ...(data.moduleCommissions || {}) });
-    setFees({ food: 0, taxi: 0, both: 0, ...(data.moduleFranchiseFees || {}) });
     setPayoutCycle(data.payoutCycle || "weekly");
     setMinPayout(Number(data.minPayoutThreshold) || 0);
   };
@@ -128,7 +139,7 @@ export default function FranchiseApplicationDetail() {
 
   useEffect(() => {
     load().then((data) => {
-      if (data) setTab((t) => t || (data.status === "approved" ? "overview" : "review"));
+      if (data) setTab((t) => t || searchParams.get("tab") || (data.status === "approved" ? "summary" : "review"));
     });
   }, [load]);
 
@@ -138,6 +149,9 @@ export default function FranchiseApplicationDetail() {
       .catch(() => {});
     adminAPI.getFranchiseTaxiZones(id)
       .then((res) => setTaxiZones(res?.data?.data || []))
+      .catch(() => {});
+    adminAPI.getFranchiseTerritories()
+      .then((res) => setTerritories(res?.data?.data || []))
       .catch(() => {});
   }, [id]);
 
@@ -154,17 +168,14 @@ export default function FranchiseApplicationDetail() {
     }
   };
 
+  // Fees, deposit and commission have their own audited tabs; this only saves payout terms
   const termsBody = (extra = {}) => ({
     payoutCycle,
-    minPayoutThreshold: minPayout,
-    franchiseFee: fee,
-    franchiseFeeStatus: feeStatus,
-    moduleCommissions: commissions,
-    moduleFranchiseFees: fees,
+    minPayoutThreshold: String(minPayout),
     ...extra,
   });
 
-  const saveTerms = async (extra = {}, okMsg = "Plan, fee and commission saved") => {
+  const saveTerms = async (extra = {}, okMsg = "Payout terms saved") => {
     setSavingTerms(true);
     try {
       await adminAPI.updateFranchiseCommission(id, termsBody(extra));
@@ -177,8 +188,22 @@ export default function FranchiseApplicationDetail() {
     }
   };
 
-  // The old button saved the OLD status (state had not updated yet). Now the new status is sent explicitly.
-  const markFeePaid = () => saveTerms({ franchiseFeeStatus: "paid" }, "Fee marked as paid - portal unlocked");
+  const changeTerritory = async () => {
+    if (!newTerritoryId || territoryReason.trim().length < 3) { toast.error("Choose the zone and enter a reason"); return; }
+    if (!window.confirm("Move this franchise to the new zone? New orders/rides of the new zone go to this franchise and the new zone's commission applies from now on. Past transactions are not changed.")) return;
+    setSavingTerritory(true);
+    try {
+      await adminAPI.changeFranchiseTerritory(id, { territoryId: newTerritoryId, reason: territoryReason });
+      toast.success("Zone changed");
+      setNewTerritoryId("");
+      setTerritoryReason("");
+      await load();
+    } catch (e) {
+      toast.error(errMsg(e, "Could not change the zone"));
+    } finally {
+      setSavingTerritory(false);
+    }
+  };
 
   const zonesReady = () => {
     if (hasFood && !foodZoneId) { toast.error("Select the Food zone for this franchise"); return false; }
@@ -247,12 +272,33 @@ export default function FranchiseApplicationDetail() {
     }
   };
 
-  const payoutAction = async (requestId, nextStatus) => {
+  const decideRequest = async (requestId, decision) => {
+    const label = decision === "approve" ? "Approve" : "Reject";
+    if (!window.confirm(`${label} this request?`)) return;
+    setReqBusy(requestId);
     try {
-      const res = await adminAPI.updateFranchisePayoutStatus(id, requestId, { status: nextStatus });
-      if (res?.data?.data) { hydrate(res.data.data); toast.success(nextStatus === "approved" ? "Payout approved" : "Payout rejected"); }
+      await adminAPI.decideFranchiseRequest(id, requestId, { decision, note: reqNote[requestId] || "" });
+      toast.success(decision === "approve" ? "Request approved" : "Request rejected");
+      await load();
+    } catch (e) {
+      toast.error(errMsg(e, "Could not update the request"));
+    } finally {
+      setReqBusy("");
+    }
+  };
+
+  const payoutAction = async (requestId, nextStatus, extra = {}) => {
+    setPayoutBusy(true);
+    try {
+      const res = await adminAPI.updateFranchisePayoutStatus(id, requestId, { status: nextStatus, ...extra });
+      if (res?.data?.data) { hydrate(res.data.data); toast.success(nextStatus === "approved" ? "Payout marked as paid" : "Payout rejected"); }
+      setPayoutDialog(null);
+      setPayoutRef("");
+      setPayoutNote("");
     } catch (e) {
       toast.error(errMsg(e, "Could not update the payout"));
+    } finally {
+      setPayoutBusy(false);
     }
   };
 
@@ -271,18 +317,28 @@ export default function FranchiseApplicationDetail() {
   const bank = app.paymentAccountInfo || {};
   const hasBank = Boolean(bank.accountNumber || bank.upiId);
   const pendingPayouts = (app.payoutRequests || []).filter((p) => p.status === "pending").length;
+  const pendingRequests = (app.changeRequests || []).filter((r) => r.status === "pending").length;
   const unreadSupport = (app.supportMessages || []).filter((m) => m.status !== "replied" && m.status !== "resolved").length;
   const feeInfo = FEE_STATUS[app.franchiseFeeStatus] || FEE_STATUS.pending;
   const isImage = (url) => url && /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
 
   const TABS = [
-    ...(approved ? [{ id: "overview", label: "Live overview", icon: LayoutDashboard }] : []),
+    ...(approved ? [
+      { id: "summary", label: "Summary", icon: ClipboardCheck },
+      { id: "overview", label: "Restaurants & orders", icon: LayoutDashboard },
+      { id: "finance", label: "Earnings & commission", icon: IndianRupee },
+    ] : []),
+    { id: "fees", label: "Fees & deposit", icon: Landmark, badge: app.franchiseFeeStatus === "pending" ? 1 : 0 },
+    { id: "commission", label: "Commission", icon: Percent },
     { id: "review", label: "Application", icon: ClipboardCheck },
     { id: "access", label: "Zones & login", icon: KeyRound },
-    { id: "plan", label: "Plan & fees", icon: Percent },
+    { id: "plan", label: "Zone & payout terms", icon: MapPinned },
     { id: "payouts", label: "Bank & payouts", icon: Wallet, badge: pendingPayouts },
+    { id: "requests", label: "Partner requests", icon: ClipboardCheck, badge: pendingRequests },
     { id: "support", label: "Support", icon: MessageSquare, badge: unreadSupport },
+    { id: "audit", label: "Audit", icon: ScrollText },
   ];
+  const currentTerritory = territories.find((t) => String(t.id) === String(app.territoryId?._id || app.territoryId || ""));
   const activeTab = TABS.some((t) => t.id === tab) ? tab : TABS[0].id;
 
   return (
@@ -324,12 +380,12 @@ export default function FranchiseApplicationDetail() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1.5 flex-wrap">
+      <div className="flex gap-1.5 overflow-x-auto pb-1 sticky top-0 z-20 bg-slate-50/95 backdrop-blur py-2 -my-2">
         {TABS.map((t) => {
           const Icon = t.icon;
           const active = activeTab === t.id;
           return (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-colors ${active ? "bg-blue-600 text-white shadow" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"}`}>
+            <button key={t.id} onClick={() => setTab(t.id)} className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap shrink-0 transition-colors ${active ? "bg-blue-600 text-white shadow" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"}`}>
               <Icon className="w-4 h-4" /> {t.label}
               {t.badge > 0 && <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] flex items-center justify-center ${active ? "bg-white text-blue-700" : "bg-red-500 text-white"}`}>{t.badge}</span>}
             </button>
@@ -337,34 +393,52 @@ export default function FranchiseApplicationDetail() {
         })}
       </div>
 
+      {/* SUMMARY (approved franchises): fee, deposit, earnings, restaurants, commission, login in one place */}
+      {activeTab === "summary" && approved && (
+        <FranchiseSummary app={app} id={id} mods={mods} onOpenTab={setTab} onChanged={load} canShareLogin={Boolean(app.subAdminId)} />
+      )}
+
       {/* LIVE OVERVIEW (approved franchises) */}
       {activeTab === "overview" && approved && (
         <FranchiseControlCenter id={id} onChanged={load} onRemoved={() => navigate("/admin/food/franchise-management")} />
       )}
 
+      {/* EARNINGS & COMMISSION */}
+      {activeTab === "finance" && approved && (
+        <FranchiseFinancePanel
+          load={(params) => adminAPI.getFranchiseFinance(id, params)}
+          loadEntries={(params) => adminAPI.getFranchiseFinanceEntries(id, params)}
+          onPayoutsClick={() => setTab("payouts")}
+        />
+      )}
+
+      {/* FEES & DEPOSIT */}
+      {activeTab === "fees" && (
+        <FranchiseChargesPanel franchiseId={id} accountStatus={app.accountStatus || "active"} archived={Boolean(app.archived)} onChanged={load} />
+      )}
+
+      {/* COMMISSION OVERRIDE */}
+      {activeTab === "commission" && (
+        <CommissionRuleEditor scope="franchise" scopeId={id} services={mods} />
+      )}
+
+      {/* AUDIT */}
+      {activeTab === "audit" && <FranchiseAuditPanel franchiseId={id} />}
+
       {/* APPLICATION REVIEW */}
       {activeTab === "review" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
           <div className="lg:col-span-2 space-y-5">
-            <Card title="Business information" icon={Building2}>
-              {(() => {
-                const rows = [
-                  ["Company", app.companyName], ["Business type", app.businessType], ["Investment range", app.investmentRange], ["Experience", app.experience],
-                  ["Area", app.area], ["Pincode", app.pincode],
-                  ...(app.additionalFields ? Object.entries(app.additionalFields) : []),
-                ].filter(([, v]) => v);
-                return rows.length ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {rows.map(([k, v]) => (
-                      <div key={k} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                        <div className="text-[10px] font-bold text-slate-400 uppercase">{k}</div>
-                        <div className="text-sm font-semibold text-slate-900 mt-0.5 break-words">{String(v)}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : <Empty>No extra business details were submitted.</Empty>;
-              })()}
-            </Card>
+            {(() => {
+              const p = profileSections(app);
+              return (
+                <>
+                  <Card title="Contact" icon={Phone}><InfoList items={p.contact} /></Card>
+                  <Card title="Location" icon={MapPin}><InfoList items={p.location} /></Card>
+                  <Card title="Business information" icon={Building2}><InfoList items={p.business} /></Card>
+                </>
+              );
+            })()}
 
             <Card title={`KYC documents (${app.documents?.length || 0})`} icon={FileText}>
               {app.documents?.length ? (
@@ -480,61 +554,33 @@ export default function FranchiseApplicationDetail() {
         </div>
       )}
 
-      {/* PLAN & FEES */}
+      {/* ZONE & PAYOUT TERMS */}
       {activeTab === "plan" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-          <Card title="Onboarding fee" icon={CreditCard} right={<span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold ${feeInfo.cls}`}>{feeInfo.label}</span>}>
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs mb-4">
-              Plan: <b>{planLabel(mods)}</b> · standard fee <b>{inr(fees[planKey])}</b>
+          <Card title="Pricing zone" icon={MapPinned}>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs mb-4 space-y-1">
+              <div>Current zone: <b>{currentTerritory ? currentTerritory.name : "Not set (created before zone pricing)"}</b></div>
+              {currentTerritory && <div className="text-slate-500">Zone price: joining fee {inr(currentTerritory.joiningFee)} · deposit {inr(currentTerritory.securityDeposit)}</div>}
+              <div className="text-slate-500">This franchise's own amounts are in "Fees & deposit"; its commission in "Commission".</div>
             </div>
-            <div className="flex gap-2 flex-wrap mb-4">
-              {[["Full fee", fees[planKey]], ["25% off", Math.round(fees[planKey] * 0.75)], ["50% off", Math.round(fees[planKey] * 0.5)], ["Waive", 0]].map(([label, val]) => (
-                <button key={label} type="button" onClick={() => { setFee(val); if (val === 0) setFeeStatus("waived"); else if (feeStatus === "waived") setFeeStatus("pending"); }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${fee === val ? "bg-amber-600 text-white border-amber-600" : "bg-white text-slate-700 border-slate-300 hover:bg-amber-50"}`}>
-                  {label} ({inr(val)})
-                </button>
+            <label className={labelCls}>Move to zone</label>
+            <select className={`${inputCls} mb-3`} value={newTerritoryId} onChange={(e) => setNewTerritoryId(e.target.value)}>
+              <option value="">-- Select zone --</option>
+              {territories.filter((t) => t.isActive && String(t.id) !== String(currentTerritory?.id || "")).map((t) => (
+                <option key={t.id} value={t.id} disabled={(hasFood && !t.foodZoneId) || (hasTaxi && !t.taxiZoneId)}>
+                  {t.name}{(hasFood && !t.foodZoneId) || (hasTaxi && !t.taxiZoneId) ? " (missing zone for this franchise's services)" : ""}
+                </option>
               ))}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>Fee for this franchise (₹)</label>
-                <input type="number" min={0} value={fee} disabled={app.franchiseFeeStatus === "paid"} onChange={(e) => setFee(Number(e.target.value))} className={inputCls} />
-                {app.franchiseFeeStatus === "paid" && <p className="text-[10px] text-slate-400 mt-1">Already paid, so the amount is locked.</p>}
-              </div>
-              <div>
-                <label className={labelCls}>Payment status</label>
-                <select value={feeStatus} onChange={(e) => setFeeStatus(e.target.value)} className={inputCls}>
-                  {Object.entries(FEE_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label} - {v.note}</option>)}
-                </select>
-              </div>
-            </div>
-            {app.franchiseFeePaymentDetails?.transactionId && (
-              <div className="mt-4 p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-xs grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>Txn: <b className="font-mono">{app.franchiseFeePaymentDetails.transactionId}</b></div>
-                <div>Method: <b className="uppercase">{app.franchiseFeePaymentDetails.paymentMethod || "-"}</b></div>
-                <div>Paid: <b>{inr(app.franchiseFeePaymentDetails.paidAmount)}</b></div>
-              </div>
-            )}
-            {["pending", "refund_due"].includes(app.franchiseFeeStatus) && (
-              <button onClick={markFeePaid} disabled={savingTerms} className="mt-4 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-xs inline-flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" /> Mark fee as paid (received outside the app)
-              </button>
-            )}
+            </select>
+            <label className={labelCls}>Reason</label>
+            <input className={`${inputCls} mb-3`} value={territoryReason} onChange={(e) => setTerritoryReason(e.target.value)} placeholder="Why is the zone changing?" />
+            <button onClick={changeTerritory} disabled={savingTerritory} className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-900 disabled:opacity-60 text-white font-bold text-xs inline-flex items-center gap-2">
+              {savingTerritory ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Change zone
+            </button>
+            <p className="text-[11px] text-slate-400 mt-2">Only future orders and rides are affected. Amounts already owed or paid stay as they are.</p>
           </Card>
 
-          <Card title="Commission & payout" icon={Percent}>
-            <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs mb-4">
-              This franchise earns <b>{commissions[planKey]}%</b> of what the platform earns ({planLabel(mods)} plan). Only the rate for its own plan is used.
-            </div>
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              {[["food", "Food only"], ["taxi", "Taxi only"], ["both", "Food + Taxi"]].map(([k, label]) => (
-                <div key={k} className={k === planKey ? "" : "opacity-50"}>
-                  <label className={labelCls}>{label} (%)</label>
-                  <input type="number" min={0} max={100} value={commissions[k]} onChange={(e) => setCommissions({ ...commissions, [k]: Number(e.target.value) })} className={inputCls} />
-                  {k === planKey && <div className="text-[10px] font-bold text-blue-600 mt-1">Applies to this franchise</div>}
-                </div>
-              ))}
-            </div>
+          <Card title="Payout terms" icon={Wallet}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Payout cycle</label>
@@ -547,13 +593,10 @@ export default function FranchiseApplicationDetail() {
                 <input type="number" min={0} value={minPayout} onChange={(e) => setMinPayout(Number(e.target.value))} className={inputCls} />
               </div>
             </div>
-          </Card>
-
-          <div className="lg:col-span-2">
-            <button onClick={() => saveTerms()} disabled={savingTerms} className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-extrabold text-sm inline-flex items-center gap-2">
-              {savingTerms ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save plan, fee & commission
+            <button onClick={() => saveTerms()} disabled={savingTerms} className="mt-4 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold text-xs inline-flex items-center gap-2">
+              {savingTerms ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save payout terms
             </button>
-          </div>
+          </Card>
         </div>
       )}
 
@@ -561,14 +604,13 @@ export default function FranchiseApplicationDetail() {
       {activeTab === "payouts" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
           <Card title="Settlement account" icon={CreditCard} right={<span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold ${hasBank ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{hasBank ? "Provided by partner" : "Not provided yet"}</span>}>
-            <div className="space-y-2.5 text-xs">
-              {[["Bank", bank.bankName], ["Account no.", bank.accountNumber], ["IFSC", bank.ifscCode], ["UPI ID", bank.upiId], ["Account holder", bank.accountHolderName]].map(([k, v]) => (
-                <div key={k} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">{k}</div>
-                  <div className="text-sm font-extrabold mt-0.5 font-mono">{v || "-"}</div>
-                </div>
-              ))}
-            </div>
+            <InfoList cols={1} items={[
+              ["Account holder", bank.accountHolderName, { copy: true }],
+              ["Bank", bank.bankName],
+              ["Account no.", bank.accountNumber, { copy: true, mono: true }],
+              ["IFSC", bank.ifscCode, { copy: true, mono: true }],
+              ["UPI ID", bank.upiId, { copy: true, mono: true }],
+            ]} />
             <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">Wallet balance: <b className="text-emerald-700">{inr(app.walletBalance)}</b></div>
           </Card>
 
@@ -587,10 +629,15 @@ export default function FranchiseApplicationDetail() {
                           <td className="py-2.5 px-3">
                             {p.status === "pending" ? (
                               <div className="flex gap-1.5">
-                                <button onClick={() => payoutAction(p.requestId, "approved")} className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px]">Approve</button>
-                                <button onClick={() => payoutAction(p.requestId, "rejected")} className="px-2.5 py-1 rounded bg-white border border-slate-300 text-red-600 hover:bg-red-50 font-bold text-[10px]">Reject</button>
+                                <button onClick={() => setPayoutDialog({ requestId: p.requestId, amount: p.amount, status: "approved" })} className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px]">Mark paid</button>
+                                <button onClick={() => setPayoutDialog({ requestId: p.requestId, amount: p.amount, status: "rejected" })} className="px-2.5 py-1 rounded bg-white border border-slate-300 text-red-600 hover:bg-red-50 font-bold text-[10px]">Reject</button>
                               </div>
-                            ) : <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${p.status === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>{p.status === "approved" ? "Paid" : "Rejected"}</span>}
+                            ) : (
+                              <div>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${p.status === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>{p.status === "approved" ? "Paid" : "Rejected"}</span>
+                                {p.transactionId && <div className="text-[10px] text-slate-500 font-mono mt-0.5">Ref {p.transactionId}</div>}
+                              </div>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -601,6 +648,40 @@ export default function FranchiseApplicationDetail() {
             </Card>
           </div>
         </div>
+      )}
+
+      {/* PARTNER REQUESTS */}
+      {activeTab === "requests" && (
+        <Card title={`Requests from this partner (${app.changeRequests?.length || 0})`} icon={ClipboardCheck}>
+          {app.changeRequests?.length ? (
+            <div className="space-y-3">
+              {[...app.changeRequests].sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt)).map((r) => {
+                const target = territories.find((t) => String(t.id) === String(r.requestedTerritoryId));
+                return (
+                  <div key={r.requestId} className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-xs space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="font-extrabold text-sm">{r.type === "zone_change" ? `Zone change${target ? ` to ${target.name}` : ""}` : "Deactivate account"}</div>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${r.status === "pending" ? "bg-amber-100 text-amber-800" : r.status === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>{r.status}</span>
+                    </div>
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 font-medium">{r.reason}</div>
+                    <div className="text-[10px] text-slate-400">{new Date(r.requestedAt).toLocaleString("en-IN")}{r.decidedAt ? ` · decided ${new Date(r.decidedAt).toLocaleString("en-IN")}` : ""}</div>
+                    {r.status === "pending" ? (
+                      <div className="space-y-2">
+                        {r.type === "deactivate" && <p className="text-[11px] font-semibold text-red-700">Approving locks this franchise's login and sends a notification to all its restaurants.</p>}
+                        {r.type === "zone_change" && <p className="text-[11px] font-semibold text-slate-500">Approving moves the franchise now. Only future orders and rides use the new zone.</p>}
+                        <input className={inputCls} placeholder="Note for the partner (optional)" value={reqNote[r.requestId] || ""} onChange={(e) => setReqNote({ ...reqNote, [r.requestId]: e.target.value })} />
+                        <div className="flex gap-2">
+                          <button disabled={reqBusy === r.requestId} onClick={() => decideRequest(r.requestId, "approve")} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-xs">Approve</button>
+                          <button disabled={reqBusy === r.requestId} onClick={() => decideRequest(r.requestId, "reject")} className="px-4 py-2 rounded-lg bg-white border border-slate-300 text-red-600 hover:bg-red-50 disabled:opacity-60 font-bold text-xs">Reject</button>
+                        </div>
+                      </div>
+                    ) : r.adminNote ? <div className="text-slate-700"><b>Your note:</b> {r.adminNote}</div> : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : <Empty>This partner has not sent any request.</Empty>}
+        </Card>
       )}
 
       {/* SUPPORT */}
@@ -630,6 +711,28 @@ export default function FranchiseApplicationDetail() {
             </div>
           ) : <Empty>No messages from this partner yet.</Empty>}
         </Card>
+      )}
+
+      {payoutDialog && (
+        <Modal open title={payoutDialog.status === "approved" ? `Mark payout of ${inr(payoutDialog.amount)} as paid` : "Reject payout request"} onClose={() => setPayoutDialog(null)} footer={<>
+          <button onClick={() => setPayoutDialog(null)} className="px-4 py-2.5 rounded-lg bg-white border border-slate-300 text-xs font-bold">Cancel</button>
+          <button
+            disabled={payoutBusy || (payoutDialog.status === "approved" && payoutRef.trim().length < 4)}
+            onClick={() => payoutAction(payoutDialog.requestId, payoutDialog.status, payoutDialog.status === "approved" ? { transactionId: payoutRef.trim(), adminNote: payoutNote } : { adminNote: payoutNote })}
+            className={`px-4 py-2.5 rounded-lg text-white text-xs font-bold inline-flex items-center gap-2 disabled:opacity-60 ${payoutDialog.status === "approved" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}>
+            {payoutBusy && <Loader2 className="w-4 h-4 animate-spin" />}{payoutDialog.status === "approved" ? "Confirm paid" : "Reject"}
+          </button>
+        </>}>
+          {payoutDialog.status === "approved" ? (
+            <>
+              <p className="text-xs text-slate-500">Send the money to the partner's account first, then record the bank / UPI reference here. The wallet is debited once; it can never go negative.</p>
+              <label className={labelCls}>Transfer reference (UTR / txn id)</label>
+              <input className={`${inputCls} font-mono`} value={payoutRef} onChange={(e) => setPayoutRef(e.target.value)} />
+            </>
+          ) : <p className="text-xs text-slate-500">The reserved amount goes back to the partner's available balance.</p>}
+          <label className={labelCls}>Note (optional)</label>
+          <input className={inputCls} value={payoutNote} onChange={(e) => setPayoutNote(e.target.value)} />
+        </Modal>
       )}
     </div>
   );

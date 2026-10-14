@@ -26,12 +26,15 @@ const ROLES = {
   ADMIN: "ADMIN",
 };
 
+// The first admin can be created automatically ONLY when DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD are set in the
+// server .env. (A real e-mail and password used to be written in this source file as the fallback, so anybody who could
+// read the code could create a platform super admin on a database that had none.)
 const DEFAULT_CREDENTIALS = {
-  adminEmail: String(process.env.DEFAULT_ADMIN_EMAIL || "Raydoindia@gmail.com")
+  adminEmail: String(process.env.DEFAULT_ADMIN_EMAIL || "")
     .trim()
     .toLowerCase(),
   adminPassword: String(
-    process.env.DEFAULT_ADMIN_PASSWORD || "sahin.raydo@2004#",
+    process.env.DEFAULT_ADMIN_PASSWORD || "",
   ),
   userPhone: String(process.env.DEFAULT_USER_PHONE || "7974161582"),
   restaurantPhone: String(process.env.DEFAULT_RESTAURANT_PHONE || "7974161582"),
@@ -289,6 +292,8 @@ export const adminLogin = async (email, password) => {
   // Auto-provision default admin account (no manual seed needed).
   if (
     !admin &&
+    DEFAULT_CREDENTIALS.adminEmail &&
+    DEFAULT_CREDENTIALS.adminPassword &&
     normalizedEmail === DEFAULT_CREDENTIALS.adminEmail &&
     password === DEFAULT_CREDENTIALS.adminPassword
   ) {
@@ -315,9 +320,11 @@ export const adminLogin = async (email, password) => {
   }
 
   const isDisabled = admin.isActive === false || admin.active === false || admin.status === 'inactive';
-  const isFranchiseOrSub = Boolean(admin.franchiseId) || ['franchise', 'franchise_partner', 'subadmin'].includes(String(admin.admin_type || '').toLowerCase());
-  if (isDisabled && isFranchiseOrSub) {
-    // Suspended / unpaid / archived franchise logins stay locked until an admin re-enables them.
+  // A deactivated admin stays locked until another admin re-enables the account. (Before, only franchise / sub admins
+  // were locked: any other deactivated admin switched himself back on just by logging in.)
+  // The one exception is the server owner's own bootstrap account from .env, so the owner can never lock himself out.
+  const isBootstrapOwner = Boolean(DEFAULT_CREDENTIALS.adminEmail) && normalizedEmail === DEFAULT_CREDENTIALS.adminEmail;
+  if (isDisabled && !isBootstrapOwner) {
     throw new AuthError("Your account is inactive. Please contact the admin.");
   }
   if (isDisabled) {

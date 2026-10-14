@@ -116,10 +116,15 @@ const RentalDeposit = () => {
   const { totalCost, selectedPackage, serviceLocation } = state;
   const vehicle = vehicleSnapshot || {};
   const advancePayment = vehicle.advancePayment || {};
-  const payableNow = useMemo(
-    () => (advancePayment.enabled ? Number(advancePayment.amount || 0) : 0),
-    [advancePayment.amount, advancePayment.enabled],
-  );
+  // Same rule as the server: full / fixed amount / percentage of the rental cost
+  const payableNow = useMemo(() => {
+    if (!advancePayment.enabled) return 0;
+    const amount = Math.max(0, Number(advancePayment.amount || 0));
+    const total = Math.max(0, Number(totalCost || 0));
+    if (advancePayment.paymentMode === 'full') return total;
+    if (advancePayment.paymentMode === 'fixed') return total > 0 ? Math.min(total, amount) : amount;
+    return Math.round(total * Math.min(100, amount)) / 100;
+  }, [advancePayment.amount, advancePayment.enabled, advancePayment.paymentMode, totalCost]);
   const advancePaymentLabel = advancePayment.label || 'Advance booking payment';
   const bookingReference = useMemo(
     () => state.bookingReference || `RNT-${Date.now().toString(36).slice(-6).toUpperCase()}`,

@@ -95,6 +95,9 @@ const RideComplete = () => {
   const [walletLoading, setWalletLoading] = useState(false);
   const [paymentCollection, setPaymentCollection] = useState(() => state.driverPaymentCollection || null);
   const [rideLiveStatus, setRideLiveStatus] = useState(() => String(state.liveStatus || state.status || '').toLowerCase());
+  // The FINAL fare comes from the server (it includes the waiting charge added when the trip ended)
+  const [serverFare, setServerFare] = useState(null);
+  const [waitingInfo, setWaitingInfo] = useState(() => state.waitingCharge || null);
   const [tipSettings, setTipSettings] = useState({
     enable_tips: '1',
     min_tip_amount: '10',
@@ -102,7 +105,9 @@ const RideComplete = () => {
 
   const routeHome = location.pathname.startsWith('/taxi/user') ? '/taxi/user' : '/';
   const rideId = state.rideId || '';
-  const fare = Number(state.fare || 22);
+  const fare = serverFare !== null ? serverFare : Number(state.fare || 22);
+  const waitingAmount = Math.max(0, Number(waitingInfo?.amount || 0));
+  const rideFareOnly = Math.max(0, fare - waitingAmount);
   const paymentMethod = state.paymentMethod || 'Cash';
   const paymentMethodLabel = PAYMENT_OPTIONS.find((option) => option.id === selectedPaymentMethod)?.label || paymentMethod;
   const pickup = state.pickup || 'Pickup';
@@ -178,6 +183,8 @@ const RideComplete = () => {
         if (active) {
           setPaymentCollection(payload?.driverPaymentCollection || null);
           setRideLiveStatus(nextLiveStatus);
+          if (Number.isFinite(Number(payload?.fare)) && Number(payload.fare) > 0) setServerFare(Number(payload.fare));
+          setWaitingInfo(payload?.waitingCharge || null);
         }
 
         if (!active || !feedback) {
@@ -640,9 +647,20 @@ const RideComplete = () => {
 
             <div className="rounded-[18px] border border-slate-100 bg-white p-3">
               <div className="flex items-center justify-between">
-                <span className="text-[12px] font-bold text-slate-500">Base fare</span>
-                <span className="text-[13px] font-black text-slate-900">Rs {fare.toFixed(2)}</span>
+                <span className="text-[12px] font-bold text-slate-500">{waitingAmount > 0 ? 'Ride fare' : 'Base fare'}</span>
+                <span className="text-[13px] font-black text-slate-900">Rs {rideFareOnly.toFixed(2)}</span>
               </div>
+              {waitingAmount > 0 ? (
+                <div className="mt-2 flex items-start justify-between gap-3">
+                  <span className="text-[12px] font-bold text-amber-600">
+                    Waiting charge
+                    <span className="block text-[10px] font-bold text-slate-400">
+                      {Number(waitingInfo?.totalWaitedMinutes || 0)} min waited, {Number(waitingInfo?.freeMinutes || 0)} free, {Number(waitingInfo?.minutes || 0)} min x Rs {Number(waitingInfo?.ratePerMinute || 0)}
+                    </span>
+                  </span>
+                  <span className="text-[13px] font-black text-amber-600">Rs {waitingAmount.toFixed(2)}</span>
+                </div>
+              ) : null}
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-[12px] font-bold text-slate-500">Tip</span>
                 <span className="text-[13px] font-black text-slate-900">Rs {Number(selectedTip || 0).toFixed(2)}</span>

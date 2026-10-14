@@ -31,6 +31,10 @@ const franchiseApplicationSchema = new mongoose.Schema({
     // The TAXI zone this franchise owns (only for franchises that hold the taxi module)
     taxiZoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'TaxiZone', default: null, index: true },
     subAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodAdmin', default: null },
+    // Pricing territory (zone-wise joining fee / deposit / commission). Null for franchises created before territories.
+    territoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'FranchiseTerritory', default: null, index: true },
+    // 'admin' = created manually by a super admin, 'application' = came through the public form
+    origin: { type: String, enum: ['admin', 'application'], default: 'application' },
 
     // 'food' and/or 'taxi' (legacy taxiDriver/taxiFleet/... values are normalized to 'taxi' on save)
     selectedModules: { type: [String], default: ['food'] },
@@ -54,6 +58,7 @@ const franchiseApplicationSchema = new mongoose.Schema({
     franchiseFeePaymentDetails: {
         transactionId: { type: String, trim: true, default: '' },
         razorpayOrderId: { type: String, trim: true, default: '' },
+        razorpayOrderAmountPaise: { type: Number, default: 0 },   // amount the server put on the Razorpay order
         paymentMethod: { type: String, trim: true, default: '' },
         receiptUrl: { type: String, trim: true, default: '' },
         paidAmount: { type: Number, default: 0 },
@@ -81,6 +86,10 @@ const franchiseApplicationSchema = new mongoose.Schema({
 
     // Wallet & Payout System
     walletBalance: { type: Number, default: 0 },
+    // Exact wallet in paise (engine v2). walletBalance mirrors it in rupees for older readers.
+    walletBalancePaise: { type: Number, default: undefined },
+    // Bumped by every ledger posting so concurrent postings for one franchise conflict and retry (see franchiseLedger.service)
+    ledgerSeq: { type: Number, default: 0 },
     payoutRequests: [{
         requestId: { type: String },
         amount: { type: Number, required: true },
@@ -117,7 +126,10 @@ const franchiseApplicationSchema = new mongoose.Schema({
     }],
 
     // Account control (admin): suspended = login blocked; archived = soft-deleted (kept for history)
-    accountStatus: { type: String, enum: ['active', 'suspended'], default: 'active', index: true },
+    // terminated = franchise agreement ended: login locked for good, no new orders/rides are assigned, deposit can be settled
+    accountStatus: { type: String, enum: ['active', 'suspended', 'terminated'], default: 'active', index: true },
+    terminatedAt: { type: Date, default: null },
+    terminationReason: { type: String, default: '' },
     suspendReason: { type: String, default: '' },
     suspendedAt: { type: Date, default: null },
     archived: { type: Boolean, default: false, index: true },
@@ -145,6 +157,19 @@ const franchiseApplicationSchema = new mongoose.Schema({
         reply: { type: String, default: '' },
         createdAt: { type: Date, default: Date.now },
         updatedAt: { type: Date, default: Date.now }
+    }],
+
+    // Requests sent by the partner that need an admin decision (zone change, closing the account)
+    changeRequests: [{
+        requestId: { type: String, required: true },
+        type: { type: String, enum: ['zone_change', 'deactivate'], required: true },
+        status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+        reason: { type: String, default: '' },
+        requestedTerritoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'FranchiseTerritory', default: null },
+        adminNote: { type: String, default: '' },
+        requestedAt: { type: Date, default: Date.now },
+        decidedAt: { type: Date, default: null },
+        decidedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
     }],
 
     // Tracking

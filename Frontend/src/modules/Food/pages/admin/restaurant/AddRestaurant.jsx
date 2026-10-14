@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
+import { isPointInZone, getZoneBounds, hasZonePolygon, zoneDisplayName } from "@food/utils/zoneGeometry"
 import { useNavigate, useLocation } from "react-router-dom"
 import { Building2, Info, Tag, Upload, Calendar, FileText, MapPin, CheckCircle2, X, Image as ImageIcon, Clock, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@food/components/ui/dialog"
@@ -428,6 +429,7 @@ export default function AddRestaurant() {
     if (!step1.primaryContactNumber?.trim()) errors.push("Primary contact number is required")
     if (step1.primaryContactNumber?.trim() && !PHONE_REGEX.test(step1.primaryContactNumber.trim())) errors.push("Primary contact number must be 10 digits")
     if (!step1.zoneId?.trim()) errors.push("Service zone is required")
+    if (locationZoneError) errors.push(locationZoneError)
     if (!step1.location?.area?.trim()) errors.push("Area/Sector/Locality is required")
     if (!step1.location?.city?.trim()) errors.push("City is required")
     return errors
@@ -642,6 +644,39 @@ export default function AddRestaurant() {
   const [locationSuggestions, setLocationSuggestions] = useState([])
   const [isSearchingLocation, setIsSearchingLocation] = useState(false)
 
+  // The zone is chosen FIRST; the location must then lie inside that zone's area
+  const selectedZone = useMemo(
+    () => zones.find((z) => String(z?._id || z?.id || "") === String(step1.zoneId || "")) || null,
+    [zones, step1.zoneId],
+  )
+  const selectedZoneRef = useRef(null)
+  selectedZoneRef.current = selectedZone
+  const locationZoneError = useMemo(() => {
+    const lat = step1.location?.latitude
+    const lng = step1.location?.longitude
+    if (!selectedZone || !hasZonePolygon(selectedZone)) return ""
+    if (lat === "" || lat == null || lng === "" || lng == null) return ""
+    return isPointInZone(lat, lng, selectedZone)
+      ? ""
+      : `This location is outside the selected zone (${zoneDisplayName(selectedZone)}). Search a location inside the zone, or choose the correct zone.`
+  }, [selectedZone, step1.location?.latitude, step1.location?.longitude])
+
+  // Make Google's search suggest places from the selected zone only
+  const applyZoneToAutocomplete = (autocomplete, zone) => {
+    try {
+      const box = getZoneBounds(zone)
+      if (!autocomplete || !box || !window.google?.maps?.LatLngBounds) return
+      autocomplete.setBounds(new window.google.maps.LatLngBounds(
+        { lat: box.south, lng: box.west },
+        { lat: box.north, lng: box.east },
+      ))
+      autocomplete.setOptions({ strictBounds: true })
+    } catch {}
+  }
+  useEffect(() => {
+    applyZoneToAutocomplete(placesAutocompleteRef.current, selectedZone)
+  }, [selectedZone])
+
   useEffect(() => {
     if (step !== 1) return
     let cancelled = false
@@ -776,6 +811,7 @@ export default function AddRestaurant() {
         
         inputElement.setAttribute('data-google-places-initialized', 'true')
         placesAutocompleteRef.current = autocomplete
+        applyZoneToAutocomplete(autocomplete, selectedZoneRef.current)
 
         autocomplete.addListener("place_changed", () => {
           const place = autocomplete.getPlace()
@@ -852,7 +888,10 @@ export default function AddRestaurant() {
     const t = setTimeout(async () => {
       try {
         setIsSearchingLocation(true)
-        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=4&q=${encodeURIComponent(q)}&countrycodes=in`
+        const zone = selectedZoneRef.current
+        const box = getZoneBounds(zone)
+        const viewbox = box ? `&viewbox=${box.west},${box.north},${box.east},${box.south}&bounded=1` : ""
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&q=${encodeURIComponent(q)}&countrycodes=in${viewbox}`
         const res = await fetch(url, { headers: { Accept: "application/json" } })
         const json = await res.json()
         const mapped = (Array.isArray(json) ? json : []).map(r => ({
@@ -861,7 +900,7 @@ export default function AddRestaurant() {
           lat: Number(r.lat),
           lng: Number(r.lon),
           addr: r.address || {},
-        }))
+        })).filter((r) => isPointInZone(r.lat, r.lng, zone)).slice(0, 4)
         setLocationSuggestions(mapped)
       } catch (e) {
         debugError("Nominatim search failed:", e)
@@ -871,7 +910,7 @@ export default function AddRestaurant() {
     }, 400)
 
     return () => clearTimeout(t)
-  }, [locationSearchValue, step])
+  }, [locationSearchValue, step, selectedZone])
 
 
   // Render functions for each step
@@ -1006,6 +1045,32 @@ export default function AddRestaurant() {
 
       <section className="bg-white p-4 sm:p-6 rounded-md space-y-4">
         <h2 className="text-lg font-semibold text-black">Restaurant contact & location</h2>
+        <div>
+          <Label className="text-xs text-gray-700">Service zone*</Label>
+          <select
+            value={step1.zoneId || ""}
+            onChange={(e) => {
+              setStep1({ ...step1, zoneId: e.target.value })
+              setLocationSuggestions([])
+            }}
+            className="mt-1 w-full h-9 rounded-md border border-input bg-white px-3 text-sm"
+            disabled={zonesLoading}
+          >
+            <option value="">{zonesLoading ? "Loading zones..." : "Select a zone"}</option>
+            {zones.map((z) => {
+              const id = String(z?._id || z?.id || "")
+              const label = z?.name || z?.zoneName || z?.serviceLocation || id
+              return (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              )
+            })}
+          </select>
+          <p className="text-[11px] text-gray-500 mt-1">
+            Choose the zone first. The restaurant location must be inside this zone.
+          </p>
+        </div>
         <div className="relative">
           <Label className="text-xs text-gray-700">Search location</Label>
           <div className="relative">
@@ -1013,8 +1078,9 @@ export default function AddRestaurant() {
               ref={locationSearchInputRef}
               value={locationSearchValue}
               onChange={(e) => setLocationSearchValue(e.target.value)}
-              className="mt-1 bg-white text-sm"
-              placeholder="Search and select restaurant address..."
+              className={`mt-1 bg-white text-sm ${locationZoneError ? "border-red-500" : ""}`}
+              placeholder={selectedZone ? `Search a location inside ${zoneDisplayName(selectedZone)}...` : "Select a service zone first"}
+              disabled={!selectedZone}
             />
             {isSearchingLocation && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -1061,32 +1127,15 @@ export default function AddRestaurant() {
             </div>
           )}
           
-          <p className="text-[11px] text-gray-500 mt-1">
-            Search to auto-fill Area, City, State, Pincode and coordinates.
-          </p>
-        </div>
-        <div>
-          <Label className="text-xs text-gray-700">Service zone*</Label>
-          <select
-            value={step1.zoneId || ""}
-            onChange={(e) => setStep1({ ...step1, zoneId: e.target.value })}
-            className="mt-1 w-full h-9 rounded-md border border-input bg-white px-3 text-sm"
-            disabled={zonesLoading}
-          >
-            <option value="">{zonesLoading ? "Loading zones..." : "Select a zone"}</option>
-            {zones.map((z) => {
-              const id = String(z?._id || z?.id || "")
-              const label = z?.name || z?.zoneName || z?.serviceLocation || id
-              return (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              )
-            })}
-          </select>
-          <p className="text-[11px] text-gray-500 mt-1">
-            Choose the service zone where your restaurant will be available.
-          </p>
+          {locationZoneError ? (
+            <p className="text-[12px] font-medium text-red-600 mt-1">{locationZoneError}</p>
+          ) : (
+            <p className="text-[11px] text-gray-500 mt-1">
+              {selectedZone
+                ? "Search to auto-fill Area, City, State, Pincode and coordinates. Only places inside the selected zone are accepted."
+                : "Select the service zone above, then search the location."}
+            </p>
+          )}
         </div>
         <div>
           <Label className="text-xs text-gray-700">Primary contact number*</Label>

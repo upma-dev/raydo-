@@ -273,3 +273,44 @@ export async function updatePartnerBankDetailsController(req, res, next) {
         next(err);
     }
 }
+
+/**
+ * GET /v1/franchise/finance - the logged-in partner's own earnings, commission, wallet, fee and deposit.
+ * The franchise id comes only from the verified token (never from the query).
+ */
+export async function getPartnerFinanceController(req, res, next) {
+    try {
+        const { from, to, page } = req.query;
+        const data = await franchisePublicService.getPartnerFinance(req.user.franchiseId, { from, to, page });
+        return sendResponse(res, 200, 'Finance fetched', data);
+    } catch (err) {
+        next(err);
+    }
+}
+
+// ─── Franchise portal: riders, taxi drivers, payments (franchise id from the token only) ───
+import * as portalService from '../services/franchisePortal.service.js';
+
+const portal = (fn, message) => async (req, res, next) => {
+    try {
+        return sendResponse(res, 200, message, await fn(req));
+    } catch (err) {
+        next(err);
+    }
+};
+
+import * as requestsService from '../../admin/services/franchiseRequests.service.js';
+export const getPartnerProfileController = portal((req) => requestsService.getPartnerProfile(req.user.franchiseId), 'Profile fetched');
+export const createPartnerRequestController = portal((req) => requestsService.createRequest(req.user.franchiseId, req.body || {}, { id: req.user?.userId || null, name: 'Franchise partner', level: 'franchise', ip: String(req.ip || '').slice(0, 64) }), 'Request sent to admin');
+import * as issuesService from '../../admin/services/franchiseIssues.service.js';
+export const listPartnerIssuesController = portal((req) => issuesService.listIssues(req.user.franchiseId, req.query), 'Issues fetched');
+export const respondPartnerIssueController = portal((req) => issuesService.respondIssue(req.user.franchiseId, req.params.source, req.params.id, req.body || {}, { id: req.user?.userId || null, name: 'Franchise partner', level: 'franchise', ip: String(req.ip || '').slice(0, 64) }), 'Issue updated');
+export const listRidersController = portal((req) => portalService.listRiders(req.user.franchiseId, req.query), 'Riders fetched');
+export const getRiderController = portal((req) => portalService.getRider(req.user.franchiseId, req.params.id), 'Rider fetched');
+export const decideRiderController = portal((req) => portalService.decideRider(req, req.params.id, { action: req.params.action, reason: req.body?.reason }), 'Rider updated');
+export const getTaxiDriverController = portal((req) => portalService.getTaxiDriver(req.user.franchiseId, req.params.id), 'Driver fetched');
+export const decideTaxiDriverController = portal((req) => portalService.decideTaxiDriver(req, req.params.id, { action: req.params.action, reason: req.body?.reason }), 'Driver updated');
+export const listFoodPaymentsController = portal((req) => portalService.listFoodPayments(req.user.franchiseId, req.query), 'Payments fetched');
+export const getDeliveryFeesController = portal((req) => portalService.getDeliveryFees(req.user.franchiseId), 'Delivery fees fetched');
+export const saveDeliveryFeesController = portal((req) => portalService.saveDeliveryFees(req, req.body || {}), 'Delivery fees saved');
+export const resetDeliveryFeesController = portal((req) => portalService.resetDeliveryFees(req), 'Delivery fees reset');

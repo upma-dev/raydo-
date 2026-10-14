@@ -41,14 +41,19 @@ const scopeBadgeClass = (scope) => {
   return "bg-slate-100 text-slate-700 border-slate-200"
 }
 
-const zoneLabel = (zone) => {
-  if (!zone) return "Global"
+const objectIdPattern = /^[a-f0-9]{24}$/i
+
+// The zone's real name, never a raw id. `zoneNames` maps zone id -> name (loaded from the zones list).
+const zoneLabel = (zone, zoneNames = {}, savedName = "") => {
+  if (!zone) return "Global (all zones)"
   if (typeof zone === "string") {
     const value = zone.trim()
-    if (/^[a-f0-9]{24}$/i.test(value)) return `Zone ID ${value.slice(-6)}`
+    if (value === "global") return "Global (all zones)"
+    if (objectIdPattern.test(value)) return zoneNames[value] || savedName || "Unknown zone"
     return value
   }
-  return zone?.name || zone?.zoneName || zone?.serviceLocation || "Zone"
+  const id = String(zone?._id || zone?.id || "")
+  return zone?.name || zone?.zoneName || zone?.serviceLocation || zoneNames[id] || savedName || "Unknown zone"
 }
 
 export default function Category() {
@@ -61,6 +66,14 @@ export default function Category() {
   const [editingCategory, setEditingCategory] = useState(null)
   const [zones, setZones] = useState([])
   const [zonesLoading, setZonesLoading] = useState(false)
+  const zoneNames = useMemo(() => {
+    const map = {}
+    zones.forEach((z) => {
+      const id = String(z?._id || z?.id || "")
+      if (id) map[id] = z?.name || z?.zoneName || z?.serviceLocation || "Unnamed zone"
+    })
+    return map
+  }, [zones])
   const [formData, setFormData] = useState(defaultFormData)
   const [selectedImageFile, setSelectedImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
@@ -315,7 +328,7 @@ export default function Category() {
         category?.name || "N/A",
         category?.foodTypeScope || "Both",
         category?.isGlobal ? "Global" : "Private",
-        zoneLabel(category?.zoneId),
+        zoneLabel(category?.zoneId, zoneNames, category?.zoneName),
         category?.approvalStatus || "pending",
       ])
 
@@ -495,7 +508,7 @@ export default function Category() {
                   const creatorName = category?.createdByRestaurant?.name || category?.restaurant?.name || "Admin"
                   const approvalStatus = category?.approvalStatus || "pending"
                   const isRestaurantCategory = Boolean(category?.createdByRestaurantId || category?.restaurantId)
-                  const zoneText = zoneLabel(category?.zoneId)
+                  const zoneText = zoneLabel(category?.zoneId, zoneNames, category?.zoneName)
 
                   return (
                     <tr key={category.id} className="align-top hover:bg-slate-50/80">

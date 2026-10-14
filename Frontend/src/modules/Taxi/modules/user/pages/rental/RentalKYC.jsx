@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Upload, CheckCircle2, ChevronRight, ShieldCheck, X } from 'lucide-react';
@@ -18,7 +18,6 @@ const RentalKYC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const state = location.state || {};
-  if (!state.vehicle) { navigate('/rental'); return null; }
 
   const existingKycDocuments = useMemo(() => state.rentalKyc?.documents || {}, [state.rentalKyc]);
 
@@ -101,6 +100,13 @@ const RentalKYC = () => {
       setUploading(false);
     }
   };
+  // go back when the page was opened without its data (done in an effect, not while rendering)
+  useEffect(() => {
+    if (!state.vehicle) navigate('/rental', { replace: true });
+  }, [state.vehicle, navigate]);
+
+  // every hook has run above, so it is safe to stop here
+  if (!state.vehicle) return null;
 
   return (
     <div className="min-h-[100vh] bg-[linear-gradient(180deg,#F8FAFC_0%,#F3F4F6_38%,#EEF2F7_100%)] max-w-lg mx-auto font-sans pb-32 relative overflow-y-auto no-scrollbar">

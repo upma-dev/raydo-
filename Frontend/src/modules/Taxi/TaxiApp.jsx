@@ -79,8 +79,9 @@ const CabHome = lazy(() => import('./modules/user/pages/cab/CabHome'));
 const SharedTaxi = lazy(() => import('./modules/user/pages/cab/SharedTaxi'));
 const SharedTaxiSeats = lazy(() => import('./modules/user/pages/cab/SharedTaxiSeats'));
 const SharedTaxiConfirm = lazy(() => import('./modules/user/pages/cab/SharedTaxiConfirm'));
-const AirportCab = lazy(() => import('./modules/user/pages/cab/AirportCab'));
-const AirportCabConfirm = lazy(() => import('./modules/user/pages/cab/AirportCabConfirm'));
+// Airport pages disabled for now:
+// const AirportCab = lazy(() => import('./modules/user/pages/cab/AirportCab'));
+// const AirportCabConfirm = lazy(() => import('./modules/user/pages/cab/AirportCabConfirm'));
 const SpiritualTrip = lazy(() => import('./modules/user/pages/cab/SpiritualTrip'));
 const SpiritualTripVehicle = lazy(() => import('./modules/user/pages/cab/SpiritualTripVehicle'));
 const SpiritualTripConfirm = lazy(() => import('./modules/user/pages/cab/SpiritualTripConfirm'));
@@ -223,7 +224,7 @@ const AdminBannerImage = lazy(() => import('./modules/admin/pages/promotions/Ban
 const AdminServiceLocation = lazy(() => import('./modules/admin/pages/price-management/ServiceLocation'));
 const AdminServiceStores = lazy(() => import('./modules/admin/pages/price-management/ServiceStores'));
 const AdminZoneManagement = lazy(() => import('./modules/admin/pages/price-management/ZoneManagement'));
-const AdminAirportManagement = lazy(() => import('./modules/admin/pages/price-management/Airport'));
+// const AdminAirportManagement = lazy(() => import('./modules/admin/pages/price-management/Airport'));   // airport disabled for now
 const AdminSetPrices = lazy(() => import('./modules/admin/pages/price-management/SetPrices'));
 const AdminSetPackagePrices = lazy(() => import('./modules/admin/pages/price-management/SetPackagePrices'));
 const AdminCreatePackagePrice = lazy(() => import('./modules/admin/pages/price-management/CreatePackagePrice'));
@@ -785,11 +786,13 @@ function TaxiApp() {
                   path="cab/shared/confirm"
                   element={<SharedTaxiConfirm />}
                 />
+                {/* Airport routes disabled for now
                 <Route path="cab/airport" element={<AirportCab />} />
                 <Route
                   path="cab/airport-confirm"
                   element={<AirportCabConfirm />}
                 />
+                */}
                 <Route path="cab/spiritual" element={<SpiritualTrip />} />
                 <Route
                   path="cab/spiritual-vehicle"
@@ -942,11 +945,13 @@ function TaxiApp() {
                   path="user/cab/shared/confirm"
                   element={<SharedTaxiConfirm />}
                 />
+                {/* Airport routes disabled for now
                 <Route path="user/cab/airport" element={<AirportCab />} />
                 <Route
                   path="user/cab/airport-confirm"
                   element={<AirportCabConfirm />}
                 />
+                */}
                 <Route
                   path="user/cab/spiritual"
                   element={<SpiritualTrip />}
@@ -1475,6 +1480,7 @@ function TaxiApp() {
                     path="zone/edit/:id"
                     element={<AdminZoneManagement mode="edit" />}
                   />
+                  {/* Airport admin routes disabled for now
                   <Route path="airport" element={<AdminAirportManagement />} />
                   <Route
                     path="airport/create"
@@ -1484,6 +1490,7 @@ function TaxiApp() {
                     path="airport/edit/:id"
                     element={<AdminAirportManagement mode="edit" />}
                   />
+                  */}
                   <Route path="vehicle-type" element={<AdminVehicleType />} />
                   <Route
                     path="vehicle-type/create"

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, MapPin, Clock, Users, CheckCircle2, CreditCard, Banknote, Smartphone, ChevronRight } from 'lucide-react';
@@ -13,7 +13,6 @@ const SharedTaxiConfirm = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { route, date, seats, total } = location.state || {};
-  if (!route) { navigate('/cab/shared'); return null; }
 
   const [method, setMethod] = useState('upi');
   const [paying, setPaying] = useState(false);
@@ -25,6 +24,13 @@ const SharedTaxiConfirm = () => {
     setPaying(true);
     setTimeout(() => { setPaying(false); setConfirmed(true); }, 1800);
   };
+
+  // go back when the page was opened without its data (done in an effect, not while rendering)
+  useEffect(() => {
+    if (!route) navigate('/cab/shared', { replace: true });
+  }, [route, navigate]);
+
+  if (!route) return null;
 
   if (confirmed) {
     return (
@@ -42,15 +48,15 @@ const SharedTaxiConfirm = () => {
         <div className="w-full rounded-[20px] border border-white/80 bg-white/90 shadow-[0_4px_14px_rgba(15,23,42,0.06)] px-5 py-4 space-y-2.5">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-            <span className="text-[12px] font-black text-slate-800 truncate">{route.from}</span>
+            <span className="text-[12px] font-black text-slate-800 truncate">{route?.from}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
-            <span className="text-[12px] font-black text-slate-800 truncate">{route.to}</span>
+            <span className="text-[12px] font-black text-slate-800 truncate">{route?.to}</span>
           </div>
           <div className="border-t border-slate-50 pt-2.5 flex justify-between items-center">
             <div>
-              <p className="text-[10px] font-bold text-slate-400">{date} · {route.departure}</p>
+              <p className="text-[10px] font-bold text-slate-400">{date} · {route?.departure}</p>
               <p className="text-[10px] font-bold text-slate-400">Seats: {seats?.map(s=>s.label).join(', ')}</p>
             </div>
             <p className="text-[20px] font-black text-slate-900">₹{total}</p>
@@ -63,7 +69,6 @@ const SharedTaxiConfirm = () => {
       </div>
     );
   }
-
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#F8FAFC_0%,#F3F4F6_38%,#EEF2F7_100%)] max-w-lg mx-auto font-sans pb-28 relative overflow-hidden">
       <div className="absolute -top-16 right-[-40px] h-44 w-44 rounded-full bg-emerald-100/60 blur-3xl pointer-events-none" />

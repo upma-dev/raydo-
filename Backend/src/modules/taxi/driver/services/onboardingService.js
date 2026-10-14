@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { assertVehicleTypeFitsServices } from '../../services/vehicleServiceRules.js';
+import { isMasterOtp as isMasterOtpFor } from '../../../../core/otp/masterOtp.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { env } from '../../../../config/env.js';
 import { normalizePoint, toPoint } from '../../../../utils/geo.js';
@@ -515,6 +517,7 @@ export const startDriverOnboarding = async ({ phone, role = 'driver' }) => {
       otpHash: hashOtp(otp),
       otpExpiresAt: new Date(now + OTP_TTL_MS),
       otpVerifiedAt: null,
+      otpAttempts: 0,
       expiresAt: new Date(now + SESSION_TTL_MS),
     },
     { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
@@ -540,16 +543,18 @@ export const verifyDriverOtp = async ({ registrationId, phone, otp }) => {
     throw new ApiError(400, 'A valid 4-digit or 6-digit OTP is required');
   }
 
-  const isMasterOtp =
-    normalizedOtp === '1234' ||
-    normalizedOtp === '123456' ||
-    (env.staticOtpCode && normalizedOtp === env.staticOtpCode);
+  const isMasterOtp = isMasterOtpFor(normalizedOtp, phone);
 
   if (!isMasterOtp && (!session.otpExpiresAt || new Date(session.otpExpiresAt).getTime() < Date.now())) {
     throw new ApiError(410, 'OTP has expired');
   }
 
   if (!isMasterOtp && session.otpHash !== hashOtp(normalizedOtp)) {
+    const updated = await DriverRegistrationSession.findOneAndUpdate({ _id: session._id }, { $inc: { otpAttempts: 1 } }, { returnDocument: 'after' });
+    if (Number(updated?.otpAttempts || 0) >= 5) {
+      await DriverRegistrationSession.deleteOne({ _id: session._id });
+      throw new ApiError(429, 'Too many wrong OTP attempts. Please request a new OTP.');
+    }
     throw new ApiError(401, 'Invalid OTP');
   }
 
@@ -714,6 +719,11 @@ export const saveDriverVehicle = async ({
   };
 
   requireField('locationId', locationId, 'Operating city');
+
+  // The vehicle type must exist, be enabled, and belong to the service the driver chose
+  if (!isOwner && hasValue(vehicleTypeId)) {
+    await assertVehicleTypeFitsServices({ vehicleTypeId, serviceCategories: normalizedServiceCategories });
+  }
 
   if (isOwner) {
     requireField('companyName', companyName, 'Company name');

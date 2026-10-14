@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireTaxiPanelAdmin } from '../../../middlewares/adminPanelAccess.js';
 import { authenticate } from '../../../middlewares/authMiddleware.js';
 import {
   createBanner,
@@ -21,7 +22,7 @@ import {
 
 export const promotionsRouter = Router();
 
-promotionsRouter.use('/admin', authenticate(['admin']));
+promotionsRouter.use('/admin', authenticate(['admin']), requireTaxiPanelAdmin);
 
 promotionsRouter.get('/admin/promotions/bootstrap', getPromotionsBootstrap);
 promotionsRouter.get('/admin/promos', getPromoCodes);

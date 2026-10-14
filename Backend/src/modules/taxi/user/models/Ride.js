@@ -115,6 +115,12 @@ const rideSchema = new mongoose.Schema(
         default: '',
         trim: true,
       },
+      // Outstation package + the fare the SERVER worked out from the map distance (see intercityFareService)
+      packageId: { type: String, default: '', trim: true },
+      packageTypeName: { type: String, default: '', trim: true },
+      durationMinutes: { type: Number, default: 0, min: 0 },
+      distanceSource: { type: String, default: '', trim: true },   // 'google' = real road route, 'estimate' = straight line x 1.3
+      fareBreakdown: { type: mongoose.Schema.Types.Mixed, default: null },
     },
     parcel: {
       category: {
@@ -652,6 +658,19 @@ const rideSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
+    },
+    // Waiting at the pickup, billed when the ride completes (so rider and driver both see the same split)
+    fareBeforeWaiting: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    waitingCharge: {
+      minutes: { type: Number, default: 0, min: 0 },            // chargeable minutes (after the free minutes)
+      totalWaitedMinutes: { type: Number, default: 0, min: 0 },
+      freeMinutes: { type: Number, default: 0, min: 0 },
+      ratePerMinute: { type: Number, default: 0, min: 0 },
+      amount: { type: Number, default: 0, min: 0 },
     },
     baseRideFare: {
       type: Number,

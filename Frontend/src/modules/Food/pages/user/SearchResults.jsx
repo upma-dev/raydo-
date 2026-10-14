@@ -11,6 +11,7 @@ import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { restaurantAPI, adminAPI } from "@food/api"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
+import { extractCoords } from "@food/utils/geoDistance"
 
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }

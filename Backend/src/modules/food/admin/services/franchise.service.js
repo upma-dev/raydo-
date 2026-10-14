@@ -4,12 +4,18 @@ import { FoodAdmin } from '../../../../core/admin/admin.model.js';
 import { FoodZone } from '../models/zone.model.js';
 import FranchiseLedger from '../models/franchiseLedger.model.js';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import {
-    normalizeModules, normalizeFees, normalizeCommissions, getFranchiseFee,
-    getCommissionRate, roundMoney,
+    normalizeModules, normalizeFees, normalizeCommissions, getFranchiseFee, roundMoney,
 } from './franchisePlan.js';
-import { debitPayout, reverseFoodOrder } from './franchiseLedger.service.js';
+import { reverseFoodOrder, postRowsInSession, reimburseFranchiseRefund } from './franchiseLedger.service.js';
 import { invalidateTaxiSettings } from './franchiseTaxi.service.js';
+import FranchiseTerritory from '../models/franchiseTerritory.model.js';
+import { ensureCharges, ensureLegacyCharges, syncLegacyFeeFields } from './franchiseCharges.service.js';
+import { createRuleVersion, resolveRates } from './commissionRules.service.js';
+import { MoneyError, parseRupeesInput, toPaise, fromPaise, bpsToPercent } from './franchiseMoney.js';
+import { writeAudit } from './franchiseAudit.service.js';
+import { withTransaction, opts } from './franchiseTx.js';
 
 const generatePassword = () => `Fr@${crypto.randomBytes(5).toString('hex')}`;
 
@@ -28,8 +34,30 @@ const accessFor = (app) => {
 
 /** One taxi zone belongs to one franchise, otherwise two franchises would fight over the same rides. */
 async function assertTaxiZoneFree(taxiZoneId, franchiseId) {
-    const other = await FranchiseApplication.findOne({ taxiZoneId, _id: { $ne: franchiseId }, archived: { $ne: true } }).select('applicantName').lean();
-    if (other) throw new Error(`This taxi zone already belongs to ${other.applicantName}'s franchise.`);
+    const other = await FranchiseApplication.findOne({ taxiZoneId, _id: { $ne: franchiseId }, archived: { $ne: true }, accountStatus: { $ne: 'terminated' } }).select('applicantName').lean();
+    if (other) throw new MoneyError(`This taxi zone already belongs to ${other.applicantName}'s franchise.`, 409);
+}
+
+/** Same rule for food: two franchises on one food zone would make order ownership a coin toss. */
+async function assertFoodZoneFree(zoneId, franchiseId) {
+    const other = await FranchiseApplication.findOne({
+        zoneId, _id: { $ne: franchiseId }, archived: { $ne: true }, accountStatus: { $ne: 'terminated' },
+        status: { $ne: 'rejected' }, selectedModules: 'food',
+    }).select('applicantName').lean();
+    if (other) throw new MoneyError(`This food zone already belongs to ${other.applicantName}'s franchise.`, 409);
+}
+
+/** Permissions a franchise login may hold: only those of its own modules (never '*', never admin management). */
+function allowedPermissions(access, requested) {
+    if (!Array.isArray(requested) || requested.length === 0) return access.permissions;
+    const allowed = new Set(access.permissions);
+    const clean = requested
+        .map((p) => String(p || '').trim())
+        .filter((p) => {
+            const base = p.replace(/\.(read|write|view|manage)$/, '');
+            return allowed.has(base);
+        });
+    return clean.length ? [...new Set(clean)] : access.permissions;
 }
 
 /** Push the franchise's current plan onto its login account (idempotent). */
@@ -106,6 +134,7 @@ export async function syncFranchiseSubAdmin(id, { password, permissions, zoneId,
     const access = accessFor(app);
     const targetZoneId = access.modules.includes('food') ? (zoneId || app.zoneId) : null;
     if (access.modules.includes('food') && zoneId && String(zoneId) !== String(app.zoneId)) {
+        await assertFoodZoneFree(zoneId, app._id);
         app.zoneId = zoneId;
     }
     if (access.modules.includes('taxi') && taxiZoneId) {
@@ -113,7 +142,10 @@ export async function syncFranchiseSubAdmin(id, { password, permissions, zoneId,
         app.taxiZoneId = taxiZoneId;
     }
 
-    const subAdminPermissions = permissions && permissions.length > 0 ? permissions : access.permissions;
+    const subAdminPermissions = allowedPermissions(access, permissions);
+    if (password !== undefined && password !== null && password !== '' && String(password).length < 8) {
+        throw new MoneyError('Login password must be at least 8 characters');
+    }
 
     let subAdmin = null;
     let isNewAccount = false;
@@ -122,6 +154,14 @@ export async function syncFranchiseSubAdmin(id, { password, permissions, zoneId,
     }
     if (!subAdmin) {
         subAdmin = await FoodAdmin.findOne({ email: app.email.toLowerCase() });
+        // Never turn an existing platform admin (or another franchise's login) into this franchise's login
+        if (subAdmin) {
+            const linkedElsewhere = subAdmin.franchiseId && String(subAdmin.franchiseId) !== String(app._id);
+            const isFranchiseLogin = ['franchise', 'franchise_partner'].includes(String(subAdmin.admin_type || '').toLowerCase());
+            if (linkedElsewhere || !isFranchiseLogin) {
+                throw new MoneyError('This email already belongs to another admin account. Use a different email for the franchise login.', 409);
+            }
+        }
     }
     if (!subAdmin) {
         subAdmin = await FoodAdmin.findOne({ franchiseId: app._id });
@@ -226,6 +266,10 @@ export async function updateApplicationStatus(id, { status, adminNote, autoCreat
     app.reviewedAt = new Date();
     await app.save();
 
+    if (status === 'approved') {
+        await ensureLegacyCharges(app.toObject());
+    }
+
     let subAdminResult = null;
     if (status === 'approved' && autoCreateSubAdmin && !app.subAdminId) {
         try {
@@ -269,47 +313,41 @@ export async function getApplicationStats() {
 }
 
 /**
- * Update commission & financial settings for a franchise
- * (rates / fees use the three plan keys: food, taxi, both)
+ * Update payout terms, zones and modules of a franchise.
+ * Fees, deposit and commission are NOT edited here any more: they have their own audited endpoints
+ * (charges / commission rules), so this route can never mark a fee as paid or change a rate.
  */
-export async function updateCommissionSettings(id, {
-    payoutCycle, minPayoutThreshold, paymentAccountInfo, zoneId, selectedModules,
-    franchiseFee, franchiseFeeStatus, moduleCommissions, moduleFranchiseFees, taxiZoneId
-}) {
-    const app = await FranchiseApplication.findById(id);
-    if (!app) throw new Error('Application not found');
-    if (payoutCycle !== undefined) app.payoutCycle = payoutCycle;
-    if (minPayoutThreshold !== undefined) app.minPayoutThreshold = Number(minPayoutThreshold);
-    if (paymentAccountInfo !== undefined) app.paymentAccountInfo = { ...app.paymentAccountInfo, ...paymentAccountInfo };
-    if (moduleCommissions !== undefined) app.moduleCommissions = normalizeCommissions({ ...normalizeCommissions(app.moduleCommissions), ...moduleCommissions });
-    if (moduleFranchiseFees !== undefined) app.moduleFranchiseFees = normalizeFees({ ...normalizeFees(app.moduleFranchiseFees), ...moduleFranchiseFees });
-
-    if (selectedModules !== undefined) app.selectedModules = normalizeModules(selectedModules);
-
-    const feeSettled = app.franchiseFeeStatus === 'paid';
-    if (franchiseFee !== undefined) {
-        if (feeSettled && Number(franchiseFee) !== Number(app.franchiseFee)) {
-            throw new Error('The franchise fee is already paid, so the amount cannot be changed. Refund it first if it must change.');
-        }
-        app.franchiseFee = Number(franchiseFee);
-    } else if ((selectedModules !== undefined || moduleFranchiseFees !== undefined) && app.franchiseFeeStatus === 'pending') {
-        // Fee not paid yet -> keep it in sync with the plan
-        app.franchiseFee = getFranchiseFee(app.selectedModules, app.moduleFranchiseFees);
+export async function updateCommissionSettings(id, body = {}, actor = {}) {
+    const blocked = ['franchiseFee', 'franchiseFeeStatus', 'moduleCommissions', 'moduleFranchiseFees', 'commissionRate', 'walletBalance'];
+    const sent = blocked.filter((k) => body[k] !== undefined);
+    if (sent.length) {
+        throw new MoneyError(`${sent.join(', ')} cannot be changed here. Use the Fees & deposit or Commission section (every change there is verified and audited).`);
     }
+    const { payoutCycle, minPayoutThreshold, paymentAccountInfo, zoneId, selectedModules, taxiZoneId } = body;
+    const app = await FranchiseApplication.findById(id);
+    if (!app) throw new MoneyError('Application not found', 404);
+    const before = {
+        payoutCycle: app.payoutCycle, minPayoutThreshold: app.minPayoutThreshold, zoneId: app.zoneId, taxiZoneId: app.taxiZoneId,
+        selectedModules: normalizeModules(app.selectedModules),
+    };
 
-    if (franchiseFeeStatus !== undefined) {
-        app.franchiseFeeStatus = franchiseFeeStatus;
-        if (franchiseFeeStatus === 'paid' || franchiseFeeStatus === 'waived') {
-            app.franchiseFeePaidAt = new Date();
-            // Unlock SubAdmin account if exists
-            if (app.subAdminId) {
-                await FoodAdmin.findByIdAndUpdate(app.subAdminId, { active: true, isActive: true, status: 'active' });
-            }
-        } else {
-            if (app.subAdminId) {
-                await FoodAdmin.findByIdAndUpdate(app.subAdminId, { active: false, isActive: false, status: 'inactive' });
-            }
-        }
+    if (payoutCycle !== undefined) {
+        if (!['weekly', 'biweekly', 'monthly'].includes(payoutCycle)) throw new MoneyError('Invalid payout cycle');
+        app.payoutCycle = payoutCycle;
+    }
+    if (minPayoutThreshold !== undefined) app.minPayoutThreshold = fromPaise(parseRupeesInput(minPayoutThreshold, { field: 'Minimum payout' }));
+    if (paymentAccountInfo !== undefined && paymentAccountInfo && typeof paymentAccountInfo === 'object') {
+        const cur = app.paymentAccountInfo || {};
+        const pick = (k, max) => String(paymentAccountInfo[k] ?? cur[k] ?? '').trim().slice(0, max);
+        app.paymentAccountInfo = {
+            bankName: pick('bankName', 80), accountNumber: pick('accountNumber', 34), ifscCode: pick('ifscCode', 11).toUpperCase(),
+            upiId: pick('upiId', 80), accountHolderName: pick('accountHolderName', 120),
+        };
+    }
+    if (selectedModules !== undefined) {
+        const mods = normalizeModules(selectedModules);
+        if (!Array.isArray(selectedModules) || !selectedModules.length) throw new MoneyError('Choose at least one service');
+        app.selectedModules = mods;
     }
 
     if (taxiZoneId !== undefined) {
@@ -318,6 +356,7 @@ export async function updateCommissionSettings(id, {
     }
 
     if (zoneId !== undefined) {
+        if (zoneId) await assertFoodZoneFree(zoneId, app._id);
         app.zoneId = zoneId || null;
         if (app.subAdminId && zoneId) {
             await FoodAdmin.findByIdAndUpdate(app.subAdminId, { $addToSet: { food_zone_ids: zoneId } });
@@ -325,6 +364,14 @@ export async function updateCommissionSettings(id, {
     }
     await app.save();
     await applyAccessToLogin(app); // a changed plan changes what the login may use
+    await writeAudit({
+        actor, franchiseId: app._id, entity: 'franchise', entityId: app._id, action: 'franchise.update_terms',
+        before, after: {
+            payoutCycle: app.payoutCycle, minPayoutThreshold: app.minPayoutThreshold, zoneId: app.zoneId, taxiZoneId: app.taxiZoneId,
+            selectedModules: normalizeModules(app.selectedModules), bankDetailsChanged: paymentAccountInfo !== undefined,
+        },
+        reason: String(body.reason || '').slice(0, 500),
+    });
     return getApplicationById(id);
 }
 
@@ -401,7 +448,7 @@ export async function getFranchiseAnalytics(id) {
         }));
     }
 
-    const foodRate = getCommissionRate(app.selectedModules, app.moduleCommissions, 'food');
+    const foodRate = bpsToPercent((await resolveRates(app)).food.rateBps);
 
     return {
         franchise: {
@@ -457,7 +504,7 @@ export async function getFormConfig() {
 /**
  * Update form config (admin)
  */
-export async function updateFormConfig({ fields, requiredDocuments, moduleFranchiseFees, moduleCommissions, paymentDetails, taxiSettings }, adminUserId) {
+export async function updateFormConfig({ fields, requiredDocuments, moduleFranchiseFees, moduleCommissions, paymentDetails, taxiSettings, applicationSettings }, adminUserId) {
     let config = await FranchiseFormConfig.findOne();
     if (!config) {
         config = new FranchiseFormConfig();
@@ -467,6 +514,16 @@ export async function updateFormConfig({ fields, requiredDocuments, moduleFranch
     if (moduleFranchiseFees !== undefined) config.moduleFranchiseFees = normalizeFees({ ...normalizeFees(config.moduleFranchiseFees), ...moduleFranchiseFees });
     if (moduleCommissions !== undefined) config.moduleCommissions = normalizeCommissions({ ...normalizeCommissions(config.moduleCommissions), ...moduleCommissions });
     if (paymentDetails !== undefined) config.paymentDetails = { ...config.paymentDetails, ...paymentDetails };
+    if (applicationSettings !== undefined) {
+        const cur = config.applicationSettings?.toObject ? config.applicationSettings.toObject() : (config.applicationSettings || {});
+        const next = { ...cur };
+        if (applicationSettings.automaticFormEnabled !== undefined) next.automaticFormEnabled = Boolean(applicationSettings.automaticFormEnabled);
+        if (applicationSettings.closedTitle !== undefined) next.closedTitle = String(applicationSettings.closedTitle).trim().slice(0, 120);
+        if (applicationSettings.closedMessage !== undefined) next.closedMessage = String(applicationSettings.closedMessage).trim().slice(0, 1000);
+        if (next.automaticFormEnabled === false && !next.closedMessage) throw new Error('Enter the message users should see while the form is off');
+        config.applicationSettings = next;
+        config.markModified('applicationSettings');
+    }
     if (taxiSettings !== undefined) {
         const cur = config.taxiSettings?.toObject ? config.taxiSettings.toObject() : (config.taxiSettings || {});
         const base = taxiSettings.commissionBase;
@@ -492,50 +549,169 @@ export async function updateFormConfig({ fields, requiredDocuments, moduleFranch
     return config;
 }
 
+const PHONE_RE = /^\+?\d{10,15}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const PIN_RE = /^\d{6}$/;
+const txt = (v, max, field, required = false) => {
+    const s = String(v ?? '').trim();
+    if (required && !s) throw new MoneyError(`${field} is required`);
+    if (s.length > max) throw new MoneyError(`${field} is too long`);
+    return s;
+};
+
 /**
- * Manually create a Franchise Application by Admin
+ * Manual franchise creation by a platform super admin (the main way franchises are created now).
+ * Only whitelisted fields are read (no mass assignment): status is always "approved", the fee is never "paid" here.
+ * Pricing comes from the territory unless the admin types an override. Optional commission override = a franchise
+ * rule version. Everything financial is created in one transaction with its audit rows.
  */
-export async function createApplication(data, adminUserId) {
-    const config = await FranchiseFormConfig.getConfig();
-    const fees = normalizeFees(config.moduleFranchiseFees);
-    const comms = normalizeCommissions(config.moduleCommissions);
-    const selectedModules = normalizeModules(data.selectedModules);
-
-    const app = new FranchiseApplication({
-        applicantName: data.applicantName,
-        phone: data.phone,
-        email: data.email,
-        companyName: data.companyName,
-        businessType: data.businessType || 'Proprietorship',
-        investmentRange: data.investmentRange || '10-25 Lakhs',
-        experience: data.experience || 'Fresher',
-        state: data.state,
-        city: data.city,
-        area: data.area,
-        pincode: data.pincode,
-        zoneId: data.zoneId || null,
-        selectedModules,
-        franchiseFee: (data.franchiseFee !== undefined && data.franchiseFee !== '' && data.franchiseFee !== null) ? Number(data.franchiseFee) : getFranchiseFee(selectedModules, fees),
-        franchiseFeeStatus: data.franchiseFeeStatus || 'pending',
-        status: data.status || 'approved',
-        adminNote: data.adminNote || 'Registered directly by Admin',
-        reviewedBy: adminUserId || null,
-        reviewedAt: new Date(),
-        moduleFranchiseFees: fees,
-        moduleCommissions: comms,
+const cleanAdditionalFields = (obj) => {
+    const out = {};
+    if (!obj || typeof obj !== 'object') return out;
+    Object.entries(obj).slice(0, 30).forEach(([k, v]) => {
+        const key = String(k).slice(0, 60);
+        const val = String(v ?? '').trim().slice(0, 1000);
+        if (key && val) out[key] = val;
     });
+    return out;
+};
 
-    await app.save();
+const cleanDocuments = (docs) => (Array.isArray(docs) ? docs : []).slice(0, 20)
+    .map((d) => ({ key: String(d?.key || '').slice(0, 60), label: String(d?.label || '').slice(0, 120), url: String(d?.url || '').slice(0, 1000) }))
+    .filter((d) => d.key && /^https?:\/\//i.test(d.url));
 
-    let subAdminResult = null;
+export async function createApplication(data = {}, actor = {}) {
+    const applicantName = txt(data.applicantName, 120, 'Partner name', true);
+    const phone = txt(data.phone, 16, 'Phone', true).replace(/[\s-]/g, '');
+    if (!PHONE_RE.test(phone)) throw new MoneyError('Phone must be 10-15 digits');
+    const email = txt(data.email, 160, 'Email', true).toLowerCase();
+    if (!EMAIL_RE.test(email)) throw new MoneyError('Invalid email');
+    const pincode = txt(data.pincode, 6, 'Pincode');
+    if (pincode && !PIN_RE.test(pincode)) throw new MoneyError('Pincode must be 6 digits');
+
+    const services = Array.isArray(data.selectedModules) ? data.selectedModules.filter((m) => ['food', 'taxi'].includes(m)) : [];
+    if (!services.length) throw new MoneyError('Choose Food, Taxi or both');
+    const selectedModules = normalizeModules(services);
+
+    if (!mongoose.Types.ObjectId.isValid(String(data.territoryId || ''))) throw new MoneyError('Choose the territory (zone) of this franchise');
+    const territory = await FranchiseTerritory.findById(data.territoryId).lean();
+    if (!territory) throw new MoneyError('Territory not found', 404);
+    if (territory.isActive === false) throw new MoneyError('This territory is inactive');
+    const zoneId = selectedModules.includes('food') ? territory.foodZoneId : null;
+    const taxiZoneId = selectedModules.includes('taxi') ? territory.taxiZoneId : null;
+    if (selectedModules.includes('food') && !zoneId) throw new MoneyError('This territory has no Food zone. Add one to the territory or untick Food.');
+    if (selectedModules.includes('taxi') && !taxiZoneId) throw new MoneyError('This territory has no Taxi zone. Add one to the territory or untick Taxi.');
+    const has = (v) => v !== undefined && v !== null && v !== '';
+    const joiningFeePaise = has(data.joiningFee) ? parseRupeesInput(data.joiningFee, { field: 'Joining fee' }) : territory.joiningFeePaise;
+    const securityDepositPaise = has(data.securityDeposit) ? parseRupeesInput(data.securityDeposit, { field: 'Security deposit' }) : territory.securityDepositPaise;
+    const overridden = joiningFeePaise !== territory.joiningFeePaise || securityDepositPaise !== territory.securityDepositPaise;
+    const overrideReason = String(data.overrideReason || '').trim();
+    if (overridden && overrideReason.length < 3) throw new MoneyError('A reason is required when the fee or deposit differs from the territory price');
+
+    const payoutCycle = ['weekly', 'biweekly', 'monthly'].includes(data.payoutCycle) ? data.payoutCycle : 'weekly';
+    const minPayoutThreshold = has(data.minPayoutThreshold) ? fromPaise(parseRupeesInput(data.minPayoutThreshold, { field: 'Minimum payout' })) : 5000;
+    const commissionOverride = data.commission && data.commission.useDefault !== true ? data.commission : null;
+
+    // Input errors first (400), then ownership conflicts (409)
+    if (zoneId) await assertFoodZoneFree(zoneId, null);
+    if (taxiZoneId) await assertTaxiZoneFree(taxiZoneId, null);
+
     if (data.createSubAdmin) {
-        subAdminResult = await syncFranchiseSubAdmin(app._id, {
-            password: data.subAdminPassword || undefined,
-            zoneId: app.zoneId,
-        });
+        const clash = await FoodAdmin.findOne({ email }).select('_id').lean();
+        if (clash) throw new MoneyError('An admin account with this email already exists. Use another email for the franchise login.', 409);
+        if (has(data.subAdminPassword) && String(data.subAdminPassword).length < 8) throw new MoneyError('Login password must be at least 8 characters');
     }
 
-    return subAdminResult ? { ...app.toObject(), credentialsInfo: subAdminResult.credentialsInfo } : app;
+    const appId = await withTransaction(async (session) => {
+        const [app] = await FranchiseApplication.create([{
+            applicantName, phone, email,
+            companyName: txt(data.companyName, 160, 'Company'),
+            businessType: txt(data.businessType, 60, 'Business type') || 'Proprietorship',
+            investmentRange: txt(data.investmentRange, 60, 'Investment range'),
+            experience: txt(data.experience, 60, 'Experience'),
+            additionalFields: cleanAdditionalFields(data.additionalFields),
+            documents: cleanDocuments(data.documents),
+            state: txt(data.state, 80, 'State', true),
+            city: txt(data.city, 80, 'City', true),
+            area: txt(data.area, 120, 'Area'),
+            pincode,
+            zoneId, taxiZoneId,
+            territoryId: territory._id,
+            origin: 'admin',
+            selectedModules,
+            franchiseFee: fromPaise(joiningFeePaise),
+            franchiseFeeStatus: 'pending',
+            payoutCycle, minPayoutThreshold,
+            status: 'approved',
+            adminNote: txt(data.adminNote, 500, 'Note') || 'Created by admin',
+            reviewedBy: actor?.id || null,
+            reviewedAt: new Date(),
+        }], opts(session));
+
+        await ensureCharges(app._id, { joiningFeePaise, securityDepositPaise, territory }, { session });
+        await writeAudit({
+            actor, franchiseId: app._id, entity: 'franchise', entityId: app._id, action: 'franchise.create',
+            after: {
+                applicationId: app.applicationId, name: applicantName, email, phone, territory: territory.name, services: selectedModules,
+                joiningFee: fromPaise(joiningFeePaise), securityDeposit: fromPaise(securityDepositPaise), overridden,
+            },
+            reason: overridden ? overrideReason : 'Franchise created by admin',
+        }, { session });
+        return app._id;
+    });
+
+    // Make the legacy fee fields match (e.g. both amounts 0 -> nothing to pay)
+    await syncLegacyFeeFields(appId);
+
+    let commission = null;
+    if (commissionOverride) {
+        commission = await createRuleVersion({
+            scope: 'franchise', scopeId: appId,
+            body: { ...commissionOverride, reason: commissionOverride.reason || 'Commission set when the franchise was created' },
+        }, actor);
+    }
+
+    let credentialsInfo = null;
+    if (data.createSubAdmin) {
+        const res = await syncFranchiseSubAdmin(appId, { password: data.subAdminPassword || undefined, zoneId });
+        credentialsInfo = res.credentialsInfo;
+        await syncLegacyFeeFields(appId); // lock/unlock the new login by the payment state
+    }
+
+    const app = await getApplicationById(appId);
+    return { ...app, commission, credentialsInfo };
+}
+
+/** Move a franchise to another territory. Only future transactions use the new territory's rates and zones. */
+export async function changeTerritory(id, { territoryId, reason } = {}, actor = {}) {
+    const why = String(reason || '').trim();
+    if (why.length < 3) throw new MoneyError('A reason is required');
+    const app = await FranchiseApplication.findById(id);
+    if (!app) throw new MoneyError('Franchise not found', 404);
+    if (!mongoose.Types.ObjectId.isValid(String(territoryId || ''))) throw new MoneyError('Choose a territory');
+    const territory = await FranchiseTerritory.findById(territoryId).lean();
+    if (!territory) throw new MoneyError('Territory not found', 404);
+    if (String(app.territoryId || '') === String(territory._id)) throw new MoneyError('The franchise is already in this territory');
+
+    const mods = normalizeModules(app.selectedModules);
+    const zoneId = mods.includes('food') ? territory.foodZoneId : null;
+    const taxiZoneId = mods.includes('taxi') ? territory.taxiZoneId : null;
+    if (mods.includes('food') && !zoneId) throw new MoneyError('The new territory has no Food zone');
+    if (mods.includes('taxi') && !taxiZoneId) throw new MoneyError('The new territory has no Taxi zone');
+    if (zoneId) await assertFoodZoneFree(zoneId, app._id);
+    if (taxiZoneId) await assertTaxiZoneFree(taxiZoneId, app._id);
+
+    const before = { territoryId: app.territoryId, zoneId: app.zoneId, taxiZoneId: app.taxiZoneId };
+    app.territoryId = territory._id;
+    app.zoneId = zoneId || null;
+    app.taxiZoneId = taxiZoneId || null;
+    await app.save();
+    if (app.subAdminId && zoneId) await FoodAdmin.findByIdAndUpdate(app.subAdminId, { $addToSet: { food_zone_ids: zoneId } });
+    await writeAudit({
+        actor, franchiseId: app._id, entity: 'franchise', entityId: app._id, action: 'franchise.change_territory',
+        before, after: { territoryId: territory._id, territory: territory.name, zoneId, taxiZoneId }, reason: why,
+    });
+    return getApplicationById(id);
 }
 
 export async function replyToSupportMessage(id, messageId, { reply, status = 'replied' }) {
@@ -553,28 +729,51 @@ export async function replyToSupportMessage(id, messageId, { reply, status = 're
     return getApplicationById(id);
 }
 
-export async function updatePayoutRequestStatus(id, requestId, { status, adminNote, transactionId }) {
-    if (!['approved', 'rejected'].includes(status)) throw new Error('Status must be approved or rejected');
-
-    const app = await FranchiseApplication.findById(id);
-    if (!app) throw new Error('Application not found');
-
-    const reqItem = (app.payoutRequests || []).find(p => p.requestId === requestId || String(p._id) === String(requestId));
-    if (!reqItem) throw new Error('Payout request not found');
-    if (reqItem.status !== 'pending') throw new Error(`Payout request is already ${reqItem.status}`);
-
-    if (status === 'approved') {
-        // Pending requests are already reserved, so only the wallet itself has to cover this one.
-        if ((Number(app.walletBalance) || 0) < reqItem.amount) throw new Error('Insufficient wallet balance for this payout');
-        await debitPayout(app._id, reqItem.requestId || String(reqItem._id), reqItem.amount);
-        if (transactionId) reqItem.transactionId = transactionId;
+/**
+ * Approve (= paid out) or reject a partner's payout request.
+ * Approving needs the bank/UPI reference of the transfer. The request is claimed and the wallet debited in ONE
+ * transaction, so two admins (or a double click) can never pay twice or approve-and-reject the same request.
+ */
+export async function updatePayoutRequestStatus(id, requestId, { status, adminNote, transactionId } = {}, actor = {}) {
+    if (!['approved', 'rejected'].includes(status)) throw new MoneyError('Status must be approved or rejected');
+    const note = String(adminNote || '').trim().slice(0, 500);
+    const ref = String(transactionId || '').trim();
+    if (status === 'approved' && (ref.length < 4 || ref.length > 120)) {
+        throw new MoneyError('Enter the bank / UPI transaction reference of the payout (4-120 characters)');
     }
 
-    reqItem.status = status;
-    reqItem.processedAt = new Date();
-    if (adminNote) reqItem.adminNote = adminNote;
+    const app = await FranchiseApplication.findById(id).select('payoutRequests').lean();
+    if (!app) throw new MoneyError('Application not found', 404);
+    const reqItem = (app.payoutRequests || []).find((p) => p.requestId === requestId || String(p._id) === String(requestId));
+    if (!reqItem) throw new MoneyError('Payout request not found', 404);
+    if (reqItem.status !== 'pending') throw new MoneyError(`Payout request is already ${reqItem.status}`, 409);
+    const key = reqItem.requestId || String(reqItem._id);
 
-    await app.save();
+    await withTransaction(async (session) => {
+        const claim = await FranchiseApplication.updateOne(
+            { _id: app._id, payoutRequests: { $elemMatch: { _id: reqItem._id, status: 'pending' } } },
+            { $set: {
+                'payoutRequests.$.status': status,
+                'payoutRequests.$.processedAt': new Date(),
+                'payoutRequests.$.adminNote': note,
+                ...(status === 'approved' ? { 'payoutRequests.$.transactionId': ref } : {}),
+            } },
+            opts(session),
+        );
+        if (claim.modifiedCount === 0) throw new MoneyError('This payout request was already processed', 409);
+        if (status === 'approved') {
+            const paise = toPaise(reqItem.amount);
+            await postRowsInSession(session, app._id, [{
+                franchiseId: app._id, module: null, account: 'wallet', type: 'payout', amountPaise: -paise, amount: -fromPaise(paise),
+                refType: 'payout', refId: key, sourceId: key, engineVersion: 2, createdBy: actor?.id || null,
+                note: `Payout ${key} (ref ${ref})`,
+            }], { requireWalletAtLeast: paise });
+        }
+        await writeAudit({
+            actor, franchiseId: app._id, entity: 'payout', entityId: key, action: `payout.${status}`,
+            before: { status: 'pending', amount: reqItem.amount }, after: { status, amount: reqItem.amount, reference: ref }, reason: note,
+        }, { session });
+    });
     return getApplicationById(id);
 }
 
@@ -593,15 +792,33 @@ export async function updateRefundClaimStatus(id, refundId, { status, adminNote 
     refundItem.processedAt = status === 'rejected' ? new Date() : null;
     if (adminNote) refundItem.claimReason = `${refundItem.claimReason || ''} | Admin: ${adminNote}`.trim();
 
-    // A refunded order earns the franchise nothing: take its commission back (no-op if never credited).
     if (status === 'approved_by_admin') {
-        const mongoose = (await import('mongoose')).default;
         const FoodOrder = mongoose.models.FoodOrder;
         const orderRef = refundItem.orderId;
         const order = FoodOrder && await FoodOrder.findOne(
             mongoose.Types.ObjectId.isValid(String(orderRef)) ? { _id: orderRef, franchiseId: app._id } : { order_id: orderRef, franchiseId: app._id }
-        ).select('_id').lean();
-        if (order) await reverseFoodOrder(order._id);
+        ).select('_id pricing.total payment.refund').lean();
+        if (!order) throw new Error('The order of this claim was not found in the franchise territory');
+        // The franchise can only be paid back for money it REALLY paid out, never more than that
+        const paid = order.payment?.refund;
+        if (paid?.status !== 'processed' || paid?.paidBy !== 'franchise') {
+            throw new Error('This refund was not recorded as paid by the franchise, so it cannot be reimbursed.');
+        }
+        const claimAmount = Math.min(Number(refundItem.amount) || 0, Number(paid.amount) || 0);
+        if (claimAmount <= 0) throw new Error('Nothing to reimburse for this claim.');
+
+        // 1. Pay the franchise back (idempotent per claim)
+        await reimburseFranchiseRefund(app._id, refundItem.id || String(refundItem._id), claimAmount, { orderId: order._id });
+
+        // 2. A refunded order earns the franchise nothing. The refund itself already took the commission back
+        //    (order-cancel.service > applyRefundBooks); only do it here if that never happened.
+        const alreadyReversed = await FranchiseLedger.exists({ sourceId: String(order._id), type: { $in: ['earning_reversal', 'reversal'] } });
+        if (!alreadyReversed) {
+            await reverseFoodOrder(order._id, {
+                refundAmount: claimAmount, orderTotal: Number(order.pricing?.total || 0),
+                refundKey: `claim:${refundItem.id || refundItem._id}`, note: 'Refund claim approved',
+            });
+        }
     }
 
     await app.save();

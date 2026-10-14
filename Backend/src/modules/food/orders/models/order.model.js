@@ -100,12 +100,18 @@ const paymentSchema = new mongoose.Schema(
         refund: {
             status: { 
                 type: String, 
-                enum: ['none', 'pending', 'processed', 'failed'], 
-                default: 'none' 
+                enum: ['none', 'pending', 'manual_pending', 'processed', 'failed'],
+                default: 'none'
             },
+            // amount of the latest refund (pending or processed); refundedTotal = sum of all processed refunds
             amount: { type: Number, default: 0 },
+            refundedTotal: { type: Number, default: 0 },
             refundId: { type: String, default: '' },
-            processedAt: { type: Date }
+            processedAt: { type: Date },
+            paidBy: { type: String, default: '' },
+            franchiseId: { type: mongoose.Schema.Types.ObjectId, default: undefined },
+            // admin chose "take it from the restaurant" for a refund that is still waiting to be done by hand
+            deductFromRestaurant: { type: Boolean, default: false }
         }
     },
     { _id: false }
@@ -276,6 +282,18 @@ const orderSchema = new mongoose.Schema(
             required: false
         },
         payoutReversed: { type: Boolean, default: false },
+        // Restaurant / delivery partner asked for a refund of this order; the admin decides
+        refundRequest: {
+            status: { type: String, enum: ['none', 'requested', 'approved', 'rejected'], default: 'none' },
+            byRole: { type: String, default: '' },
+            byId: { type: mongoose.Schema.Types.ObjectId, default: undefined },
+            reason: { type: String, default: '' },
+            amount: { type: Number, default: 0 },
+            requestedAt: { type: Date },
+            decidedAt: { type: Date },
+            decidedBy: { type: mongoose.Schema.Types.ObjectId, default: undefined },
+            decisionNote: { type: String, default: '' },
+        },
         orderStatus: {
             type: String,
             enum: [

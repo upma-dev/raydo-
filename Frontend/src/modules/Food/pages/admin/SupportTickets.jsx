@@ -168,6 +168,12 @@ export default function SupportTickets() {
                       <div className="text-sm">{t.issueType}</div>
                       {t.subject ? <div className="text-xs text-slate-500 mt-0.5">Subject: {t.subject}</div> : null}
                       {t.orderRef ? <div className="text-xs text-slate-500 mt-0.5">Order: {t.orderRef}</div> : null}
+                      {t.franchiseName ? (
+                        <div className="mt-1 text-xs rounded bg-indigo-50 border border-indigo-200 px-2 py-1 text-indigo-800">
+                          <b>Franchise: {t.franchiseName}</b>
+                          {t.franchiseResponse ? <div className="mt-0.5">Partner replied: {t.franchiseResponse}</div> : <div className="mt-0.5 text-indigo-600">No reply from the partner yet</div>}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <select

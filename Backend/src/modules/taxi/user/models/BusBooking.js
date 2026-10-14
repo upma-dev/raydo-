@@ -127,6 +127,20 @@ const busBookingSchema = new mongoose.Schema(
       type: passengerSchema,
       default: () => ({}),
     },
+    // One entry per seat (name / age / gender of the person who sits there). `passenger` stays the contact person.
+    seatPassengers: {
+      type: [new mongoose.Schema(
+        {
+          seatId: { type: String, default: '', trim: true },
+          seatLabel: { type: String, default: '', trim: true },
+          name: { type: String, default: '', trim: true },
+          age: { type: Number, default: null },
+          gender: { type: String, default: '', trim: true },
+        },
+        { _id: false },
+      )],
+      default: [],
+    },
     amount: {
       type: Number,
       default: 0,

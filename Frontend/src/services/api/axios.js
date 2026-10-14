@@ -289,6 +289,13 @@ apiClient.interceptors.response.use(
       return Promise.reject(err);
     }
 
+    // No token was sent = there was no session (guest browsing the user app). A 401 then just means
+    // "login required for this call": never show "Session expired" or force a redirect for it.
+    const sentAuth = original.headers?.Authorization || original.headers?.authorization;
+    if (!sentAuth) {
+      return Promise.reject(err);
+    }
+
     const module = original.contextModule || getModuleFromUrl(original.url);
     const refreshToken = getRefreshToken(module);
     if (!refreshToken) {

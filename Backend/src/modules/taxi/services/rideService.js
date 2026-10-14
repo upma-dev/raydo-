@@ -19,10 +19,11 @@ import { consumeUserSubscriptionRide, resolveApplicableUserSubscription } from '
 import { applyPromoToRideInTransaction } from './promoService.js';
 import { getTipSettings } from './appSettingsService.js';
 import { getBidRideSettings } from './transportSettingsService.js';
-import { emitToDriver, emitToRoom, getDriverRoom, getRideRoom, getUserRoom } from './dispatchService.js';
+import { cancelRideByUser, emitToDriver, emitToRoom, getDriverRoom, getRideRoom, getUserRoom } from './dispatchService.js';
 import { sendPushNotificationToEntities } from './pushNotificationService.js';
 import { Notification } from '../admin/promotions/models/Notification.js';
 import { creditFranchiseCommission } from '../admin/services/taxiFranchiseService.js';
+import { quoteIntercityFare } from './intercityFareService.js';
 
 export { getRideRoom } from './dispatchService.js';
 
@@ -45,16 +46,23 @@ const clearUserActiveRideIfPresent = async (user) => {
     return;
   }
 
-  activeRide.status = RIDE_STATUS.CANCELLED;
-  activeRide.liveStatus = RIDE_LIVE_STATUS.CANCELLED;
-  await activeRide.save();
-  await syncDeliveryWithRide(activeRide);
+  // A booking made for LATER never blocks (and is never cancelled by) a new booking.
+  if (isRideScheduledForFuture(activeRide)) {
+    return;
+  }
 
-  await Promise.all([
-    activeRide.driverId ? Driver.findByIdAndUpdate(activeRide.driverId, { isOnRide: false }) : Promise.resolve(),
-    User.findByIdAndUpdate(activeRide.userId, { currentRideId: null }),
-  ]);
+  // A trip with a driver on it must never be cancelled silently by booking another ride
+  // (before this, the driver's trip was cancelled with no fee, no notice and the driver was freed mid-journey).
+  if (activeRide.driverId) {
+    throw new ApiError(409, 'You already have a ride in progress. Finish or cancel it before booking another ride.');
+  }
 
+  // Still only searching for a driver: close it the proper way (stops the search, tells the drivers who were asked)
+  await cancelRideByUser({
+    rideId: activeRide._id,
+    userId: activeRide.userId,
+    reason: 'Replaced by a new booking',
+  });
   user.currentRideId = null;
 };
 
@@ -381,6 +389,11 @@ const normalizeIntercityPayload = (intercity = {}) => ({
   passengers: Math.max(Number(intercity.passengers || 1), 1),
   distance: Math.max(Number(intercity.distance || 0), 0),
   vehicleName: String(intercity.vehicleName || '').trim(),
+  packageId: String(intercity.packageId || '').trim(),
+  packageTypeName: String(intercity.packageTypeName || '').trim(),
+  durationMinutes: Math.max(Number(intercity.durationMinutes || 0), 0),
+  distanceSource: String(intercity.distanceSource || '').trim(),
+  fareBreakdown: intercity.fareBreakdown || null,
 });
 
 const normalizeScheduledAt = (value) => {
@@ -921,6 +934,38 @@ export const createRideRecord = async ({
 
   await clearUserActiveRideIfPresent(user);
 
+  // OUTSTATION: the server measures the road distance on the map and works out the fare from the admin's package prices.
+  // What the app sent as fare / distance is ignored for a package booking (before: fare = base price only, distance 0).
+  let intercityQuote = null;
+  if (normalizeServiceType(serviceType) === 'intercity' && String(intercity?.packageId || '').trim()) {
+    const quoteVehicleTypeId = String((Array.isArray(vehicleTypeIds) && vehicleTypeIds[0]) || vehicleTypeId || '');
+    const quoteTransportType = normalizeRideTransportType(transport_type);
+    const quoteServiceLocationId = service_location_id && mongoose.Types.ObjectId.isValid(service_location_id)
+      ? new mongoose.Types.ObjectId(service_location_id)
+      : null;
+    const rideRule = quoteVehicleTypeId && mongoose.Types.ObjectId.isValid(quoteVehicleTypeId)
+      ? await resolveSetPriceForRide({ serviceLocationId: quoteServiceLocationId, transportType: quoteTransportType, vehicleTypeId: quoteVehicleTypeId })
+      : null;
+    intercityQuote = await quoteIntercityFare({
+      packageId: intercity.packageId,
+      vehicleTypeId: quoteVehicleTypeId,
+      tripType: intercity.tripType,
+      pickup: pickupCoords,
+      drop: dropCoords,
+      rideRule,
+    });
+    fare = intercityQuote.fare;
+    estimatedDistanceMeters = intercityQuote.distanceMeters;
+    estimatedDurationMinutes = intercityQuote.durationMinutes;
+    intercity = {
+      ...intercity,
+      distance: Math.round((intercityQuote.breakdown.distanceKm || 0) * 100) / 100,
+      durationMinutes: intercityQuote.breakdown.durationMinutes,
+      distanceSource: intercityQuote.distanceSource,
+      fareBreakdown: intercityQuote.breakdown,
+    };
+  }
+
   const safeFare = Number(fare);
   const safeEstimatedDistanceMeters = Math.max(0, Number(estimatedDistanceMeters || 0));
   const safeEstimatedDurationMinutes = Math.max(0, Number(estimatedDurationMinutes || 0));
@@ -1046,10 +1091,10 @@ export const createRideRecord = async ({
 
   const pricingSnapshot = {
     setPriceId: pricingRule?._id || null,
-    admin_commission_type_from_driver: Number(pricingRule?.admin_commission_type_from_driver ?? 1),
-    admin_commission_from_driver: Number(pricingRule?.admin_commission_from_driver ?? 0),
-    waiting_charge: Number(pricingRule?.waiting_charge ?? 0),
-    free_waiting_before: Number(pricingRule?.free_waiting_before ?? 0),
+    admin_commission_type_from_driver: Number(intercityQuote ? intercityQuote.commission.type : (pricingRule?.admin_commission_type_from_driver ?? 1)),
+    admin_commission_from_driver: Number(intercityQuote ? intercityQuote.commission.value : (pricingRule?.admin_commission_from_driver ?? 0)),
+    waiting_charge: Number(intercityQuote ? intercityQuote.waiting.ratePerMinute : (pricingRule?.waiting_charge ?? 0)),
+    free_waiting_before: Number(intercityQuote ? intercityQuote.waiting.freeMinutes : (pricingRule?.free_waiting_before ?? 0)),
     free_waiting_after: Number(pricingRule?.free_waiting_after ?? 0),
     ride_surge_enabled: Boolean(surgeZone?.ride_surge_enabled) && rideSurgeAmount > 0,
     ride_surge_amount: rideSurgeAmount,
@@ -1132,6 +1177,18 @@ export const createRideRecord = async ({
 
   if (isSubscriptionCovered && promoCode) {
     throw new ApiError(400, 'Promo codes cannot be combined with subscription rides');
+  }
+
+  // The fare comes from the app, so the server at least refuses fares that are impossible for this vehicle:
+  // zero / negative, or far below the minimum (base) fare the admin set for it.
+  if (!isSubscriptionCovered) {
+    if (!(safeFare > 0)) {
+      throw new ApiError(400, 'fare must be above zero');
+    }
+    const ruleBasePrice = Number(pricingRule?.base_price || 0);
+    if (pricingNegotiationMode === 'none' && ruleBasePrice > 0 && safeFare < Math.floor(ruleBasePrice * 0.8)) {
+      throw new ApiError(400, `Fare is below the minimum fare (₹${Math.floor(ruleBasePrice * 0.8)}) for this vehicle`);
+    }
   }
 
   if (!promoCode) {
@@ -1369,6 +1426,17 @@ export const serializeRideRealtime = (ride) => ({
   intercity: ride.intercity || null,
   commissionAmount: ride.commissionAmount,
   driverEarnings: ride.driverEarnings,
+  fareBeforeWaiting: Number(ride.fareBeforeWaiting || 0),
+  waitingCharge: ride.waitingCharge
+    ? {
+      minutes: Number(ride.waitingCharge.minutes || 0),
+      totalWaitedMinutes: Number(ride.waitingCharge.totalWaitedMinutes || 0),
+      freeMinutes: Number(ride.waitingCharge.freeMinutes || 0),
+      ratePerMinute: Number(ride.waitingCharge.ratePerMinute || 0),
+      amount: Number(ride.waitingCharge.amount || 0),
+    }
+    : null,
+  previousCancellationFee: Number(ride.previousCancellationFee || 0),
   promo: ride.promo?.code ? ride.promo : null,
   pricingSnapshot: ride.pricingSnapshot
     ? {
@@ -1745,6 +1813,11 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
     throw new ApiError(409, `Ride cannot move from ${ride.liveStatus} to ${nextStatus}`);
   }
 
+  // A ride that never started cannot be completed (the fare would be settled for a trip that did not happen)
+  if (nextStatus === RIDE_LIVE_STATUS.COMPLETED && !ride.startedAt) {
+    throw new ApiError(409, 'Start the ride before completing it');
+  }
+
   ride.liveStatus = nextStatus;
   ride.status = config.persistedStatus;
 
@@ -1779,6 +1852,14 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
       const chargeableMinutes = Math.max(0, Math.ceil(waitingSeconds / 60) - freeWaitingBefore);
       const waitingChargeTotal = Math.round(chargeableMinutes * waitingChargeRate * 100) / 100;
 
+      ride.fareBeforeWaiting = Number(ride.fare || 0);
+      ride.waitingCharge = {
+        minutes: chargeableMinutes,
+        totalWaitedMinutes: Math.ceil(waitingSeconds / 60),
+        freeMinutes: freeWaitingBefore,
+        ratePerMinute: waitingChargeRate,
+        amount: waitingChargeTotal,
+      };
       if (waitingChargeTotal > 0) {
         ride.fare = Number(ride.fare || 0) + waitingChargeTotal;
       }

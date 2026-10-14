@@ -5,6 +5,11 @@ import { validateAddonAdminListQuery, validateAddonRejectDto } from '../validato
 export async function getRestaurantAddons(req, res, next) {
     try {
         const query = validateAddonAdminListQuery(req.query || {});
+        // The schema strips unknown keys: put back the franchise scope set server-side by pinFranchiseQuery
+        if (req.adminContext?.franchiseId) {
+            query.franchiseId = req.query.franchiseId;
+            query.restaurantIds = req.query.restaurantIds;
+        }
         const data = await adminService.getRestaurantAddonsAdmin(query);
         res.status(200).json({ success: true, message: 'Restaurant add-ons fetched successfully', data });
     } catch (error) {

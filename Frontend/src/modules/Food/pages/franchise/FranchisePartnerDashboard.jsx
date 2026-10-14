@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog";
 import { toast } from "sonner";
+import FranchiseFinancePanel from "@food/pages/admin/franchise/finance/FranchiseFinancePanel";
 
 export default function FranchisePartnerDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1818,7 +1819,7 @@ export default function FranchisePartnerDashboard() {
                 <div>
                   <div className="text-xs font-bold text-amber-900">Franchise Operational Features Locked</div>
                   <div className="text-xs text-amber-700 mt-0.5">
-                    Pay your onboarding fee (₹{dashboardData.financialSettings.franchiseFee}) via Razorpay to activate full Franchise Partner features & live metrics.
+                    Pay your onboarding dues (₹{(dashboardData.financialSettings.amountDue ?? dashboardData.financialSettings.franchiseFee)}{dashboardData.financialSettings.securityDeposit ? ` = joining fee + ₹${dashboardData.financialSettings.securityDeposit} refundable deposit` : ''}) via Razorpay to activate full Franchise Partner features & live metrics.
                   </div>
                 </div>
               </div>
@@ -1935,7 +1936,7 @@ export default function FranchisePartnerDashboard() {
 
                   <div className="grid grid-cols-2 gap-4 text-xs">
                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <div className="text-slate-400 font-bold uppercase text-[10px]">Commission Share</div>
+                      <div className="text-slate-400 font-bold uppercase text-[10px]">Platform Commission (Food)</div>
                       <div className="text-sm font-bold text-emerald-600 mt-0.5">{dashboardData.financialSettings.commissionRate}%</div>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
@@ -2959,6 +2960,13 @@ export default function FranchisePartnerDashboard() {
           {/* EARNINGS & WALLET PAYOUT TAB */}
           {activeTab === 'earnings' && (
             <div className="space-y-6">
+              {/* Day-wise earnings, platform commission, wallet, fee & deposit - straight from the server ledger */}
+              {!dashboardData.limited && (
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 text-slate-900 border border-slate-200">
+                  <div className="text-sm font-black mb-3">My daily earnings & platform commission</div>
+                  <FranchiseFinancePanel partner load={(params) => franchiseAPI.getMyFinance(params)} />
+                </div>
+              )}
               
               {/* Partner Wallet Header Banner */}
               <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white flex items-center justify-between flex-wrap gap-4 shadow-xl">
@@ -2970,7 +2978,7 @@ export default function FranchisePartnerDashboard() {
                     ₹{(dashboardData.financialSettings?.walletBalance || 0).toLocaleString('en-IN')}
                   </div>
                   <p className="text-xs text-emerald-100 font-medium mt-1">
-                    Net available balance (Total Commission Share - Paid Out Withdrawals)
+                    Credited earnings after platform commission, minus paid-out withdrawals
                   </p>
                 </div>
 
@@ -2990,7 +2998,7 @@ export default function FranchisePartnerDashboard() {
                 </div>
 
                 <div className="bg-white p-5 rounded-xl border border-emerald-200 shadow-xs bg-emerald-50/20">
-                  <div className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Earned Commission ({dashboardData.financialSettings.commissionRate}%)</div>
+                  <div className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Credited to you (after {dashboardData.financialSettings.commissionRate}% platform commission)</div>
                   <div className="text-2xl font-black text-emerald-600">₹{(dashboardData.territoryMetrics.franchiseEarnings || 0).toLocaleString('en-IN')}</div>
                   <div className="text-[11px] text-emerald-700 mt-1 font-semibold">Gross Commission earned from DB</div>
                 </div>
@@ -3097,7 +3105,7 @@ export default function FranchisePartnerDashboard() {
                   <div className="flex items-center gap-2 text-amber-300 font-extrabold text-xs uppercase tracking-wider mb-1">
                     <Zap className="w-4 h-4" /> Instant Online Auto-Verification
                   </div>
-                  <div className="text-2xl font-black">Pay ₹{dashboardData.financialSettings.franchiseFee} via Razorpay</div>
+                  <div className="text-2xl font-black">Pay ₹{(dashboardData.financialSettings.amountDue ?? dashboardData.financialSettings.franchiseFee)} via Razorpay</div>
                 </div>
 
                 <button
@@ -3106,7 +3114,7 @@ export default function FranchisePartnerDashboard() {
                   className="px-6 py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-black text-sm shadow-md flex items-center gap-2 transition-all hover:scale-105"
                 >
                   {initiatingRazorpay ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
-                  {initiatingRazorpay ? 'Opening Razorpay...' : `Pay ₹${dashboardData.financialSettings.franchiseFee} Now`}
+                  {initiatingRazorpay ? 'Opening Razorpay...' : `Pay ₹${(dashboardData.financialSettings.amountDue ?? dashboardData.financialSettings.franchiseFee)} Now`}
                 </button>
               </div>
 

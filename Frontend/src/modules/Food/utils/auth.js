@@ -383,3 +383,14 @@ export function isUnifiedAuthenticated() {
   if (!token) return false;
   return !isTokenExpired(token);
 }
+
+/**
+ * A franchise partner logs in through the admin login (same "admin" session slot), but must only use the
+ * franchise portal. The server enforces this too; this keeps the admin panel UI from opening for them.
+ */
+export function isFranchiseLogin(user = getCurrentUser('admin')) {
+  if (!user) return false;
+  const type = String(user.admin_type || user.adminType || '').toLowerCase();
+  const role = String(user.role || '').toLowerCase();
+  return Boolean(user.franchiseId) || type === 'franchise' || type === 'franchise_partner' || role === 'franchise';
+}

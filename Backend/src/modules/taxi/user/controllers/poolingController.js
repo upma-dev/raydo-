@@ -54,6 +54,56 @@ const razorpayRequest = async ({ method, path, body, keyId, keySecret }) => {
   return payload;
 };
 
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/** The moment the schedule leaves on `travelDate` (India time), or null when the schedule has no usable time. */
+const getDepartureMoment = (travelDate, schedule = {}, route = {}) => {
+  const match = /^(\d{1,2}):(\d{2})/.exec(toCleanString(schedule?.departureTime || route?.departureTime));
+  if (!match) return null;
+  const [year, month, day] = travelDate.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, Number(match[1]), Number(match[2])) - IST_OFFSET_MS);
+};
+
+/** The route's own rules: seats per booking, how early you may book, and when booking closes before departure. */
+const assertPoolingBookable = ({ route, schedule, travelDate, seatCount, now = new Date() }) => {
+  const maxSeats = Number(route?.maxSeatsPerBooking || 0);
+  if (maxSeats > 0 && seatCount > maxSeats) {
+    throw new ApiError(400, `You can book at most ${maxSeats} seat(s) in one booking on this route`);
+  }
+  const departure = getDepartureMoment(travelDate, schedule, route);
+  if (!departure) {
+    // No departure time on the schedule: at least refuse a day that is already over (India time)
+    const todayIst = new Date(now.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+    if (travelDate < todayIst) throw new ApiError(400, 'This travel date is in the past');
+    return;
+  }
+  const bufferMs = Math.max(0, Number(route?.boardingBufferMinutes ?? 15)) * 60 * 1000;
+  if (departure.getTime() - bufferMs <= now.getTime()) {
+    throw new ApiError(400, 'Booking is closed for this departure');
+  }
+  const advanceHours = Number(route?.maxAdvanceBookingHours || 0);
+  if (advanceHours > 0 && departure.getTime() - now.getTime() > advanceHours * 60 * 60 * 1000) {
+    throw new ApiError(400, `This departure opens for booking ${advanceHours} hour(s) before it leaves`);
+  }
+};
+
+const refundPayment = async ({ paymentId, amountPaise, reason, bookingCode = '' }) => {
+  try {
+    const { keyId, keySecret } = await resolveRazorpayCredentials();
+    await razorpayRequest({
+      method: 'POST',
+      path: `/payments/${encodeURIComponent(paymentId)}/refund`,
+      body: { amount: Math.round(amountPaise), notes: { reason, bookingId: bookingCode } },
+      keyId,
+      keySecret,
+    });
+    return true;
+  } catch (refundError) {
+    console.error('Pooling auto-refund failed (refund manually):', paymentId, refundError?.message || refundError);
+    return false;
+  }
+};
+
 const createPoolingBookingCode = () =>
   `POOL${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
@@ -106,7 +156,7 @@ const computePoolingFareBreakdown = ({ route = {}, vehicle = {}, seatCount = 0 }
   const farePerSeat = Math.max(0, Number(route?.farePerSeat || 0));
   const baseFare = Math.round(farePerSeat * safeSeatCount * 100) / 100;
   const serviceTaxPercentage = Math.max(0, Math.min(100, Number(vehicle?.serviceTaxPercentage || 0)));
-  const serviceTaxAmount = Math.round((baseFare * serviceTaxPercentage) * 100) / 100 / 100;
+  const serviceTaxAmount = Math.round(baseFare * serviceTaxPercentage) / 100;
   const totalFare = Math.round((baseFare + serviceTaxAmount) * 100) / 100;
 
   return {
@@ -265,7 +315,8 @@ export const createPoolingBookingOrder = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Pickup and drop points are required for pooling booking');
   }
 
-  const farePerSeat = Number(route.farePerSeat || 0);
+  assertPoolingBookable({ route, schedule, travelDate, seatCount: selectedSeats.length });
+
   const fareBreakdown = computePoolingFareBreakdown({ route, vehicle, seatCount: selectedSeats.length });
   if (!Number.isFinite(fareBreakdown.totalFare) || fareBreakdown.totalFare <= 0) {
     throw new ApiError(400, 'Pooling fare is not configured');
@@ -304,6 +355,8 @@ export const createPoolingBookingOrder = asyncHandler(async (req, res) => {
         scheduleId,
         travelDate,
         seats: selectedSeats.join(','),
+        pickupStopId: String(pickupStop.id || pickupStopId),
+        dropStopId: String(dropStop.id || dropStopId),
       },
     },
     keyId,
@@ -327,74 +380,54 @@ export const createPoolingBookingOrder = asyncHandler(async (req, res) => {
   );
 });
 
-export const verifyPoolingBookingPayment = asyncHandler(async (req, res) => {
-  const userId = getCurrentUserId(req);
-  const orderId = toCleanString(req.body?.razorpay_order_id);
-  const paymentId = toCleanString(req.body?.razorpay_payment_id);
-  const signature = toCleanString(req.body?.razorpay_signature);
-  const routeId = toCleanString(req.body?.routeId);
-  const vehicleId = toCleanString(req.body?.vehicleId);
-  const scheduleId = toCleanString(req.body?.scheduleId);
-  const travelDate = normalizeTravelDate(req.body?.travelDate || req.body?.date);
-  const selectedSeats = Array.isArray(req.body?.selectedSeats)
-    ? [...new Set(req.body.selectedSeats.map((item) => toCleanString(item)).filter(Boolean))]
-    : [];
-  const pickupStopId = toCleanString(req.body?.pickupStopId);
-  const dropStopId = toCleanString(req.body?.dropStopId);
+const populateBooking = (query) => query
+  .populate('route', 'routeName originLabel destinationLabel')
+  .populate('vehicle', 'name vehicleNumber');
 
-  if (!userId) {
-    throw new ApiError(401, 'User authentication is required');
-  }
-
-  if (!orderId || !paymentId || !signature) {
-    throw new ApiError(400, 'Payment verification fields are required');
-  }
-
-  if (!routeId || !vehicleId || !scheduleId || selectedSeats.length === 0) {
-    throw new ApiError(400, 'routeId, vehicleId, scheduleId and selectedSeats are required');
-  }
-
-  const { keySecret } = await resolveRazorpayCredentials();
-  const expectedSignature = crypto
-    .createHmac('sha256', keySecret)
-    .update(`${orderId}|${paymentId}`)
-    .digest('hex');
-
-  if (expectedSignature !== signature) {
-    throw new ApiError(400, 'Invalid payment signature');
-  }
-
-  const existingBooking = await PoolingBooking.findOne({
-    user: userId,
-    'payment.paymentId': paymentId,
-  })
-    .populate('route', 'routeName originLabel destinationLabel')
-    .populate('vehicle', 'name vehicleNumber');
-
+/**
+ * Turn a PAID Razorpay order into a pooling booking. Safe to run any number of times and from several places at once
+ * (the app's "verify" call and Razorpay's webhook): one payment id can only ever make one booking.
+ *  - the paid amount and the seats must match the order that was created (nobody can pay for 1 seat and book 4)
+ *  - a seat somebody else took first -> the customer is refunded automatically
+ * Returns { booking, alreadyConfirmed }.
+ */
+export const finalizePoolingBooking = async ({
+  userId, orderId, paymentId, signature = '', routeId, vehicleId, scheduleId, travelDate, selectedSeats,
+  pickupStopId = '', dropStopId = '', skipOrderCheck = false, rzOrder = null,
+}) => {
+  const existingBooking = await populateBooking(PoolingBooking.findOne({ 'payment.paymentId': paymentId }));
   if (existingBooking) {
-    return ok(res, serializePoolingBooking(existingBooking), 'Pooling booking already confirmed');
+    if (String(existingBooking.user) !== String(userId) && String(existingBooking.user?._id || '') !== String(userId)) {
+      throw new ApiError(403, 'This payment belongs to another booking');
+    }
+    return { booking: existingBooking, alreadyConfirmed: true };
+  }
+
+  const { keyId, keySecret } = await resolveRazorpayCredentials();
+  const order = rzOrder || (skipOrderCheck ? null : await razorpayRequest({ method: 'GET', path: `/orders/${encodeURIComponent(orderId)}`, keyId, keySecret }));
+  const paidPaise = Number(order?.amount_paid ?? order?.amount ?? 0);
+
+  // The order was created for ONE user and ONE set of seats: that is what was paid for
+  if (order?.notes?.userId && String(order.notes.userId) !== String(userId)) {
+    throw new ApiError(403, 'This payment belongs to another user');
   }
 
   const [route, vehicle] = await Promise.all([
     PoolingRoute.findById(routeId).lean(),
     PoolingVehicle.findById(vehicleId).lean(),
   ]);
-
   if (!route || String(route.status || '') !== 'active' || route.active === false) {
     throw new ApiError(404, 'Pooling route not found');
   }
-
   if (!vehicle || String(vehicle.status || '') !== 'active') {
     throw new ApiError(404, 'Pooling vehicle not found');
   }
-
   const schedule = (Array.isArray(route.schedules) ? route.schedules : []).find(
     (item) => String(item?.id || '') === scheduleId && String(item?.status || 'active') === 'active',
   );
   if (!schedule) {
     throw new ApiError(404, 'Selected route schedule is not available');
   }
-
   const pickupStop = resolvePickupStop(route, pickupStopId);
   const dropStop = resolveDropStop(route, dropStopId);
   if (!pickupStop || !dropStop) {
@@ -405,37 +438,25 @@ export const verifyPoolingBookingPayment = asyncHandler(async (req, res) => {
   if (!Number.isFinite(fareBreakdown.totalFare) || fareBreakdown.totalFare <= 0) {
     throw new ApiError(400, 'Pooling fare is not configured');
   }
+  const expectedPaise = Math.round(fareBreakdown.totalFare * 100);
 
-  const vehicleSeatIds = new Set(getVehicleSeatIds(vehicle));
-  const invalidSeatId = selectedSeats.find((seatId) => !vehicleSeatIds.has(seatId));
+  const notedSeats = toCleanString(order?.notes?.seats).split(',').map((x) => x.trim()).filter(Boolean).sort().join(',');
+  const asked = {
+    route: routeId, vehicle: vehicleId, schedule: scheduleId, date: travelDate, seats: [...selectedSeats].sort().join(','),
+  };
+  const noted = order?.notes
+    ? { route: toCleanString(order.notes.routeId), vehicle: toCleanString(order.notes.vehicleId), schedule: toCleanString(order.notes.scheduleId), date: toCleanString(order.notes.travelDate), seats: notedSeats }
+    : null;
+  const sameRequest = !noted || (noted.route === asked.route && noted.vehicle === asked.vehicle && noted.schedule === asked.schedule && noted.date === asked.date && noted.seats === asked.seats);
+  if (order && (!sameRequest || paidPaise !== expectedPaise)) {
+    // Paid for something else (different seats, or the fare changed meanwhile): book nothing, give the money back
+    await refundPayment({ paymentId, amountPaise: paidPaise, reason: 'Automatic refund: paid amount did not match the seats requested' });
+    throw new ApiError(409, 'The payment did not match the selected seats or the current fare, so no booking was made. Your payment will be refunded automatically.');
+  }
+
+  const invalidSeatId = selectedSeats.find((seatId) => !new Set(getVehicleSeatIds(vehicle)).has(seatId));
   if (invalidSeatId) {
     throw new ApiError(400, `Seat ${invalidSeatId} is not available in this vehicle`);
-  }
-
-  const alreadyBookedSeatIds = await getBookedSeatIds({
-    routeId,
-    vehicleId,
-    scheduleId,
-    travelDate,
-  });
-  const conflictingSeatId = selectedSeats.find((seatId) => alreadyBookedSeatIds.includes(seatId));
-  if (conflictingSeatId) {
-    throw new ApiError(409, `Seat ${conflictingSeatId} was already booked by another user`);
-  }
-
-  const duplicateUpcomingBooking = await PoolingBooking.findOne({
-    user: userId,
-    route: routeId,
-    scheduleId,
-    travelDate: new Date(`${travelDate}T00:00:00.000Z`),
-    bookingStatus: 'confirmed',
-    selectedSeats: { $in: selectedSeats },
-  })
-    .populate('route', 'routeName originLabel destinationLabel')
-    .populate('vehicle', 'name vehicleNumber');
-
-  if (duplicateUpcomingBooking) {
-    return ok(res, serializePoolingBooking(duplicateUpcomingBooking), 'Pooling booking already confirmed');
   }
 
   const booking = await PoolingBooking.create({
@@ -458,42 +479,97 @@ export const verifyPoolingBookingPayment = asyncHandler(async (req, res) => {
     travelDate: new Date(`${travelDate}T00:00:00.000Z`),
     pickupLabel: pickupStop.name || pickupStop.address || route.originLabel || '',
     dropLabel: dropStop.name || dropStop.address || route.destinationLabel || '',
-    payment: {
-      provider: 'razorpay',
-      orderId,
-      paymentId,
-      signature,
-      status: 'paid',
-      paidAt: new Date(),
-    },
+    payment: { provider: 'razorpay', orderId, paymentId, signature, status: 'paid', paidAt: new Date() },
+  }).catch(async (error) => {
+    // Two requests for the same payment at once: the unique payment id makes the second one fail, return the first
+    if (error?.code === 11000) return null;
+    throw error;
   });
+  if (!booking) {
+    const winner = await populateBooking(PoolingBooking.findOne({ 'payment.paymentId': paymentId }));
+    if (winner) return { booking: winner, alreadyConfirmed: true };
+    throw new ApiError(409, 'This booking is being processed. Please check My Bookings.');
+  }
 
   try {
     await PoolingSeatReservation.insertMany(
-      selectedSeats.map((seatId) => ({
-        route: routeId,
-        vehicle: vehicleId,
-        booking: booking._id,
-        scheduleId,
-        travelDate,
-        seatId,
-      })),
+      selectedSeats.map((seatId) => ({ route: routeId, vehicle: vehicleId, booking: booking._id, scheduleId, travelDate, seatId })),
       { ordered: true },
     );
   } catch (error) {
+    // Undo EVERYTHING of this booking: seats reserved before the conflicting one must not stay blocked
+    await PoolingSeatReservation.deleteMany({ booking: booking._id });
     await PoolingBooking.deleteOne({ _id: booking._id });
     if (error?.code === 11000) {
-      throw new ApiError(409, 'One or more selected seats were just booked by another user');
+      // The user already paid for a seat somebody else got first: give the money back automatically
+      await refundPayment({ paymentId, amountPaise: paidPaise || expectedPaise, reason: 'Automatic refund: pooling seat was taken by another user', bookingCode: String(booking.bookingId || '') });
+      throw new ApiError(409, 'One or more selected seats were just booked by another user. Your payment will be refunded automatically.');
     }
     throw error;
   }
 
-  const hydratedBooking = await PoolingBooking.findById(booking._id)
-    .populate('route', 'routeName originLabel destinationLabel')
-    .populate('vehicle', 'name vehicleNumber');
+  return { booking: await populateBooking(PoolingBooking.findById(booking._id)), alreadyConfirmed: false };
+};
 
-  return created(res, serializePoolingBooking(hydratedBooking), 'Pooling booking confirmed successfully');
+export const verifyPoolingBookingPayment = asyncHandler(async (req, res) => {
+  const userId = getCurrentUserId(req);
+  const orderId = toCleanString(req.body?.razorpay_order_id);
+  const paymentId = toCleanString(req.body?.razorpay_payment_id);
+  const signature = toCleanString(req.body?.razorpay_signature);
+  const routeId = toCleanString(req.body?.routeId);
+  const vehicleId = toCleanString(req.body?.vehicleId);
+  const scheduleId = toCleanString(req.body?.scheduleId);
+  const travelDate = normalizeTravelDate(req.body?.travelDate || req.body?.date);
+  const selectedSeats = Array.isArray(req.body?.selectedSeats)
+    ? [...new Set(req.body.selectedSeats.map((item) => toCleanString(item)).filter(Boolean))]
+    : [];
+
+  if (!userId) {
+    throw new ApiError(401, 'User authentication is required');
+  }
+  if (!orderId || !paymentId || !signature) {
+    throw new ApiError(400, 'Payment verification fields are required');
+  }
+  if (!routeId || !vehicleId || !scheduleId || selectedSeats.length === 0) {
+    throw new ApiError(400, 'routeId, vehicleId, scheduleId and selectedSeats are required');
+  }
+
+  const { keySecret } = await resolveRazorpayCredentials();
+  const expectedSignature = crypto.createHmac('sha256', keySecret).update(`${orderId}|${paymentId}`).digest('hex');
+  if (expectedSignature !== signature) {
+    throw new ApiError(400, 'Invalid payment signature');
+  }
+
+  const { booking, alreadyConfirmed } = await finalizePoolingBooking({
+    userId, orderId, paymentId, signature, routeId, vehicleId, scheduleId, travelDate, selectedSeats,
+    pickupStopId: toCleanString(req.body?.pickupStopId), dropStopId: toCleanString(req.body?.dropStopId),
+  });
+
+  return alreadyConfirmed
+    ? ok(res, serializePoolingBooking(booking), 'Pooling booking already confirmed')
+    : created(res, serializePoolingBooking(booking), 'Pooling booking confirmed successfully');
 });
+
+/**
+ * Razorpay webhook for pooling: the customer paid but the app closed / lost network before "verify".
+ * The order notes carry everything (user, route, seats, stops), so the booking is made from them.
+ * Returns true when the event was a pooling order.
+ */
+export const confirmPoolingFromWebhook = async ({ orderId, paymentId, rzOrder }) => {
+  const notes = rzOrder?.notes || {};
+  if (!notes.routeId || !notes.vehicleId || !notes.userId || !notes.seats) return false;
+  try {
+    await finalizePoolingBooking({
+      userId: String(notes.userId), orderId, paymentId, routeId: String(notes.routeId), vehicleId: String(notes.vehicleId),
+      scheduleId: String(notes.scheduleId || ''), travelDate: String(notes.travelDate || ''),
+      selectedSeats: String(notes.seats).split(',').map((x) => x.trim()).filter(Boolean),
+      pickupStopId: String(notes.pickupStopId || ''), dropStopId: String(notes.dropStopId || ''), rzOrder,
+    });
+  } catch (err) {
+    console.error(`Pooling webhook could not confirm order ${orderId}:`, err?.message || err);
+  }
+  return true;
+};
 
 export const createPoolingBooking = asyncHandler(async (_req, _res) => {
   throw new ApiError(405, 'Direct pooling booking is disabled. Please complete online payment first.');

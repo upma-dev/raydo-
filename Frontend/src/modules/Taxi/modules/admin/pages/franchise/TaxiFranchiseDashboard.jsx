@@ -153,8 +153,11 @@ function LoginScreen({ onLogin }) {
 }
 
 export default function TaxiFranchiseDashboard({ superAdmin }) {
-  if (superAdmin) return <SuperAdminFranchiseView />;
+  // the two views have different hooks, so they are separate components (a `return` before hooks breaks React)
+  return superAdmin ? <SuperAdminFranchiseView /> : <FranchisePartnerDashboard />;
+}
 
+function FranchisePartnerDashboard() {
   const [auth, setAuth] = useState(() => loadAuth());
   const location = useLocation();
   const navigate = useNavigate();

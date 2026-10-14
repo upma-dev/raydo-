@@ -175,8 +175,9 @@ const startServer = async () => {
                 logger.error(`Gig reminder check error: ${err.message}`);
             }
         };
-        runGigReminderCheck();
-        gigReminderInterval = setInterval(runGigReminderCheck, 60 * 1000);
+        // Gig feature is discontinued: no shift reminders, no auto-offline, no no-show processing.
+        // (runGigReminderCheck is kept only so the old code is easy to find; it is never started.)
+        void runGigReminderCheck;
 
         const runScheduledOrdersCheck = async () => {
             try {
