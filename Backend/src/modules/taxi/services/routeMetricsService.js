@@ -16,7 +16,6 @@ const ROAD_FACTOR = 1.3;          // roads are longer than the straight line
 const AVERAGE_SPEED_KMPH = 45;    // used only for the estimate fallback
 const CACHE_MS = 10 * 60 * 1000;
 const cache = new Map();
-export const clearRouteCache = () => cache.clear();   // for tests / after the admin changes the Maps key
 
 const toPoint = (value) => {
   if (!Array.isArray(value) || value.length < 2) return null;
@@ -39,7 +38,7 @@ const estimateRoute = (origin, destination) => {
   return { distanceMeters: meters, durationMinutes: Math.max(1, Math.round((meters / 1000 / AVERAGE_SPEED_KMPH) * 60)), source: 'estimate' };
 };
 
-export const getDrivingRoute = async ({ origin, destination, fetchImpl = fetch } = {}) => {
+export const getDrivingRoute = async ({ origin, destination } = {}) => {
   const from = toPoint(origin);
   const to = toPoint(destination);
   if (!from || !to) return null;
@@ -56,7 +55,7 @@ export const getDrivingRoute = async ({ origin, destination, fetchImpl = fetch }
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 6000);
       const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}&mode=driving&key=${apiKey}`;
-      const res = await fetchImpl(url, { signal: controller.signal });
+      const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
       const data = await res.json();
       const leg = data?.status === 'OK' ? data.routes?.[0]?.legs?.[0] : null;

@@ -607,7 +607,7 @@ const ensureBusServiceEnabled = async () => {
   }
 };
 
-export const cleanupExpiredBusSeatHolds = async () => {
+const cleanupExpiredBusSeatHolds = async () => {
   const now = new Date();
 
   const expiredBookings = await BusBooking.find({

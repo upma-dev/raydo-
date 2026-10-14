@@ -124,7 +124,7 @@ async function listNearbyOnlineDeliveryPartners(
   return { partners: picked };
 }
 
-export async function filterPartnersByCodCashLimit(partners = [], order = null) {
+async function filterPartnersByCodCashLimit(partners = [], order = null) {
   if (!Array.isArray(partners) || partners.length === 0) return [];
 
   const paymentMethod = String(order?.payment?.method || '').trim().toLowerCase();

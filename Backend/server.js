@@ -8,6 +8,7 @@ import { validateConfig } from './src/config/validateEnv.js';
 import { connectDB, disconnectDB } from './src/config/db.js';
 import { connectRedis, closeRedis } from './src/config/redis.js';
 import { initSocket } from './src/config/socket.js';
+import { startSocketServer, stopSocketServer } from './socket-server.js';
 import { initializeQueues, closeBullMQConnection } from './src/queues/index.js';
 import { expireExpiredOffers } from './src/modules/food/admin/services/admin.service.js';
 import { syncExpiredFssaiNotifications } from './src/modules/food/restaurant/services/fssaiExpiry.service.js';
@@ -32,6 +33,7 @@ const gracefulShutdown = async (signal) => {
         process.exit(0);
         return;
     }
+    stopSocketServer();
     server.close(async () => {
         try {
             await disconnectDB();
@@ -88,7 +90,10 @@ const startServer = async () => {
         const httpServer = http.createServer(app);
 
         // 3. Initialize Socket.IO with the HTTP server (Redis adapter when Redis enabled)
-        await initSocket(httpServer);
+        const io = await initSocket(httpServer);
+
+        // Also serve the same Socket.IO instance on a dedicated port (SOCKET_PORT in .env)
+        startSocketServer(io);
 
         if (config.redisEnabled) {
             await connectRedis();
