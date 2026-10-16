@@ -10,8 +10,6 @@ import {
 import { RENTAL_ENABLED } from '../../../shared/featureFlags';
 import DriverRideRequestListener from './DriverRideRequestListener';
 
-import OwnerHeaderNav from './OwnerHeaderNav';
-
 const unwrapDriver = (response) => response?.data?.data || response?.data || response;
 const getPortalPrefix = (pathname = '', role = '') => {
     if (pathname.startsWith('/taxi/owner')) {
@@ -293,8 +291,16 @@ const DriverLayout = () => {
                 </div>
             ) : (
                 <>
-                    {isAllowed && isOwnerPortal && <OwnerHeaderNav />}
-                    <Outlet context={{ isAllowed }} />
+                    {isOwnerPortal ? (
+                        // Owner portal is an app: phone-width column centered on larger screens.
+                        <div className="min-h-screen bg-[#DCE9FA]">
+                            <div className="mx-auto min-h-screen w-full max-w-xl bg-[#EEF5FF] shadow-[0_0_40px_rgba(11,42,91,0.12)]">
+                                <Outlet context={{ isAllowed }} />
+                            </div>
+                        </div>
+                    ) : (
+                        <Outlet context={{ isAllowed }} />
+                    )}
                     {isAllowed && getStoredRole() === 'driver' && <DriverRideRequestListener />}
                 </>
             )}

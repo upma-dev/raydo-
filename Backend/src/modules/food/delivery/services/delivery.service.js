@@ -28,41 +28,22 @@ export const registerDeliveryPartner = async (payload, files) => {
         await FoodDeliveryPartner.deleteMany({ phone });
     }
 
+    // Upload all document images in parallel (sequential uploads caused request timeouts).
+    const uploadPlan = [
+        ['profilePhoto', 'food/delivery/profile'],
+        ['aadharPhoto', 'food/delivery/aadhar'],
+        ['aadharPhotoBack', 'food/delivery/aadhar'],
+        ['panPhoto', 'food/delivery/pan'],
+        ['panPhotoBack', 'food/delivery/pan'],
+        ['drivingLicensePhoto', 'food/delivery/license'],
+        ['drivingLicensePhotoBack', 'food/delivery/license'],
+        ['bankPassbookPhoto', 'food/delivery/bank']
+    ].filter(([field]) => files?.[field]?.[0]);
+    const uploaded = await Promise.all(
+        uploadPlan.map(([field, folder]) => uploadImageBuffer(files[field][0].buffer, folder))
+    );
     const images = {};
-
-    if (files?.profilePhoto?.[0]) {
-        images.profilePhoto = await uploadImageBuffer(files.profilePhoto[0].buffer, 'food/delivery/profile');
-    }
-    if (files?.aadharPhoto?.[0]) {
-        images.aadharPhoto = await uploadImageBuffer(files.aadharPhoto[0].buffer, 'food/delivery/aadhar');
-    }
-    if (files?.aadharPhotoBack?.[0]) {
-        images.aadharPhotoBack = await uploadImageBuffer(files.aadharPhotoBack[0].buffer, 'food/delivery/aadhar');
-    }
-    if (files?.panPhoto?.[0]) {
-        images.panPhoto = await uploadImageBuffer(files.panPhoto[0].buffer, 'food/delivery/pan');
-    }
-    if (files?.panPhotoBack?.[0]) {
-        images.panPhotoBack = await uploadImageBuffer(files.panPhotoBack[0].buffer, 'food/delivery/pan');
-    }
-    if (files?.drivingLicensePhoto?.[0]) {
-        images.drivingLicensePhoto = await uploadImageBuffer(
-            files.drivingLicensePhoto[0].buffer,
-            'food/delivery/license'
-        );
-    }
-    if (files?.drivingLicensePhotoBack?.[0]) {
-        images.drivingLicensePhotoBack = await uploadImageBuffer(
-            files.drivingLicensePhotoBack[0].buffer,
-            'food/delivery/license'
-        );
-    }
-    if (files?.bankPassbookPhoto?.[0]) {
-        images.bankPassbookPhoto = await uploadImageBuffer(
-            files.bankPassbookPhoto[0].buffer,
-            'food/delivery/bank'
-        );
-    }
+    uploadPlan.forEach(([field], i) => { images[field] = uploaded[i]; });
 
     const partner = await FoodDeliveryPartner.create({
         name,

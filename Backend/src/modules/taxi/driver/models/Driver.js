@@ -40,6 +40,11 @@ const driverSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // Fleet drivers only: cash from cash rides that the driver still has to hand over to the owner.
+    owner_cash_due: {
+      type: Number,
+      default: 0,
+    },
     fcmTokenWeb: {
       type: String,
       default: '',

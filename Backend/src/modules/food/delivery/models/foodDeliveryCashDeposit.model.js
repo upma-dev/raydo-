@@ -39,5 +39,10 @@ const foodDeliveryCashDepositSchema = new mongoose.Schema({
 });
 
 foodDeliveryCashDepositSchema.index({ createdAt: -1 });
+// One Razorpay payment can only ever be credited once, whatever number of verify calls arrive at the same moment
+foodDeliveryCashDepositSchema.index(
+    { razorpayPaymentId: 1 },
+    { unique: true, partialFilterExpression: { razorpayPaymentId: { $type: 'string' } } },
+);
 
 export const FoodDeliveryCashDeposit = mongoose.model('FoodDeliveryCashDeposit', foodDeliveryCashDepositSchema);

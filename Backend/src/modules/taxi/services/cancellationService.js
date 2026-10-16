@@ -9,6 +9,12 @@ import { resolveSetPriceForRide } from './rideService.js';
 import { AdminBusinessSetting } from '../admin/models/AdminBusinessSetting.js';
 import { createDefaultBusinessSettings } from '../admin/data/defaultBusinessSettings.js';
 
+// A cap of 0 (or blank) means no cap; before, a 0 cap made every cancellation fee 0
+const applyFeeCap = (amount, cap) => {
+  const rounded = Math.round(Number(amount) || 0);
+  return Number(cap) > 0 ? Math.min(rounded, Number(cap)) : rounded;
+};
+
 const roundMoney = (val) => Math.round((Number(val || 0) + Number.EPSILON) * 100) / 100;
 
 export const getCancellationPolicy = async (ride) => {
@@ -31,15 +37,18 @@ export const getCancellationPolicy = async (ride) => {
     const userCancelFeeType = String(setPrice.user_cancellation_fee_type || '').trim().toLowerCase();
     const userCancelFee = Number(setPrice.user_cancellation_fee ?? 0);
 
-    const fixedCharge = userCancelFeeType === 'percentage'
-      ? 0
-      : userCancelFeeType === 'fixed'
-      ? userCancelFee
-      : Number(setPrice.cancellation_policy.fixed_cancellation_charge ?? 50);
-
-    const percentageCharge = userCancelFeeType === 'percentage'
-      ? userCancelFee
-      : 0;
+    // The admin's cancellation policy block (Fixed Cancellation Charge / percentage) is the base. The older "Cancellation
+    // Fee for User" (% or FIXED) overrides it only when the admin actually entered an amount: a blank/0 there used to
+    // wipe the fixed charge to 0, so no cancellation fee was ever charged.
+    let fixedCharge = Number(setPrice.cancellation_policy.fixed_cancellation_charge ?? 50);
+    let percentageCharge = Number(setPrice.cancellation_policy.percentage_cancellation_charge ?? 0);
+    if (userCancelFee > 0 && userCancelFeeType === 'percentage') {
+      fixedCharge = 0;
+      percentageCharge = userCancelFee;
+    } else if (userCancelFee > 0 && userCancelFeeType === 'fixed') {
+      fixedCharge = userCancelFee;
+      percentageCharge = 0;
+    }
 
     return {
       enable_cancellation_charge: setPrice.cancellation_policy.enable_cancellation_charge ?? true,
@@ -110,7 +119,9 @@ export const calculateCancellationBill = async ({ ride, cancelledBy = 'user', re
     isWaived = true;
     feeWaivedReason = 'Cancellation charges disabled by policy';
   } else if (cancelledBy === 'user') {
-    if (stage === 'searching' || timeSinceBookingMins <= policy.free_cancellation_time_mins) {
+    // The free window runs from the moment the driver accepted (as the admin form says); before that, from booking
+    const minutesIntoFreeWindow = ride.acceptedAt ? timeSinceAcceptanceMins : timeSinceBookingMins;
+    if (stage === 'searching' || minutesIntoFreeWindow <= policy.free_cancellation_time_mins) {
       isWaived = true;
       feeWaivedReason = stage === 'searching'
         ? 'Cancelled while searching for driver'
@@ -121,7 +132,7 @@ export const calculateCancellationBill = async ({ ride, cancelledBy = 'user', re
       stage === 'started'
     ) {
       const calculatedBase = policy.fixed_cancellation_charge + (estimatedFare * policy.percentage_cancellation_charge / 100);
-      cancellationFee = Math.min(Math.round(calculatedBase), policy.max_cancellation_fee);
+      cancellationFee = applyFeeCap(calculatedBase, policy.max_cancellation_fee);
 
       if (policy.driver_compensation_percentage > 0) {
         driverCompensation = Math.round((cancellationFee * policy.driver_compensation_percentage) / 100);
@@ -136,7 +147,7 @@ export const calculateCancellationBill = async ({ ride, cancelledBy = 'user', re
 
     if (isPassengerNoShow && timeSinceArrivalMins >= policy.cancellation_grace_period_driver_arrived) {
       const calculatedBase = policy.fixed_cancellation_charge + (estimatedFare * policy.percentage_cancellation_charge / 100);
-      cancellationFee = Math.min(Math.round(calculatedBase), policy.max_cancellation_fee);
+      cancellationFee = applyFeeCap(calculatedBase, policy.max_cancellation_fee);
       if (policy.driver_compensation_percentage > 0) {
         driverCompensation = Math.round((cancellationFee * policy.driver_compensation_percentage) / 100);
       }

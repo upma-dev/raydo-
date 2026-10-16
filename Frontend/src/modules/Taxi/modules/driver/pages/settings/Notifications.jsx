@@ -126,7 +126,8 @@ const SkeletonCard = () => (
 const DriverNotifications = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const routePrefix = location.pathname.startsWith('/taxi/owner') ? '/taxi/owner' : '/taxi/driver';
+  const isOwnerPortal = location.pathname.startsWith('/taxi/owner');
+  const routePrefix = isOwnerPortal ? '/taxi/owner' : '/taxi/driver';
   const [activeTab, setActiveTab] = useState('alerts');
   const [alertItems, setAlertItems] = useState([]);
   const [scheduledRides, setScheduledRides] = useState([]);
@@ -291,10 +292,11 @@ const DriverNotifications = () => {
       </header>
 
       <div className="px-5 pt-4 space-y-2.5">
-        <div className="grid grid-cols-2 gap-2 rounded-[22px] border border-white/80 bg-white/70 p-1 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+        <div className={`grid ${isOwnerPortal ? 'grid-cols-1' : 'grid-cols-2'} gap-2 rounded-[22px] border border-white/80 bg-white/70 p-1 shadow-[0_8px_24px_rgba(15,23,42,0.05)]`}>
           {[
             { id: 'alerts', label: 'Alerts', count: alertItems.length },
-            { id: 'schedule', label: 'Schedule', count: scheduledRides.length },
+            // Scheduled rides are a driver-only API; owners only get alerts.
+            ...(isOwnerPortal ? [] : [{ id: 'schedule', label: 'Schedule', count: scheduledRides.length }]),
           ].map((tab) => {
             const isActive = activeTab === tab.id;
 

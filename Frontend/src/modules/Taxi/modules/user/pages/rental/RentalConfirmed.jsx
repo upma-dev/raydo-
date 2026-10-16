@@ -290,7 +290,7 @@ const RentalConfirmed = () => {
   }, [completedCharge, isCompletedRentalRide, liveCharge]);
 
   if (!state.vehicle && !activeRentalRide) {
-    navigate('/rental');
+    navigate('/taxi/user/rental');
     return null;
   }
 
@@ -313,7 +313,7 @@ const RentalConfirmed = () => {
         finalElapsedMinutes: payload?.finalElapsedMinutes || payload?.rideMetrics?.elapsedMinutes || liveElapsedMinutes,
       };
       saveCurrentRide(nextRideState);
-      navigate('/rental/confirmed', {
+      navigate('/taxi/user/rental/confirmed', {
         replace: true,
         state: nextRideState,
       });

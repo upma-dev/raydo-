@@ -291,7 +291,9 @@ const SearchingDriver = () => {
   );
   const activeRideIdRef = useRef('');
   const searchNonce = String(routeState.searchNonce || '');
-  const isDriverBidRide = biddingSummary.pricingNegotiationMode === 'driver_bid' || String(routeState.bookingMode || '').toLowerCase() === 'bidding';
+  // Only the negotiation mode decides: a city ride with bookingMode "bidding" is the Rapido-style "raise the fare" flow,
+  // not drivers sending bids (that list would stay empty because no driver ever bids on it).
+  const isDriverBidRide = biddingSummary.pricingNegotiationMode === 'driver_bid';
   const isUserIncrementRide = biddingSummary.pricingNegotiationMode === 'user_increment_only';
   const isBiddingRide = isDriverBidRide;
   const isScheduledRide = Boolean(routeState.scheduledAt);
@@ -884,7 +886,8 @@ const SearchingDriver = () => {
     }
   };
 
-  const handleIncreaseBid = async () => {
+  const handleIncreaseBid = async (steps = 1) => {
+    const incrementSteps = Math.max(1, Math.round(Number(steps) || 1));
     if (!canIncreaseFare && fareIncreaseCountdownMs > 0) {
       const waitMins = biddingSummary.fareIncreaseWaitMinutes || 2;
       const totalSecs = Math.max(1, Math.ceil(fareIncreaseCountdownMs / 1000));
@@ -904,7 +907,7 @@ const SearchingDriver = () => {
 
     setBidActionLoading(true);
     try {
-      const response = await userAuthService.increaseRideBidCeiling(rideId, 1);
+      const response = await userAuthService.increaseRideBidCeiling(rideId, incrementSteps);
       const payload = unwrap(response);
       setBiddingSummary((current) => ({
         ...current,
@@ -1186,7 +1189,7 @@ const SearchingDriver = () => {
                     <button
                       type="button"
                       disabled={bidActionLoading}
-                      onClick={handleIncreaseBid}
+                      onClick={() => handleIncreaseBid(1)}
                       className={`shrink-0 rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition ${
                         !canIncreaseFare
                           ? 'bg-slate-300 text-slate-600 hover:bg-slate-400'
@@ -1225,58 +1228,63 @@ const SearchingDriver = () => {
               )}
 
               {isUserIncrementRide && (
-                <div className="rounded-[24px] border border-blue-100 bg-blue-50/70 p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
+                <div className="rounded-[22px] border border-blue-100 bg-blue-50/70 p-3.5 space-y-2.5">
+                  <div className="flex items-end justify-between gap-3">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-600">Current Offer</p>
-                      <p className="mt-1 text-[18px] font-black text-slate-900">{formatCurrency(biddingSummary.userMaxBidFare)}</p>
-                   
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-600">Your fare</p>
+                      <p className="text-[22px] font-black leading-tight text-slate-900">{formatCurrency(biddingSummary.userMaxBidFare)}</p>
                     </div>
-                    <button
-                      type="button"
-                      disabled={bidActionLoading}
-                      onClick={handleIncreaseBid}
-                      className={`shrink-0 rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition ${
-                        !canIncreaseFare
-                          ? 'bg-slate-300 text-slate-600 hover:bg-slate-400'
-                          : 'bg-slate-950 text-white hover:bg-slate-800'
-                      }`}
-                    >
-                      +{formatCurrency(biddingSummary.bidStepAmount)}
-                    </button>
-                  </div>
-                  <div className="rounded-[18px] border border-blue-100 bg-white px-3 py-3">
-                    <p className="text-[11px] font-black text-slate-700">
-                      {canIncreaseFare ? 'You can increase the fare now and rebroadcast the request.' : fareIncreaseCountdownLabel}
+                    <p className="max-w-[150px] text-right text-[11px] font-bold leading-snug text-slate-500">
+                      {canIncreaseFare ? 'No driver yet? Add to your fare.' : `You can add more in ${formatCountdown(fareIncreaseCountdownMs)}`}
                     </p>
                   </div>
-                  {fareHistory.length > 0 && (
-                    <div className="rounded-[18px] border border-blue-100/80 bg-white px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Fare History</p>
-                      <p className="mt-2 text-[12px] font-black text-slate-800">
-                        {fareHistory.map((fare) => formatCurrency(fare)).join(' -> ')}
-                      </p>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    {[1, 2, 3].map((steps) => {
+                      const addAmount = steps * Math.max(1, Number(biddingSummary.bidStepAmount) || 10);
+                      const ceiling = Number(biddingSummary.bidCeilingMaxFare) || 0;
+                      const overCeiling = ceiling > 0 && Number(biddingSummary.userMaxBidFare) + addAmount > ceiling;
+                      // While the admin wait runs the chips look dim but stay tappable: a tap explains how long is left
+                      const waiting = !canIncreaseFare;
+                      return (
+                        <button
+                          key={steps}
+                          type="button"
+                          disabled={bidActionLoading || overCeiling}
+                          onClick={() => handleIncreaseBid(steps)}
+                          className={`rounded-[14px] border py-2.5 text-[14px] font-black transition ${
+                            overCeiling
+                              ? 'border-slate-200 bg-slate-100 text-slate-300'
+                              : waiting
+                                ? 'border-slate-200 bg-white text-slate-400'
+                                : 'border-slate-900 bg-slate-950 text-white active:scale-95'
+                          }`}
+                        >
+                          +{formatCurrency(addAmount)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-center gap-5 pt-0.5">
                     <button
                       type="button"
                       onClick={() => navigateAfterCancel()}
-                      className="rounded-[16px] border border-slate-200 bg-white px-3 py-3 text-[11px] font-black uppercase tracking-[0.12em] text-slate-700"
+                      className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-500"
                     >
-                      Try Another Vehicle
+                      Try another vehicle
                     </button>
+                    <span className="h-3 w-px bg-slate-300" />
                     <button
                       type="button"
                       onClick={() => navigateAfterCancel({ rideMode: 'schedule' })}
-                      className="rounded-[16px] border border-blue-200 bg-blue-100/70 px-3 py-3 text-[11px] font-black uppercase tracking-[0.12em] text-blue-700"
+                      className="text-[11px] font-black uppercase tracking-[0.1em] text-blue-600"
                     >
-                      Schedule Instead
+                      Schedule instead
                     </button>
                   </div>
                 </div>
               )}
 
+              {!isUserIncrementRide && (
               <div className="flex items-center justify-between px-5 py-4 rounded-[24px] bg-slate-50/80 border border-slate-100">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center">
@@ -1290,6 +1298,7 @@ const SearchingDriver = () => {
                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Top Safety</span>
                 </div>
               </div>
+              )}
 
               <motion.button 
                 whileTap={{ scale: 0.98 }}

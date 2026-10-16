@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { assertVehicleTypeFitsServices } from '../../services/vehicleServiceRules.js';
+import { assertVehicleTypeFitsServices, effectiveServicesForVehicle, narrowServicesForVehicle, transportTypeForServices, ALL_SERVICES } from '../../services/vehicleServiceRules.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { createDefaultAdminState } from '../data/defaultAdminState.js';
 import { Admin } from '../models/Admin.js';
@@ -20,6 +20,7 @@ import { GoodsType } from '../models/GoodsType.js';
 import { OwnerNeededDocument } from '../models/OwnerNeededDocument.js';
 import { OwnerBooking } from '../models/OwnerBooking.js';
 import { Owner } from '../models/Owner.js';
+import { applyOwnerWalletAdjustment, resolveOwnerEarningSettings } from '../../driver/services/ownerWalletService.js';
 import { FleetVehicle } from '../models/FleetVehicle.js';
 import { ReferralTranslation } from '../models/ReferralTranslation.js';
 import { AdminThirdPartySetting } from '../models/AdminThirdPartySetting.js';
@@ -425,6 +426,11 @@ const toDocumentKey = (value = '') => {
     .join('');
 };
 
+const normalizeAllowedServices = (value) => {
+  const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+  return [...new Set(list.map((item) => String(item || '').trim().toLowerCase()).filter((item) => ALL_SERVICES.includes(item)))];
+};
+
 const normalizeVehicleTransportType = (value = '') => {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'delivery') return 'delivery';
@@ -462,6 +468,11 @@ const normalizeDriverServiceCategories = (value, fallback = 'taxi') => {
 
   if (normalized.length > 0) {
     return normalized;
+  }
+
+  // Transport Type "All" = every service (before, it was turned into 'both' = taxi + outstation only)
+  if (String(fallback || '').trim().toLowerCase() === 'all') {
+    return ['taxi', 'outstation', 'delivery', 'pooling'];
   }
 
   const registerFor = normalizeDriverRegisterFor(fallback);
@@ -4002,8 +4013,10 @@ export const listDrivers = async ({ page = 1, limit = 50, status, search, approv
     query.vehicleTypeId = toObjectId(vehicle_type_id);
   }
 
+  // Drivers marked online without a live socket for a while are really offline. A driver on a ride, or one whose socket
+  // dropped a moment ago (the socket layer gives a short grace), is left alone.
   await Driver.updateMany(
-    { isOnline: true, socketId: null },
+    { isOnline: true, socketId: null, isOnRide: { $ne: true }, updatedAt: { $lt: new Date(Date.now() - 60 * 1000) } },
     { $set: { isOnline: false } },
   ).catch(() => {});
 
@@ -4382,12 +4395,32 @@ export const approveDriverWithdrawalRequest = async (requestId, adminId = null) 
     session.startTransaction();
 
     const request = await WithdrawalRequest.findById(requestId).session(session);
-    if (!request || !request.driver_id) {
+    if (!request || (!request.driver_id && !request.owner_id)) {
       throw new ApiError(404, 'Withdrawal request not found');
     }
 
     if (request.status !== 'pending') {
       throw new ApiError(400, 'Only pending withdrawal requests can be approved');
+    }
+
+    // Owner payouts: the balance was already debited on request, so approval only settles it.
+    if (request.owner_id && !request.driver_id) {
+      request.status = 'completed';
+      await request.save({ session });
+      await session.commitTransaction();
+
+      return {
+        request: {
+          _id: request._id,
+          owner_id: request.owner_id,
+          amount: Math.round(Number(request.amount || 0) * 100) / 100,
+          payment_method: request.payment_method || '',
+          status: request.status,
+          createdAt: request.createdAt,
+          updatedAt: request.updatedAt,
+        },
+        wallet: null,
+      };
     }
 
     const driver = await Driver.findById(request.driver_id).session(session);
@@ -4448,7 +4481,7 @@ export const approveDriverWithdrawalRequest = async (requestId, adminId = null) 
 
 export const rejectDriverWithdrawalRequest = async (requestId) => {
   const request = await WithdrawalRequest.findById(requestId);
-  if (!request || !request.driver_id) {
+  if (!request || (!request.driver_id && !request.owner_id)) {
     throw new ApiError(404, 'Withdrawal request not found');
   }
 
@@ -4458,6 +4491,35 @@ export const rejectDriverWithdrawalRequest = async (requestId) => {
 
   request.status = 'cancelled';
   await request.save();
+
+  if (request.owner_id && !request.driver_id) {
+    const ownerRefund = Math.round(Number(request.amount || 0) * 100) / 100;
+    let ownerBalance = null;
+
+    if (ownerRefund > 0) {
+      const refunded = await applyOwnerWalletAdjustment({
+        ownerId: request.owner_id,
+        amount: ownerRefund,
+        category: 'withdrawal_refund',
+        title: 'Withdrawal request rejected by admin - balance refunded',
+        metadata: { withdrawalRequestId: String(request._id) },
+      });
+      ownerBalance = refunded.balance;
+    }
+
+    return {
+      request: {
+        _id: request._id,
+        owner_id: request.owner_id,
+        amount: ownerRefund,
+        payment_method: request.payment_method || '',
+        status: request.status,
+        createdAt: request.createdAt,
+        updatedAt: request.updatedAt,
+      },
+      wallet: ownerBalance === null ? null : { balance: ownerBalance },
+    };
+  }
 
   const refundAmount = Math.round(Number(request.amount || 0) * 100) / 100;
   let walletResult = null;
@@ -4587,6 +4649,48 @@ export const listDriverWalletHistory = async (id) => {
   };
 };
 
+const serializeOwnerEarningSettings = (owner) => ({
+  ...resolveOwnerEarningSettings(owner),
+  updatedAt: owner?.earning_settings?.updated_at || null,
+});
+
+export const getOwnerEarningSettings = async (id) => {
+  const owner = await Owner.findById(id).select('earning_settings').lean();
+  if (!owner) {
+    throw new ApiError(404, 'Owner not found');
+  }
+  return serializeOwnerEarningSettings(owner);
+};
+
+export const updateOwnerEarningSettings = async (id, payload = {}) => {
+  const model = String(payload.model || '').trim().toLowerCase();
+  if (!['salary', 'split'].includes(model)) {
+    throw new ApiError(400, 'model must be salary or split');
+  }
+
+  const percent = model === 'salary' ? 100 : Number(payload.owner_share_percent ?? payload.ownerSharePercent);
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    throw new ApiError(400, 'owner_share_percent must be between 0 and 100');
+  }
+
+  const owner = await Owner.findByIdAndUpdate(
+    id,
+    {
+      $set: {
+        'earning_settings.model': model,
+        'earning_settings.owner_share_percent': Math.round(percent * 100) / 100,
+        'earning_settings.updated_at': new Date(),
+      },
+    },
+    { new: true, runValidators: true },
+  ).select('earning_settings').lean();
+
+  if (!owner) {
+    throw new ApiError(404, 'Owner not found');
+  }
+  return serializeOwnerEarningSettings(owner);
+};
+
 export const adjustOwnerWallet = async (id, payload = {}) => {
   const amount = Number(payload.amount || 0);
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -4603,23 +4707,14 @@ export const adjustOwnerWallet = async (id, payload = {}) => {
     throw new ApiError(404, 'Owner not found');
   }
 
-  const currentBalance = Number(owner.wallet?.balance || 0);
-  const nextBalance = operation === 'credit' ? currentBalance + amount : currentBalance - amount;
-
-  owner.wallet = owner.wallet || {};
-  owner.wallet.balance = nextBalance;
-  owner.markModified('wallet');
-  await owner.save();
-
-  await OwnerWalletTransaction.create({
+  const { balance } = await applyOwnerWalletAdjustment({
     ownerId: id,
-    amount,
-    kind: operation,
+    amount: operation === 'credit' ? amount : -amount,
+    category: 'admin_adjustment',
     title: payload.description || `Admin adjustment (${operation})`,
-    balance: nextBalance
   });
 
-  return { balance: Number(nextBalance.toFixed(2)) };
+  return { balance: Number(balance.toFixed(2)) };
 };
 
 export const listOwnerWalletHistory = async (id) => {
@@ -4802,9 +4897,8 @@ export const createDriver = async (payload = {}, currentAdmin = null) => {
   const existing = await Driver.findOne({ phone }).lean();
   if (existing) throw new ApiError(409, 'Driver phone already exists');
 
-  const registerFor = normalizeDriverRegisterFor(
-    payload.transport_type || payload.transportType || payload.register_for || payload.registerFor || 'taxi',
-  );
+  const rawTransportType = payload.transport_type || payload.transportType || payload.register_for || payload.registerFor || 'taxi';
+  const registerFor = normalizeDriverRegisterFor(rawTransportType);
 
   let city = String(payload.city || '').trim();
   const serviceLocationId = payload.service_location_id || payload.area || payload.service_location;
@@ -4822,9 +4916,11 @@ export const createDriver = async (payload = {}, currentAdmin = null) => {
     payload.vehicle_type_id || payload.vehicleTypeId || payload.vehicleType?._id || payload.vehicleType?.id || null;
   const serviceCategories = normalizeDriverServiceCategories(
     payload.serviceCategories ?? payload.service_categories,
-    registerFor,
+    rawTransportType,
   );
   const vehicleRecord = await assertVehicleTypeFitsServices({ vehicleTypeId, serviceCategories });
+  // e.g. "All" on a bike becomes taxi + delivery (a bike never gets outstation / pooling)
+  const allowedServiceCategories = narrowServicesForVehicle(vehicleRecord, serviceCategories);
   const normalizedVehicleInput = String(
     vehicleRecord?.name ||
       payload.vehicle_type ||
@@ -4878,7 +4974,7 @@ export const createDriver = async (payload = {}, currentAdmin = null) => {
     vehicleColor: String(payload.vehicle_color || payload.vehicleColor || payload.car_color || '').trim(),
     vehicleNumber: String(payload.vehicle_number || payload.vehicleNumber || payload.car_number || '').trim(),
     registerFor,
-    serviceCategories,
+    serviceCategories: allowedServiceCategories,
     city,
     approve,
     status,
@@ -4943,7 +5039,7 @@ export const updateDriver = async (id, payload, currentAdmin = null) => {
     const current = await Driver.findById(id).select('registerFor serviceCategories vehicleTypeId').lean();
     update.serviceCategories = normalizeDriverServiceCategories(
       serviceCategoriesValue !== undefined ? serviceCategoriesValue : undefined,
-      update.registerFor || current?.registerFor || 'taxi',
+      transportTypeValue !== undefined ? transportTypeValue : (update.registerFor || current?.registerFor || 'taxi'),
     );
     if (serviceCategoriesValue !== undefined && transportTypeValue === undefined) {
       const primary = update.serviceCategories.includes('taxi') && update.serviceCategories.includes('outstation')
@@ -4953,7 +5049,8 @@ export const updateDriver = async (id, payload, currentAdmin = null) => {
     }
     // the vehicle type that is already on the driver must still fit the new services
     if (vehicleTypeId === undefined && current?.vehicleTypeId) {
-      await assertVehicleTypeFitsServices({ vehicleTypeId: current.vehicleTypeId, serviceCategories: update.serviceCategories });
+      const currentVehicle = await assertVehicleTypeFitsServices({ vehicleTypeId: current.vehicleTypeId, serviceCategories: update.serviceCategories });
+      update.serviceCategories = narrowServicesForVehicle(currentVehicle, update.serviceCategories);
     }
   }
 
@@ -4965,6 +5062,7 @@ export const updateDriver = async (id, payload, currentAdmin = null) => {
       const categories = update.serviceCategories
         || (existing?.serviceCategories?.length ? existing.serviceCategories : normalizeDriverServiceCategories(undefined, existing?.registerFor || 'taxi'));
       const vehicleRecord = await assertVehicleTypeFitsServices({ vehicleTypeId, serviceCategories: categories });
+      update.serviceCategories = narrowServicesForVehicle(vehicleRecord, categories);
       update.vehicleTypeId = toObjectId(vehicleTypeId);
       // dispatch matches drivers on these two text fields, so they follow the vehicle type that was picked
       const genericType = normalizeImportVehicleType(vehicleRecord?.name || '', vehicleRecord);
@@ -5923,6 +6021,7 @@ export const listVehicleTypes = async (queryParams = {}) => {
     delivery_category: item.delivery_category || '',
     ride_surge_amount: Number(item.ride_surge_amount || 0),
     delivery_distance_pricing: normalizeDeliveryDistancePricing(item.delivery_distance_pricing),
+    allowed_services: effectiveServicesForVehicle(item),
   }));
 
   return {
@@ -5951,6 +6050,7 @@ export const listVehicleCatalog = async () => {
     delivery_category: item.delivery_category || '',
     ride_surge_amount: Number(item.ride_surge_amount || 0),
     delivery_distance_pricing: normalizeDeliveryDistancePricing(item.delivery_distance_pricing),
+    allowed_services: effectiveServicesForVehicle(item),
     supported_vehicles: Array.isArray(item.supported_other_vehicle_types)
       ? item.supported_other_vehicle_types.map((v) => String(v)).join(',')
       : '',
@@ -5980,7 +6080,7 @@ export const listPublicVehicleCatalog = async () => {
   }
 
   const items = await Vehicle.find()
-    .select('name short_description description transport_type dispatch_type icon_types delivery_category delivery_distance_pricing capacity ride_surge_amount image icon map_icon status active')
+    .select('name short_description description transport_type allowed_services dispatch_type icon_types delivery_category delivery_distance_pricing capacity ride_surge_amount image icon map_icon status active')
     .sort({ createdAt: -1 })
     .lean();
 
@@ -5995,6 +6095,7 @@ export const listPublicVehicleCatalog = async () => {
     icon_types: item.icon_types || 'car',
     delivery_category: item.delivery_category || '',
     delivery_distance_pricing: normalizeDeliveryDistancePricing(item.delivery_distance_pricing),
+    allowed_services: effectiveServicesForVehicle(item),
     capacity: Number(item.capacity || 0),
     ride_surge_amount: Number(item.ride_surge_amount || 0),
     image: item.image || '',
@@ -6044,24 +6145,28 @@ export const createVehicleType = async (payload) => {
     throw new ApiError(400, 'Vehicle name is required');
   }
 
-  if (!payload.transport_type?.trim()) {
-    throw new ApiError(400, 'Transport type is required');
+  const services = normalizeAllowedServices(payload.allowed_services);
+  if (services.length === 0 && !String(payload.transport_type || '').trim()) {
+    throw new ApiError(400, 'Choose at least one service for this vehicle type');
   }
 
   const mapIcon = payload.map_icon ?? payload.mapIcon ?? payload.icon ?? payload.image ?? '';
-  const transportType = normalizeVehicleTransportType(payload.transport_type);
+  // The services the admin ticked decide the transport type
+  const transportType = services.length > 0
+    ? transportTypeForServices(services)
+    : normalizeVehicleTransportType(payload.transport_type);
 
   const vehicle = await Vehicle.create({
     name: payload.name.trim(),
     short_description: payload.short_description ?? '',
     description: payload.description ?? '',
     transport_type: transportType,
+    allowed_services: services,
     dispatch_type: payload.dispatch_type || 'normal',
     icon_types: payload.icon_types || 'car',
     capacity: Number(payload.capacity || 0),
     ride_surge_amount: Math.max(0, Number(payload.ride_surge_amount || 0)),
     size: payload.size ?? '',
-    is_taxi: payload.is_taxi || transportType,
     is_accept_share_ride: Number(payload.is_accept_share_ride || 0) ? 1 : 0,
     delivery_category: ['delivery', 'both'].includes(transportType)
       ? normalizeDeliveryCategory(payload.delivery_category)
@@ -6102,7 +6207,13 @@ export const updateVehicleType = async (id, payload) => {
   if (payload.description !== undefined) {
     vehicle.description = payload.description ?? '';
   }
-  if (payload.transport_type !== undefined) {
+  if (payload.allowed_services !== undefined) {
+    vehicle.allowed_services = normalizeAllowedServices(payload.allowed_services);
+  }
+  // The services the admin ticked decide the transport type; without any ticked service the old field is used
+  if (payload.allowed_services !== undefined && vehicle.allowed_services.length > 0) {
+    vehicle.transport_type = transportTypeForServices(vehicle.allowed_services);
+  } else if (payload.transport_type !== undefined) {
     vehicle.transport_type = normalizeVehicleTransportType(payload.transport_type);
   }
   if (payload.dispatch_type !== undefined) {
@@ -6128,18 +6239,15 @@ export const updateVehicleType = async (id, payload) => {
   if (payload.size !== undefined) {
     vehicle.size = payload.size ?? '';
   }
-  if (payload.is_taxi !== undefined) {
-    vehicle.is_taxi = payload.is_taxi || vehicle.transport_type;
-  }
   if (payload.is_accept_share_ride !== undefined) {
     vehicle.is_accept_share_ride = Number(payload.is_accept_share_ride || 0) ? 1 : 0;
   }
-  if (payload.delivery_category !== undefined || payload.transport_type !== undefined) {
+  if (payload.delivery_category !== undefined || payload.transport_type !== undefined || payload.allowed_services !== undefined) {
     vehicle.delivery_category = ['delivery', 'both'].includes(vehicle.transport_type)
       ? normalizeDeliveryCategory(payload.delivery_category ?? vehicle.delivery_category)
       : '';
   }
-  if (payload.delivery_distance_pricing !== undefined || payload.transport_type !== undefined) {
+  if (payload.delivery_distance_pricing !== undefined || payload.transport_type !== undefined || payload.allowed_services !== undefined) {
     vehicle.delivery_distance_pricing = ['delivery', 'both'].includes(vehicle.transport_type)
       ? normalizeDeliveryDistancePricing(payload.delivery_distance_pricing, vehicle.delivery_distance_pricing)
       : normalizeDeliveryDistancePricing();

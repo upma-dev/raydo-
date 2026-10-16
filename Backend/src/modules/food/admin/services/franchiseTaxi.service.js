@@ -133,6 +133,29 @@ export async function creditFranchiseForRide(rideId) {
 }
 
 /**
+ * Safety net for creditFranchiseForRide, which runs fire-and-forget right after a ride is settled: if the server stopped or
+ * the call failed at that moment, the franchise would never get that ride. This retries recently settled rides that have no
+ * franchise credit yet. Safe to run any time (the ledger row is unique per ride).
+ */
+export async function creditPendingFranchiseRides({ limit = 100, windowHours = 24 } = {}) {
+    const Ride = model('TaxiRide');
+    if (!Ride) return 0;
+    const since = new Date(Date.now() - windowHours * 3600 * 1000);
+    const rides = await Ride.find({
+        status: 'completed',
+        walletSettledAt: { $gte: since },
+        franchiseApplicationId: null,
+        commissionAmount: { $gt: 0 },
+    }).sort({ walletSettledAt: -1 }).limit(limit).select('_id').lean();
+
+    let credited = 0;
+    for (const r of rides) {
+        if (await creditFranchiseForRide(r._id)) credited += 1;
+    }
+    return credited;
+}
+
+/**
  * Net franchise money per order/ride/booking: earning - platform commission - reversals (v2) or credit - reversal (v1).
  * Returns Map(sourceId -> { net, base }).
  */

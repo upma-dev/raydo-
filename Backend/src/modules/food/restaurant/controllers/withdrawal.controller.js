@@ -43,12 +43,20 @@ export const createWithdrawalRequestController = async (req, res, next) => {
 
         const withdrawal = new FoodRestaurantWithdrawal({
             restaurantId,
-            amount: parsedAmount,
+            amount: Math.round(parsedAmount * 100) / 100,
             bankDetails: mergedBankDetails,
             status: 'pending'
         });
 
         await withdrawal.save();
+
+        // Re-check AFTER the request exists: two requests sent at the same moment both passed the check above, but now each
+        // sees the other as pending. If together they promise more than the restaurant earned, this one is withdrawn again.
+        const after = await getRestaurantFinance(restaurantId);
+        if (Number(after?.currentCycle?.rawAvailable) < -0.009) {
+            await FoodRestaurantWithdrawal.deleteOne({ _id: withdrawal._id, status: 'pending' });
+            return sendError(res, 409, 'Another withdrawal request is being processed. Please check your balance and try again.');
+        }
 
         return sendResponse(res, 201, 'Withdrawal request submitted successfully', withdrawal);
     } catch (error) {

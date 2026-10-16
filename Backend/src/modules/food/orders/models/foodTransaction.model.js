@@ -80,6 +80,7 @@ const foodTransactionSchema = new mongoose.Schema({
         riderIncentivePay: { type: Number, default: 0, min: 0 },
         riderTotalPayout: { type: Number, default: 0, min: 0 },
         platformNetProfit: { type: Number, required: true, min: 0 },
+        platformShortfall: { type: Number, default: 0, min: 0 },
         taxAmount: { type: Number, default: 0, min: 0 }
     },
 

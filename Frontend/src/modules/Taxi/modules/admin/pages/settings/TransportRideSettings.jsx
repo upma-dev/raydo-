@@ -107,7 +107,7 @@ const TransportRideSettings = () => {
               {/* Left Column */}
               <div className="space-y-8">
                  <div className="space-y-1.5">
-                    <label className="text-[13px] font-bold text-slate-700 block ml-0.5">Trip Dispatch Type</label>
+                    <label className="text-[13px] font-bold text-slate-700 block ml-0.5">Driver Search Mode</label>
                     <select 
                      value={settings.trip_dispatch_type || '1'} 
                      onChange={(e) => handleChange('trip_dispatch_type', e.target.value)}

@@ -16,11 +16,15 @@ import { TripInstance } from "../../user/models/TripInstance.js";
 import { TripSeatInventory } from "../../user/models/TripSeatInventory.js";
 import { ensureTripInstance, normalizeTravelDateString } from "../../services/tripGeneratorService.js";
 import { Owner } from "../../admin/models/Owner.js";
+import { OwnerWalletTransaction } from "../../admin/models/OwnerWalletTransaction.js";
+import { OwnerCashSettlement } from "../../admin/models/OwnerCashSettlement.js";
 import { BusService } from "../../admin/models/BusService.js";
 import { ServiceLocation } from "../../admin/models/ServiceLocation.js";
 import { ServiceStore } from "../../admin/models/ServiceStore.js";
 import { ServiceCenterStaff } from "../../admin/models/ServiceCenterStaff.js";
 import { Vehicle } from "../../admin/models/Vehicle.js";
+import { effectiveServicesForVehicle, narrowServicesForVehicle, ALL_SERVICES } from "../../services/vehicleServiceRules.js";
+import { isOnlineSelfieFresh } from "../../services/driverSelfiePolicy.js";
 import { RentalVehicleType } from "../../admin/models/RentalVehicleType.js";
 import { RentalBookingRequest } from "../../admin/models/RentalBookingRequest.js";
 import { CustomerBiometricProfile } from "../../admin/models/CustomerBiometricProfile.js";
@@ -2416,12 +2420,11 @@ export const goOnline = async (req, res) => {
   }
 
   const todayKey = new Date().toISOString().slice(0, 10);
-  const hasTodaySelfie =
-    String(existingDriver.onlineSelfie?.forDate || "") === todayKey &&
-    String(existingDriver.onlineSelfie?.imageUrl || "").trim();
+  // The selfie is valid for one hour; after that the driver verifies again
+  const hasTodaySelfie = isOnlineSelfieFresh(existingDriver.onlineSelfie);
 
   if (!hasTodaySelfie && !String(selfieImageUrl || "").trim()) {
-    throw new ApiError(400, "A selfie is required before going online today");
+    throw new ApiError(400, "A selfie is required before going online (selfie verification is needed every hour)");
   }
 
   await ensureDriverWalletCanAcceptRide(existingDriver);
@@ -2478,6 +2481,15 @@ export const goOnline = async (req, res) => {
   notifyLateAvailableDriver(driver._id).catch((error) => {
     console.error("Failed to notify late-available driver on goOnline", error);
   });
+};
+
+// The vehicle type record of a driver (by id, else by the saved vehicle type name such as "bike")
+const findDriverVehicleRecord = async (driver) => {
+  if (driver?.vehicleTypeId) {
+    const byId = await Vehicle.findById(driver.vehicleTypeId).select("name icon_types allowed_services transport_type").lean();
+    if (byId) return byId;
+  }
+  return { name: driver?.vehicleType || "", icon_types: driver?.vehicleIconType || "" };
 };
 
 export const getCurrentDriver = async (req, res) => {
@@ -2550,6 +2562,7 @@ export const getCurrentDriver = async (req, res) => {
 
   await clearDriverActiveRideIfStale(driver);
   const vehicleIconUrl = await resolveVehicleMapIcon(driver.vehicleTypeId);
+  const allowedServices = effectiveServicesForVehicle(await findDriverVehicleRecord(driver));
   const todaySummary = await syncDriverTodaySummaryDocument(driver);
 
   res.json({
@@ -2573,6 +2586,7 @@ export const getCurrentDriver = async (req, res) => {
       transport_type: driver.registerFor || driver.vehicleType || '',
       serviceCategories: Array.isArray(driver.serviceCategories) ? driver.serviceCategories : [],
       service_categories: Array.isArray(driver.serviceCategories) ? driver.serviceCategories : [],
+      allowedServices,
       vehicleNumber: driver.vehicleNumber,
       vehicleColor: driver.vehicleColor,
       vehicleImage: driver.vehicleImage || "",
@@ -2619,10 +2633,14 @@ export const getDriverEmergencyContacts = async (req, res) => {
 
 export const getDriverNotifications = async (req, res) => {
   const driverId = req.auth.sub;
-  const driver = await Driver.findById(driverId).lean();
+  const isOwnerRequester = String(req.auth?.role || "").toLowerCase() === "owner";
+  // Owner tokens carry an Owner _id, so look the account up in the right collection.
+  const driver = isOwnerRequester
+    ? await Owner.findById(driverId).select("service_location_id").lean()
+    : await Driver.findById(driverId).lean();
 
   if (!driver) {
-    throw new ApiError(404, "Driver not found");
+    throw new ApiError(404, isOwnerRequester ? "Owner not found" : "Driver not found");
   }
 
   const serviceLocationId = driver.service_location_id || null;
@@ -2630,8 +2648,14 @@ export const getDriverNotifications = async (req, res) => {
     { status: "sent" },
     {
       $or: [
+        // personal notification (e.g. "Ride cancelled"): only its own driver
         { recipient_driver_id: driverId },
-        { send_to: { $in: ["all", "drivers"] } },
+        // broadcast: only notifications that are NOT addressed to one particular driver / user
+        {
+          send_to: { $in: ["all", "drivers", "driver"] },
+          recipient_driver_id: null,
+          recipient_user_id: null,
+        },
       ],
     },
   ];
@@ -2650,15 +2674,25 @@ export const getDriverNotifications = async (req, res) => {
 
   const query = { $and: conditions };
 
-  const notifications = await Notification.find(query)
-    .sort({ sent_at: -1, createdAt: -1 })
-    .limit(100)
-    .lean();
+  const safePage = Math.max(1, Number(req.query?.page) || 1);
+  const safeLimit = Math.min(100, Math.max(1, Number(req.query?.limit) || 100));
+
+  const [notifications, totalCount] = await Promise.all([
+    Notification.find(query)
+      .sort({ sent_at: -1, createdAt: -1 })
+      .skip((safePage - 1) * safeLimit)
+      .limit(safeLimit)
+      .lean(),
+    Notification.countDocuments(query),
+  ]);
 
   res.json({
     success: true,
     data: {
       results: notifications.map(serializeDriverNotification),
+      totalCount,
+      page: safePage,
+      limit: safeLimit,
     },
   });
 };
@@ -2942,8 +2976,22 @@ export const updateCurrentDriver = async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body || {}, "registerFor") || Object.prototype.hasOwnProperty.call(req.body || {}, "transport_type") || Object.prototype.hasOwnProperty.call(req.body || {}, "transportType")) {
     const transportType = req.body.registerFor || req.body.transport_type || req.body.transportType;
     if (transportType) {
-      driver.registerFor = String(transportType).trim().toLowerCase();
-      driver.vehicleType = driver.registerFor;
+      // One choice says what the driver works in; "All" = every service. (The driver's own vehicle type, e.g. bike / car,
+      // is NOT touched: it used to be overwritten here with the transport type, which broke vehicle matching.)
+      const chosen = String(transportType).trim().toLowerCase();
+      const wanted = chosen === 'all'
+        ? [...ALL_SERVICES]
+        : chosen === 'both'
+          ? ['taxi', 'outstation']
+          : [ALL_SERVICES.includes(chosen) ? chosen : 'taxi'];
+      const vehicleRecord = await findDriverVehicleRecord(driver);
+      const allowedHere = effectiveServicesForVehicle(vehicleRecord);
+      // asking for one service the vehicle can never do (a bike on outstation / pooling) is refused
+      if (wanted.length === 1 && !allowedHere.includes(wanted[0])) {
+        throw new ApiError(400, `Your vehicle can only do: ${allowedHere.join(', ')}.`);
+      }
+      driver.registerFor = chosen === 'all' ? 'both' : chosen;
+      driver.serviceCategories = narrowServicesForVehicle(vehicleRecord, wanted);
     }
   }
 
@@ -3170,16 +3218,45 @@ export const getMyWallet = async (req, res) => {
       throw new ApiError(404, "Owner not found");
     }
 
+    const [ownerTransactions, ownerWithdrawals, ownerWalletSettings] = await Promise.all([
+      OwnerWalletTransaction.find({ ownerId: owner._id })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .lean(),
+      WithdrawalRequest.find({ owner_id: owner._id })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      getWalletSettings(),
+    ]);
+
     res.json({
       success: true,
       data: {
         wallet: {
           balance: Number(owner.wallet?.balance || 0),
           currency: "INR",
+          minimumTransferAmount: Number(
+            ownerWalletSettings?.minimum_wallet_amount_for_transfer || 0,
+          ),
+          isTransferEnabled: ["1", "true", "yes", "on"].includes(
+            String(ownerWalletSettings?.enable_wallet_transfer_driver ?? "1")
+              .trim()
+              .toLowerCase(),
+          ),
         },
-        transactions: [],
-        withdrawalRequests: [],
-        settings: await getWalletSettings(),
+        transactions: ownerTransactions.map((tx) => ({
+          _id: String(tx._id),
+          kind: tx.kind,
+          category: tx.category || "",
+          // Signed amount: credits are positive, debits negative.
+          amount: tx.kind === "debit" ? -Math.abs(tx.amount) : Math.abs(tx.amount),
+          description: tx.title || "",
+          balance: Number(tx.balance || 0),
+          createdAt: tx.createdAt,
+        })),
+        withdrawalRequests: ownerWithdrawals,
+        settings: ownerWalletSettings,
       },
     });
     return;
@@ -4590,7 +4667,93 @@ export const updateBusDriverSchedules = async (req, res) => {
   });
 };
 
+const createOwnerWithdrawalRequest = async (req, res) => {
+  const owner = await Owner.findById(req.auth.sub);
+
+  if (!owner) {
+    throw new ApiError(404, "Owner not found");
+  }
+
+  const walletSettings = await getWalletSettings();
+  const isTransferEnabled = ["1", "true", "yes", "on"].includes(
+    String(walletSettings.enable_wallet_transfer_driver ?? "1").trim().toLowerCase(),
+  );
+  const minimumTransferAmount = Number(walletSettings.minimum_wallet_amount_for_transfer || 0);
+  const amount = Math.round(Number(req.body?.amount) * 100) / 100;
+  const body = req.body || {};
+  const upiId = String(body.upiId || "").trim();
+  const accountNumber = String(body.accountNumber || owner.account_no || "").trim();
+  const ifscCode = String(body.ifscCode || owner.ifsc || "").trim();
+  const accountHolderName = String(
+    body.accountHolderName || owner.owner_name || owner.name || "",
+  ).trim();
+
+  if (!isTransferEnabled) {
+    throw new ApiError(403, "Withdrawals are disabled by admin");
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new ApiError(400, "amount must be greater than zero");
+  }
+
+  if (minimumTransferAmount > 0 && amount < minimumTransferAmount) {
+    throw new ApiError(400, `amount must be at least ${minimumTransferAmount}`);
+  }
+
+  if (!upiId && !(accountNumber && ifscCode)) {
+    throw new ApiError(400, "Add a UPI ID or bank account number with IFSC to withdraw");
+  }
+
+  // Atomic debit: only succeeds while the balance still covers the amount.
+  const updated = await Owner.findOneAndUpdate(
+    { _id: owner._id, "wallet.balance": { $gte: amount } },
+    { $inc: { "wallet.balance": -amount } },
+    { new: true },
+  ).lean();
+
+  if (!updated) {
+    throw new ApiError(400, "Withdrawal amount cannot exceed current balance");
+  }
+
+  const nextBalance = Number(updated.wallet?.balance || 0);
+
+  await OwnerWalletTransaction.create({
+    ownerId: owner._id,
+    amount,
+    kind: "debit",
+    title: "Withdrawal request submitted",
+    balance: nextBalance,
+    category: "withdrawal",
+    metadata: { amount },
+  });
+
+  const created = await WithdrawalRequest.create({
+    transactionId: `wdr_${Date.now().toString(36)}`,
+    owner_id: owner._id,
+    amount,
+    payment_method: upiId ? "upi" : "bank_transfer",
+    upiId,
+    accountHolderName,
+    accountNumber,
+    ifscCode,
+    status: "pending",
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      request: created,
+      wallet: { balance: nextBalance, currency: "INR" },
+    },
+    message: "Withdrawal request sent to admin",
+  });
+};
+
 export const createDriverWithdrawalRequest = async (req, res) => {
+  if (String(req.auth?.role || "").toLowerCase() === "owner") {
+    return createOwnerWithdrawalRequest(req, res);
+  }
+
   const driver = await Driver.findById(req.auth.sub);
 
   if (!driver) {
@@ -6045,7 +6208,7 @@ export const getOwnerFleetDashboard = async (req, res) => {
         .lean()
       : null,
     Driver.find({ owner_id: owner._id, deletedAt: null })
-      .select("name phone email city approve status isOnline socketId isOnRide createdAt")
+      .select("name phone email city approve status isOnline socketId isOnRide owner_cash_due createdAt")
       .sort({ createdAt: -1 })
       .lean(),
     FleetVehicle.find({ owner_id: owner._id, active: true })
@@ -6127,7 +6290,7 @@ export const getOwnerFleetDashboard = async (req, res) => {
                 $sum: {
                   $cond: [
                     { $eq: ["$status", RIDE_STATUS.COMPLETED] },
-                    { $ifNull: ["$driverEarnings", 0] },
+                    { $ifNull: ["$ownerSettlement.ownerShare", 0] },
                     0,
                   ],
                 },
@@ -6193,7 +6356,7 @@ export const getOwnerFleetDashboard = async (req, res) => {
                 $sum: {
                   $cond: [
                     { $eq: ["$status", RIDE_STATUS.COMPLETED] },
-                    { $ifNull: ["$driverEarnings", 0] },
+                    { $ifNull: ["$ownerSettlement.ownerShare", 0] },
                     0,
                   ],
                 },
@@ -6434,6 +6597,9 @@ export const getOwnerFleetDashboard = async (req, res) => {
         todayOwnerEarnings: todayMetrics.ownerEarnings,
         onlineTrips: rideMetrics.onlineTrips,
         cashTrips: rideMetrics.cashTrips,
+        cashDueFromDrivers: Math.round(
+          drivers.reduce((sum, driver) => sum + Math.max(Number(driver.owner_cash_due || 0), 0), 0) * 100,
+        ) / 100,
       },
       busOverview,
       transportBreakdown,
@@ -6464,6 +6630,179 @@ export const getOwnerFleetDashboard = async (req, res) => {
       recentBusBookings,
       recentRides,
     },
+  });
+};
+
+const OWNER_EARNING_PERIODS = new Set(["today", "week", "month", "all"]);
+
+const getOwnerPeriodStart = (period) => {
+  if (period === "all") return null;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (period === "week") start.setDate(start.getDate() - 6);
+  if (period === "month") start.setDate(start.getDate() - 29);
+  return start;
+};
+
+export const getOwnerFleetEarnings = async (req, res) => {
+  const owner = await resolveAuthenticatedOwner(req);
+  if (!owner?._id) {
+    throw new ApiError(403, "Earnings are only available for owner accounts");
+  }
+
+  const period = OWNER_EARNING_PERIODS.has(String(req.query?.period)) ? String(req.query.period) : "today";
+  const since = getOwnerPeriodStart(period);
+  const settledFilter = since ? { walletSettledAt: { $gte: since } } : { walletSettledAt: { $ne: null } };
+  const walletFilter = since ? { createdAt: { $gte: since } } : {};
+
+  const [ownerDoc, drivers, rideRows, busRows, walletRows] = await Promise.all([
+    Owner.findById(owner._id).select("earning_settings wallet").lean(),
+    Driver.find({ owner_id: owner._id, deletedAt: null })
+      .select("name phone salary owner_cash_due")
+      .sort({ name: 1 })
+      .lean(),
+    Ride.aggregate([
+      { $match: { "ownerSettlement.ownerId": owner._id, ...settledFilter } },
+      {
+        $group: {
+          _id: "$driverId",
+          rides: { $sum: 1 },
+          cashRides: { $sum: { $cond: [{ $eq: ["$ownerSettlement.paymentMethod", "cash"] }, 1, 0] } },
+          grossFare: { $sum: { $ifNull: ["$fare", 0] } },
+          commission: { $sum: { $ifNull: ["$commissionAmount", 0] } },
+          netEarning: { $sum: { $ifNull: ["$ownerSettlement.netEarning", 0] } },
+          ownerShare: { $sum: { $ifNull: ["$ownerSettlement.ownerShare", 0] } },
+          driverShare: { $sum: { $ifNull: ["$ownerSettlement.driverShare", 0] } },
+          cashCollectedByDriver: { $sum: { $ifNull: ["$ownerSettlement.cashDueFromDriver", 0] } },
+        },
+      },
+    ]),
+    OwnerWalletTransaction.aggregate([
+      { $match: { ownerId: owner._id, category: "bus_ticket", ...walletFilter } },
+      { $group: { _id: null, tickets: { $sum: 1 }, amount: { $sum: "$amount" } } },
+    ]),
+    OwnerWalletTransaction.aggregate([
+      { $match: { ownerId: owner._id, ...walletFilter } },
+      {
+        $group: {
+          _id: null,
+          moneyIn: { $sum: { $cond: [{ $eq: ["$kind", "credit"] }, "$amount", 0] } },
+          moneyOut: { $sum: { $cond: [{ $eq: ["$kind", "debit"] }, "$amount", 0] } },
+        },
+      },
+    ]),
+  ]);
+
+  const r2 = (value) => Math.round(Number(value || 0) * 100) / 100;
+  const byDriver = new Map(rideRows.map((row) => [String(row._id), row]));
+  const totals = rideRows.reduce(
+    (acc, row) => {
+      acc.rides += row.rides;
+      acc.cashRides += row.cashRides;
+      acc.grossFare += row.grossFare;
+      acc.commission += row.commission;
+      acc.netEarning += row.netEarning;
+      acc.ownerShare += row.ownerShare;
+      acc.driverShare += row.driverShare;
+      return acc;
+    },
+    { rides: 0, cashRides: 0, grossFare: 0, commission: 0, netEarning: 0, ownerShare: 0, driverShare: 0 },
+  );
+  const bus = busRows[0] || {};
+  const wallet = walletRows[0] || {};
+  const settings = ownerDoc?.earning_settings || {};
+  const model = settings.model === "split" ? "split" : "salary";
+
+  res.json({
+    success: true,
+    data: {
+      period,
+      since,
+      earningSettings: {
+        model,
+        ownerSharePercent: model === "salary" ? 100 : Number(settings.owner_share_percent ?? 100),
+      },
+      walletBalance: r2(ownerDoc?.wallet?.balance),
+      totals: {
+        rides: totals.rides,
+        cashRides: totals.cashRides,
+        onlineRides: totals.rides - totals.cashRides,
+        grossFare: r2(totals.grossFare),
+        adminCommission: r2(totals.commission),
+        netEarning: r2(totals.netEarning),
+        ownerShareFromRides: r2(totals.ownerShare),
+        driverShareFromRides: r2(totals.driverShare),
+        busTickets: Number(bus.tickets || 0),
+        ownerShareFromBus: r2(bus.amount),
+        ownerTotalEarning: r2(totals.ownerShare + Number(bus.amount || 0)),
+        walletMoneyIn: r2(wallet.moneyIn),
+        walletMoneyOut: r2(wallet.moneyOut),
+      },
+      cashDueTotal: r2(drivers.reduce((sum, d) => sum + Math.max(Number(d.owner_cash_due || 0), 0), 0)),
+      drivers: drivers.map((driver) => {
+        const row = byDriver.get(String(driver._id)) || {};
+        return {
+          id: String(driver._id),
+          name: driver.name || "Driver",
+          phone: driver.phone || "",
+          salary: r2(driver.salary),
+          rides: Number(row.rides || 0),
+          cashRides: Number(row.cashRides || 0),
+          grossFare: r2(row.grossFare),
+          netEarning: r2(row.netEarning),
+          ownerShare: r2(row.ownerShare),
+          driverShare: r2(row.driverShare),
+          cashDue: r2(Math.max(Number(driver.owner_cash_due || 0), 0)),
+        };
+      }),
+    },
+  });
+};
+
+export const markOwnerDriverCashReceived = async (req, res) => {
+  const owner = await resolveAuthenticatedOwner(req);
+  if (!owner?._id) {
+    throw new ApiError(403, "Only owners can settle driver cash");
+  }
+
+  const driverId = String(req.params?.driverId || "");
+  if (!mongoose.Types.ObjectId.isValid(driverId)) {
+    throw new ApiError(400, "Valid driver id is required");
+  }
+
+  const amount = Math.round(Number(req.body?.amount) * 100) / 100;
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new ApiError(400, "amount must be greater than zero");
+  }
+
+  // Atomic: only reduce the due if it still covers the amount (no double settle, never below zero).
+  const updated = await Driver.findOneAndUpdate(
+    { _id: driverId, owner_id: owner._id, owner_cash_due: { $gte: amount } },
+    { $inc: { owner_cash_due: -amount } },
+    { new: true },
+  )
+    .select("owner_cash_due name")
+    .lean();
+
+  if (!updated) {
+    const exists = await Driver.exists({ _id: driverId, owner_id: owner._id });
+    throw new ApiError(exists ? 400 : 404, exists ? "Amount is more than the cash this driver owes" : "Driver not found in your fleet");
+  }
+
+  const dueAfter = Math.round(Number(updated.owner_cash_due || 0) * 100) / 100;
+  const entry = await OwnerCashSettlement.create({
+    ownerId: owner._id,
+    driverId,
+    amount,
+    dueBefore: Math.round((dueAfter + amount) * 100) / 100,
+    dueAfter,
+    note: String(req.body?.note || "").trim().slice(0, 200),
+  });
+
+  res.status(201).json({
+    success: true,
+    data: { id: String(entry._id), driverId, amount, cashDue: dueAfter },
+    message: `Cash received from ${updated.name || "driver"}`,
   });
 };
 
@@ -6992,6 +7331,12 @@ export const cancelOwnerBusBookingSeats = async (req, res) => {
   booking.payment.status = refundPayload
     ? (remainingActiveSeatCount <= 0 ? "refunded" : "partially_refunded")
     : (remainingActiveSeatCount <= 0 ? "cancelled" : booking.payment.status || "paid");
+  // Track money returned to the passenger, same as the user-side cancellation (owner and franchise payouts use it).
+  if (refundPayload) {
+    booking.financialSnapshot = booking.financialSnapshot || {};
+    booking.financialSnapshot.refundedAmount =
+      Math.round((Number(booking.financialSnapshot.refundedAmount || 0) + Number(cancellationQuote.refundAmount || 0)) * 100) / 100;
+  }
   if (!booking.notes?.includes(ownerNote)) {
     booking.notes = [booking.notes, ownerNote].filter(Boolean).join(" | ");
   }

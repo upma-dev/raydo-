@@ -31,6 +31,18 @@ function resolveWallet(entityType, entityId) {
     }
 }
 
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+/** Thrown when a posting with the same dedupeKey already exists: the money was already moved once. */
+export class DuplicateTransactionError extends Error {
+    constructor(dedupeKey) {
+        super(`Transaction already recorded (${dedupeKey})`);
+        this.name = 'DuplicateTransactionError';
+        this.code = 'DUPLICATE_TRANSACTION';
+        this.dedupeKey = dedupeKey;
+    }
+}
+
 /** Fixed ObjectId for admin entity used in Transaction documents (singleton) */
 const ADMIN_ENTITY_OID = new mongoose.Types.ObjectId('000000000000000000000001');
 
@@ -76,15 +88,35 @@ export async function getBalance(entityType, entityId) {
  * @returns {Object} { transaction, wallet }
  */
 export async function recordTransaction(payload) {
+    // Two postings to the same wallet at the same moment conflict inside MongoDB (WriteConflict, labelled
+    // TransientTransactionError). The database's own advice is "retry": without it one of the two payouts is simply lost.
+    const MAX_ATTEMPTS = 8;
+    for (let attempt = 1; ; attempt += 1) {
+        try {
+            return await recordTransactionOnce(payload);
+        } catch (err) {
+            const transient = err?.code === 112
+                || err?.hasErrorLabel?.('TransientTransactionError')
+                || err?.errorLabelSet?.has?.('TransientTransactionError');
+            if (!transient || attempt >= MAX_ATTEMPTS) throw err;
+            await new Promise((resolve) => setTimeout(resolve, 10 * attempt + Math.random() * 30));
+        }
+    }
+}
+
+async function recordTransactionOnce(payload) {
     const {
-        entityType, entityId, type, amount,
+        entityType, entityId, type,
         description = '', category = 'other',
         orderId = null, paymentId = null,
         metadata = undefined, module = 'food',
-        allowNegative = false   // reversals must always succeed, even if the wallet was already paid out
+        allowNegative = false,  // reversals must always succeed, even if the wallet was already paid out
+        dedupeKey = null        // same key twice = second call throws DuplicateTransactionError and moves nothing
     } = payload;
 
     if (!['credit', 'debit'].includes(type)) throw new Error('type must be credit or debit');
+    // Money is always whole paise: this stops float drift (0.1 + 0.2) from building up in wallets
+    const amount = round2(payload.amount);
     if (!Number.isFinite(amount) || amount <= 0) throw new Error('amount must be positive');
 
     const { Model, filter } = resolveWallet(entityType, entityId);
@@ -141,15 +173,21 @@ export async function recordTransaction(payload) {
             description,
             category,
             module,
-            metadata
+            metadata,
+            ...(dedupeKey ? { dedupeKey: String(dedupeKey) } : {})
         };
 
         let txn = null;
-        if (useTransaction && session) {
-            const [createdTxn] = await Transaction.create([txnPayload], createSessionOption);
-            txn = createdTxn;
-        } else {
-            txn = await Transaction.create(txnPayload);
+        try {
+            if (useTransaction && session) {
+                const [createdTxn] = await Transaction.create([txnPayload], createSessionOption);
+                txn = createdTxn;
+            } else {
+                txn = await Transaction.create(txnPayload);
+            }
+        } catch (createErr) {
+            if (dedupeKey && createErr?.code === 11000) throw new DuplicateTransactionError(dedupeKey);
+            throw createErr;
         }
 
         // 4. Change the balance ATOMICALLY with $inc (never read-modify-write: two credits at the same moment
@@ -170,7 +208,13 @@ export async function recordTransaction(payload) {
             }
             throw new Error(`Insufficient balance for debit of ${amount}`);
         }
-        const newBalance = Number(updatedWallet.balance) || 0;
+        const newBalance = round2(updatedWallet.balance);
+        // The ledger row was written before the atomic $inc, so its balanceAfter came from a possibly stale read.
+        // Now that the real post-update balance is known, store that one.
+        if (txn?._id && txn.balanceAfter !== newBalance) {
+            await Transaction.updateOne({ _id: txn._id }, { $set: { balanceAfter: newBalance } }, sessionOption);
+            txn.balanceAfter = newBalance;
+        }
 
         if (useTransaction && session) {
             await session.commitTransaction();
@@ -186,7 +230,8 @@ export async function recordTransaction(payload) {
         if (useTransaction && session) {
             try { await session.abortTransaction(); } catch (e) {}
         }
-        logger.error(`recordTransaction failed: ${err.message}`);
+        const expected = err instanceof DuplicateTransactionError || err?.code === 112;
+        if (!expected) logger.error(`recordTransaction failed: ${err.message}`);
         throw err;
     } finally {
         if (useTransaction && session) {

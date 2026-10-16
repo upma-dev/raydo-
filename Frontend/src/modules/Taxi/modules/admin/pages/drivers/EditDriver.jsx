@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTaxiTransportTypes } from '../../../../shared/hooks/useTaxiTransportTypes';
+import { transportChoicesForVehicle, vehicleCanDo, coerceTransport } from '../../../../shared/utils/vehicleServices';
 import { getUnifiedAdminToken } from '../../services/adminSession';
 import api from '../../../../shared/api/axiosInstance';
 
@@ -72,6 +73,28 @@ const normalizeServiceCategories = (value, fallback = 'taxi') => {
   return serviceCategoryOptions.some((option) => option.value === fallbackValue) ? [fallbackValue] : ['taxi'];
 };
 
+// One field decides what the driver works in: Transport Type (Taxi / Outstation / Delivery / Pooling / All).
+// Saved drivers from before only had a list of services (or an old value like bike / auto / car): turn that into one choice.
+const resolveTransportType = (driver = {}, onboardingVehicle = {}, options = []) => {
+  const raw = String(
+    driver.transport_type || driver.register_for || driver.registerFor || onboardingVehicle.registerFor || '',
+  ).trim().toLowerCase();
+  const names = options.map((item) => String(item.name || '').trim().toLowerCase());
+  const services = normalizeServiceCategories(
+    driver.service_categories || driver.serviceCategories || driver.onboarding?.serviceCategories || onboardingVehicle.serviceCategories,
+    '',
+  );
+  const hasSavedServices = Boolean(
+    driver.service_categories?.length || driver.serviceCategories?.length || onboardingVehicle.serviceCategories?.length,
+  );
+
+  if (raw === 'both' || raw === 'all') return 'all';
+  if (hasSavedServices && services.length > 1) return 'all'; // keeps every service the driver already had
+  if (names.includes(raw)) return raw;
+  if (hasSavedServices && services.length === 1) return services[0];
+  return 'taxi';
+};
+
 const getVehicleTypeId = (item = {}) => String(item?._id || item?.id || '');
 const getVehicleTypeLabel = (item = {}) => item?.vehicle_type || item?.name || item?.type || 'Vehicle';
 
@@ -100,7 +123,6 @@ const EditDriver = () => {
     password: '',
     confirmPassword: '',
     transportType: 'taxi',
-    serviceCategories: ['taxi'],
     vehicleType: '',
     vehicleMake: '',
     vehicleModel: '',
@@ -197,14 +219,7 @@ const EditDriver = () => {
             email: d.email || d.user_id?.email || onboardingPersonal.email || '',
             password: '',
             confirmPassword: '',
-            transportType: d.transport_type || d.register_for || d.registerFor || onboardingVehicle.registerFor || 'taxi',
-            serviceCategories: normalizeServiceCategories(
-              d.service_categories ||
-              d.serviceCategories ||
-              d.onboarding?.serviceCategories ||
-              onboardingVehicle.serviceCategories,
-              d.transport_type || d.register_for || d.registerFor || onboardingVehicle.registerFor || 'taxi',
-            ),
+            transportType: resolveTransportType(d, onboardingVehicle, transportTypes),
             vehicleType: savedVehicleTypeId || savedVehicleTypeLabel || '',
             vehicleMake: d.car_make || d.vehicle_make || d.vehicleMake || onboardingVehicle.make || '',
             vehicleModel: d.car_model || d.vehicle_model || d.vehicleModel || onboardingVehicle.model || '',
@@ -240,12 +255,18 @@ const EditDriver = () => {
     const fetchVehiclesForArea = async () => {
       if (!formData.area || !formData.transportType) return;
       try {
-        const typeFilter = formData.transportType.toLowerCase() === 'delivery' ? 'delivery' : 'taxi';
-        const res = await api.get(`/admin/types/vehicle-types/list`, { params: { transport_type: typeFilter } });
-        const data = res.data || res;
-        if (data.success || Array.isArray(data.data) || Array.isArray(data.results)) {
-          setVehicleTypes(Array.isArray(data.data) ? data.data : (data.results || data.data?.results || []));
-        }
+        const chosen = formData.transportType.toLowerCase();
+        const typeFilters = chosen === 'all' || chosen === 'both' ? ['taxi', 'delivery'] : [chosen === 'delivery' ? 'delivery' : 'taxi'];
+        const responses = await Promise.all(
+          typeFilters.map((typeFilter) => api.get(`/admin/types/vehicle-types/list`, { params: { transport_type: typeFilter } })),
+        );
+        const merged = new Map();
+        responses.forEach((res) => {
+          const data = res.data || res;
+          const list = Array.isArray(data.data) ? data.data : (data.results || data.data?.results || []);
+          list.forEach((item) => merged.set(String(getVehicleTypeId(item)), item));
+        });
+        setVehicleTypes([...merged.values()]);
       } catch (e) {
         console.error("Vehicle types error:", e);
       }
@@ -300,19 +321,23 @@ const EditDriver = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const toggleServiceCategory = (value) => {
-    setFormData((prev) => {
-      const exists = prev.serviceCategories.includes(value);
-      const nextServiceCategories = exists
-        ? prev.serviceCategories.filter((item) => item !== value)
-        : [...prev.serviceCategories, value];
+  // The vehicle decides what the driver may do: a bike never gets Outstation / Pooling (those are for 4-wheelers).
+  const selectedVehicleRecord = vehicleTypes.find((item) => String(getVehicleTypeId(item)) === String(formData.vehicleType)) || null;
+  const allowedTransportIds = selectedVehicleRecord ? transportChoicesForVehicle(selectedVehicleRecord).map((item) => item.id) : null;
+  const visibleTransportTypes = allowedTransportIds
+    ? transportTypes.filter((item) => allowedTransportIds.includes(String(item.name || '').toLowerCase()))
+    : transportTypes;
+  const visibleVehicleTypes = vehicleTypes.filter(
+    (item) => vehicleCanDo(item, formData.transportType) || String(getVehicleTypeId(item)) === String(formData.vehicleType),
+  );
 
-      return {
-        ...prev,
-        serviceCategories: nextServiceCategories,
-      };
-    });
-  };
+  useEffect(() => {
+    if (!selectedVehicleRecord) return;
+    const fixed = coerceTransport(selectedVehicleRecord, formData.transportType);
+    const current = String(formData.transportType || '').toLowerCase() === 'both' ? 'all' : String(formData.transportType || '').toLowerCase();
+    if (fixed !== current) setFormData((prev) => ({ ...prev, transportType: fixed }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVehicleRecord, formData.transportType]);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -343,8 +368,6 @@ const EditDriver = () => {
         transport_type: formData.transportType.toLowerCase(),
         register_for: formData.transportType.toLowerCase(),
         registerFor: formData.transportType.toLowerCase(),
-        service_categories: formData.serviceCategories,
-        serviceCategories: formData.serviceCategories,
         car_make: formData.vehicleMake,
         car_model: formData.vehicleModel,
         car_year: formData.vehicleYear,
@@ -358,7 +381,6 @@ const EditDriver = () => {
         onboarding: {
           vehicle: {
             registerFor: formData.transportType.toLowerCase(),
-            serviceCategories: formData.serviceCategories,
             locationId: formData.area,
             vehicleTypeId: formData.vehicleType,
             vehicleType: selectedVehicleTypeLabel,
@@ -572,42 +594,17 @@ const EditDriver = () => {
                 <label className={labelClass}>Transport Type *</label>
                 <select 
                   name="transportType"
-                  required
                   value={formData.transportType}
                   onChange={handleChange}
+                  required
                   className={inputClass}
                 >
                   <option value="">Select Transport Type</option>
-                  {transportTypes.map(t => (
+                  {visibleTransportTypes.map(t => (
                     <option key={t.id || t._id} value={t.name}>{t.display_name}</option>
                   ))}
                 </select>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className={labelClass}>Service Categories</label>
-                <div className="flex flex-wrap gap-2.5 rounded-2xl border border-gray-100 bg-gray-50/60 p-3.5">
-                  {serviceCategoryOptions.map((option) => {
-                    const selected = formData.serviceCategories.includes(option.value);
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => toggleServiceCategory(option.value)}
-                        className={`rounded-full px-5 py-2 text-xs font-semibold transition-all ${
-                          selected
-                            ? 'bg-[#4F46E5] text-white shadow-sm'
-                            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="mt-2 text-xs text-gray-400">
-                  Matches the service selection used during driver onboarding.
-                </p>
+                <p className="mt-2 text-xs text-gray-400">What the driver works in. Choose "All" for every service the vehicle is allowed to do (a bike: Taxi and Delivery only).</p>
               </div>
 
               <div>
@@ -624,7 +621,7 @@ const EditDriver = () => {
                   !vehicleTypes.some((vt) => String(getVehicleTypeId(vt)) === String(vehicleTypeFallbackOption.value)) ? (
                     <option value={vehicleTypeFallbackOption.value}>{vehicleTypeFallbackOption.label}</option>
                   ) : null}
-                  {vehicleTypes.map(vt => (
+                  {visibleVehicleTypes.map(vt => (
                     <option key={getVehicleTypeId(vt)} value={getVehicleTypeId(vt)}>{getVehicleTypeLabel(vt)}</option>
                   ))}
                 </select>

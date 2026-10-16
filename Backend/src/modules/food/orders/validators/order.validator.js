@@ -60,7 +60,8 @@ const pricingSchema = z.object({
     platformFee: z.number().min(0).optional(),
     surgeAmount: z.number().min(0).optional(),
     discount: z.number().min(0).optional(),
-    deliveryPartnerTip: z.number().min(0).optional(),
+    deliveryPartnerTip: z.number().min(0).max(5000).optional(),
+    couponCode: z.string().trim().optional().nullable(),
     total: z.number().min(0),
     currency: z.string().optional()
 });
@@ -114,6 +115,9 @@ export function validateCreateOrderDto(body) {
         customerName: z.string().optional(),
         customerPhone: z.string().optional(),
         pricing: pricingSchema,
+        // The coupon the customer applied in the cart. It used to be missing here, so zod dropped it and the order was
+        // charged without the discount shown in the cart.
+        couponCode: z.string().trim().optional().nullable(),
         deliveryFleet: z.string().optional(),
         note: z.string().optional(),
         sendCutlery: z.boolean().optional(),

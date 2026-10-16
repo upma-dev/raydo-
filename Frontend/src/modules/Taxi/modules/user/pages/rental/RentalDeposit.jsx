@@ -166,7 +166,7 @@ const RentalDeposit = () => {
   }, []);
 
   if (!vehicleSnapshot) {
-    navigate('/rental');
+    navigate('/taxi/user/rental');
     return null;
   }
 
@@ -214,7 +214,7 @@ const RentalDeposit = () => {
           bookingReference,
         });
 
-        navigate('/rental/confirmed', {
+        navigate('/taxi/user/rental/confirmed', {
           state: {
             ...state,
             vehicle,
@@ -254,7 +254,7 @@ const RentalDeposit = () => {
           bookingReference,
         });
         setWalletBalance(Number(payment.balance || 0));
-        navigate('/rental/confirmed', {
+        navigate('/taxi/user/rental/confirmed', {
           replace: true,
           state: {
             ...state,
@@ -328,7 +328,7 @@ const RentalDeposit = () => {
               payment,
               bookingReference: order.bookingReference || '',
             });
-            navigate('/rental/confirmed', {
+            navigate('/taxi/user/rental/confirmed', {
               replace: true,
               state: {
                 ...state,

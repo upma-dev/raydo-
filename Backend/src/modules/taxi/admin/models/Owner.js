@@ -153,6 +153,26 @@ const ownerSchema = new mongoose.Schema(
         default: 0,
       }
     },
+    // How fleet ride earnings are shared between the owner and the fleet driver (set by admin).
+    //  salary: owner keeps 100% of the net ride earning and pays the driver a salary outside the app
+    //  split:  owner keeps owner_share_percent of the net earning, the driver wallet gets the rest
+    earning_settings: {
+      model: {
+        type: String,
+        enum: ['salary', 'split'],
+        default: 'salary',
+      },
+      owner_share_percent: {
+        type: Number,
+        default: 100,
+        min: 0,
+        max: 100,
+      },
+      updated_at: {
+        type: Date,
+        default: null,
+      },
+    },
     area_snapshot: {
       type: mongoose.Schema.Types.Mixed,
       default: null,

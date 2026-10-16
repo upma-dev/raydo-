@@ -3,6 +3,7 @@ import { Ride } from '../user/models/Ride.js';
 import { User } from '../user/models/User.js';
 import { Driver } from '../driver/models/Driver.js';
 import { matchDrivers } from './matchingService.js';
+import { isHeavyParcel } from './vehicleClass.js';
 import {
   RIDE_LIVE_STATUS,
   RIDE_STATUS,
@@ -700,6 +701,8 @@ const dispatchAttempt = async (rideId, attemptIndex = 0) => {
       vehicleTypeId: ride.vehicleTypeId,
       vehicleTypeIds: dispatchVehicleTypeIds,
       serviceType: ride.serviceType || 'ride',
+      tripDistanceMeters: ride.estimatedDistanceMeters || 0,
+      heavyParcel: isHeavyParcel(ride),
     });
     const effectiveRadius = Number.isFinite(searchRadiusMeters) && searchRadiusMeters > 0
       ? searchRadiusMeters
@@ -970,6 +973,8 @@ export const notifyLateAvailableDriver = async (driverId) => {
       vehicleTypeId: ride.vehicleTypeId,
       vehicleTypeIds: dispatchVehicleTypeIds,
       serviceType: ride.serviceType || 'ride',
+      tripDistanceMeters: ride.estimatedDistanceMeters || 0,
+      heavyParcel: isHeavyParcel(ride),
     });
 
     const matchedDriver = drivers.find((item) => String(item._id) === driverKey);
@@ -1239,6 +1244,9 @@ export const getActivePendingDispatchForDriver = async (driverId, requestedRideI
           maxDistance: radius,
           vehicleTypeId: ride.vehicleTypeId,
           vehicleTypeIds: dispatchVehicleTypeIds,
+          serviceType: ride.serviceType || 'ride',
+          tripDistanceMeters: ride.estimatedDistanceMeters || 0,
+          heavyParcel: isHeavyParcel(ride),
         });
 
         if (drivers.some((d) => String(d._id) === driverKey)) {

@@ -4,6 +4,7 @@ import { authenticateOrResolveUser, authenticateOptional } from '../../middlewar
 import { authRateLimiter } from '../../../../middleware/rateLimit.js';
 import {
   cancelMyBusBooking,
+  releaseMyBusBookingHold,
   createBusBookingOrder,
   createRentalAdvancePaymentOrder,
   payRentalAdvanceWithWallet,
@@ -111,6 +112,7 @@ userRouter.get('/bus-bookings/:id', authenticateOrResolveUser(['user']), asyncHa
 userRouter.post('/bus-bookings/:id/review', authenticateOrResolveUser(['user']), asyncHandler(submitMyBusBookingReview));
 userRouter.post('/bus-bookings/order', authenticateOrResolveUser(['user']), asyncHandler(createBusBookingOrder));
 userRouter.post('/bus-bookings/verify', authenticateOrResolveUser(['user']), asyncHandler(verifyBusBookingPayment));
+userRouter.post('/bus-bookings/:id/release', authenticateOrResolveUser(['user']), asyncHandler(releaseMyBusBookingHold));
 userRouter.post('/bus-bookings/:id/cancel', authenticateOrResolveUser(['user']), asyncHandler(cancelMyBusBooking));
 
 userRouter.get('/pooling/search', authenticateOptional(['user']), asyncHandler(searchPoolingRoutes));

@@ -437,6 +437,9 @@ const RideTracking = () => {
   const freeWaitingRemainingSeconds = Math.max(0, freeWaitingBeforeMinutes * 60 - waitingElapsedSeconds);
   const waitingChargeableMinutes = Math.max(0, Math.ceil(waitingElapsedSeconds / 60) - freeWaitingBeforeMinutes);
   const isWaitingForOtp = Boolean(waitingStartedAt) && !['started', 'ongoing', 'arrived', 'completed', 'cancelled', 'delivered'].includes(tripStatus);
+  const liveWaitingChargeTotal = Math.round(waitingChargeableMinutes * waitingChargePerMinute * 100) / 100;
+  // Waiting is billed by the server at completion; until the trip starts show it live so the rider sees the real payable
+  const payableFare = Math.round(displayFare + (isWaitingForOtp ? liveWaitingChargeTotal : 0));
   const vehicleIcon = getTrackingVehicleIcon(trackingSnapshot, driver);
   const displayDriverHeading = useMemo(() => {
     if (Number.isFinite(Number(rideRealtime?.driverLocation?.heading))) {
@@ -1448,7 +1451,7 @@ const RideTracking = () => {
                   <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Waiting Charge</p>
                   <p className="mt-1 text-[13px] font-black text-slate-900">
                     Rs {waitingChargePerMinute}/min
-                    {waitingChargeableMinutes > 0 ? ` • ${waitingChargeableMinutes} billable` : ''}
+                    {waitingChargeableMinutes > 0 ? ` • ${waitingChargeableMinutes} billable • Rs ${liveWaitingChargeTotal}` : ''}
                   </p>
                 </div>
               </div>
@@ -1521,7 +1524,7 @@ const RideTracking = () => {
               <div className="space-y-0.5">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.18em] leading-none mb-1">Total Payable</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-[19px] font-black text-slate-950 tracking-tight leading-none">Rs {displayFare}.00</span>
+                  <span className="text-[19px] font-black text-slate-950 tracking-tight leading-none">Rs {payableFare}.00</span>
                   <span className="text-[9px] font-black bg-slate-100 text-slate-600 px-2 py-1 rounded-lg uppercase tracking-wider border border-slate-200/50 shadow-sm">{paymentMethod}</span>
                 </div>
               </div>

@@ -1214,7 +1214,7 @@ const AdminLayout = () => {
   const fetchPendingRegistrationsAndRefunds = useCallback(async () => {
     try {
       const [pendingDriversRes, withdrawalsRes, busesRes] = await Promise.allSettled([
-        adminService.getDrivers({ tab: 'pending', limit: 20 }),
+        adminService.getDrivers(1, 20, { approve: false }), // only the drivers waiting for approval
         adminService.getDriverWithdrawalSummaries({ status: 'pending', limit: 20 }),
         adminService.listBusServices(),
       ]);

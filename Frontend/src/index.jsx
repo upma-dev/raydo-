@@ -1,3 +1,4 @@
+import './shared/utils/consoleRedact.js' // first import: keeps personal data / OTPs / tokens out of the console
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Toaster } from 'sonner'

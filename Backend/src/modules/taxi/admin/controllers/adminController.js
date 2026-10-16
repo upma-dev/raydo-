@@ -452,6 +452,14 @@ export const adjustOwnerWallet = asyncHandler(async (req, res) =>
   ok(res, await adminService.adjustOwnerWallet(req.params.id, req.body)),
 );
 
+export const getOwnerEarningSettings = asyncHandler(async (req, res) =>
+  ok(res, await adminService.getOwnerEarningSettings(req.params.id)),
+);
+
+export const updateOwnerEarningSettings = asyncHandler(async (req, res) =>
+  ok(res, await adminService.updateOwnerEarningSettings(req.params.id, req.body)),
+);
+
 export const listOwnerWalletHistory = asyncHandler(async (req, res) =>
   ok(res, await adminService.listOwnerWalletHistory(req.params.id)),
 );
@@ -854,9 +862,8 @@ export const getAdminBusBookings = asyncHandler(async (req, res) => {
   if (scheduleId) {
     query.scheduleId = scheduleId;
   }
-  if (status && status !== 'all') {
-    query.status = status;
-  }
+  // Unpaid attempts (payment popup closed / hold expired) are not bookings: only show them when filtered for explicitly
+  query.status = status && status !== 'all' ? status : { $nin: ['pending', 'expired', 'failed'] };
 
   const [buses, rawBookings] = await Promise.all([
     BusService.find()
@@ -1010,6 +1017,7 @@ export const getAdminBusBookingCalendar = asyncHandler(async (req, res) => {
       $gte: monthWindow.startDate,
       $lt: monthWindow.endDateExclusive,
     },
+    status: { $nin: ['pending', 'expired', 'failed'] },
   };
 
   if (busServiceId) {

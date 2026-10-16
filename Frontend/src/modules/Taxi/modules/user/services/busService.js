@@ -64,6 +64,8 @@ export const userBusService = {
       travelDate: normalizeTravelDate(payload?.travelDate),
     }),
 
+  releaseBookingHold: (bookingId) => api.post(`/users/bus-bookings/${bookingId}/release`),
+
   verifyBookingPayment: (payload) => api.post('/users/bus-bookings/verify', payload),
 };
 

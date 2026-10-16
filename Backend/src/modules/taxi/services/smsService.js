@@ -205,6 +205,14 @@ export const sendOtpSms = async ({ phone, otp, purpose = 'otp' }) => {
 
   console.log(`[SMS] Dispatching OTP to ${msisdn.slice(0, 4)}******${msisdn.slice(-2)} via SMS India Hub...`);   // the OTP itself is never logged
 
+  // USE_DEFAULT_OTP=true: the test OTP (core/otp/masterOtp.js) is in use, so no real SMS is sent. Like the master OTP itself,
+  // this never applies in production (unless ALLOW_MASTER_OTP=true is set on purpose), so real users always get a real SMS there.
+  const defaultOtpMode = isTruthy(process.env.USE_DEFAULT_OTP);
+  const masterOtpAllowed = String(process.env.NODE_ENV || 'development').toLowerCase() !== 'production' || isTruthy(process.env.ALLOW_MASTER_OTP);
+  if (defaultOtpMode && masterOtpAllowed) {
+    return { mode: 'skipped', message: 'Default OTP mode: SMS not sent', providerResponse: '', jobId: null };
+  }
+
   // No SMS key and not production (a developer machine / tests): do not call the provider with an empty key.
   // The test OTP (see core/otp/masterOtp.js) lets the developer sign in.
   if (!apiKey && String(process.env.NODE_ENV || 'development').toLowerCase() !== 'production') {

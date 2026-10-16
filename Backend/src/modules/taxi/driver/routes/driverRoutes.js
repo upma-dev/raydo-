@@ -51,6 +51,8 @@ import {
   listOwnerBusServices,
   getOwnerFleetDrivers,
   getOwnerFleetDashboard,
+  getOwnerFleetEarnings,
+  markOwnerDriverCashReceived,
   getOwnerBusBookingCalendar,
   getOwnerBusBookings,
   getMyWallet,
@@ -171,7 +173,7 @@ driverRouter.patch(
 );
 driverRouter.get(
   "/notifications",
-  authenticate(["driver"]),
+  authenticate(["driver", "owner"]),
   asyncHandler(getDriverNotifications),
 );
 driverRouter.get(
@@ -226,7 +228,7 @@ driverRouter.post(
   );
 driverRouter.post(
   "/wallet/withdrawals",
-  authenticate(["driver"]),
+  authenticate(["driver", "owner"]),
   asyncHandler(createDriverWithdrawalRequest),
 );
 
@@ -250,6 +252,16 @@ driverRouter.get(
   "/fleet/dashboard",
   authenticate(["owner"]),
   asyncHandler(getOwnerFleetDashboard),
+);
+driverRouter.get(
+  "/fleet/earnings",
+  authenticate(["owner"]),
+  asyncHandler(getOwnerFleetEarnings),
+);
+driverRouter.post(
+  "/fleet/drivers/:driverId/cash-received",
+  authenticate(["owner"]),
+  asyncHandler(markOwnerDriverCashReceived),
 );
 driverRouter.get(
   "/fleet/bus-services",

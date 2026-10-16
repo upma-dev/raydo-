@@ -207,6 +207,8 @@ export async function refundOrderPayment(orderId, { amount = null, retry = false
       'payment.refund.processedAt': new Date(),
       'payment.refund.deductFromRestaurant': Boolean(deductFromRestaurant),
     },
+    // every Razorpay refund id of this order, so a late/duplicate webhook for ANY earlier refund is recognised
+    ...(refundId ? { $addToSet: { 'payment.refund.refundIds': refundId } } : {}),
   });
   try {
     if (viaGateway) {
@@ -258,7 +260,8 @@ export async function applyRefundBooks(orderId, { refundAmount, refundedTotal, d
       { $set: { payoutReversed: true }, $push: { history: { kind: 'restaurant_payout_reversed', amount: total, at: new Date(), note: 'Restaurant share taken back after a refund of a delivered order', recordedBy: { role: 'ADMIN' } } } },
     );
     await foodTransactionService.reverseWalletsForOrder(order._id, { onlyRestaurant: true }).catch(() => null);
-    return;
+    // No return here: the customer got everything back, so the platform earned nothing on this order and the franchise
+    // must lose its share of that earning too (below). The rider keeps their payout.
   }
 
   if (order.franchiseId) {
@@ -322,6 +325,7 @@ export async function markRefundDoneManually(orderId, { referenceId = '', note =
       'payment.refund.paidBy': paidBy,
       ...(franchiseId ? { 'payment.refund.franchiseId': franchiseId } : {}),
     },
+    $addToSet: { 'payment.refund.refundIds': ref },
   });
   if (!done.modifiedCount) throw new ValidationError('This refund was just recorded by someone else.');
   await FoodOrder.updateOne({ _id: order._id }, {
@@ -414,12 +418,14 @@ async function restoreStock(order) {
   for (const line of order.items || []) {
     try {
       const qty = Math.max(1, Number(line.quantity) || 1);
-      const food = await FoodItem.findById(line.itemId);
-      if (food && typeof food.stockQuantity === 'number') {
-        const before = food.stockQuantity;
-        food.stockQuantity = before + qty;
-        if (before <= 0) food.isAvailable = true;   // it was switched off automatically when stock hit 0
-        await food.save();
+      // Atomic: the old read-then-save lost other orders' stock changes happening at the same moment
+      const before = await FoodItem.findOneAndUpdate(
+        { _id: line.itemId, stockQuantity: { $type: 'number' } },
+        { $inc: { stockQuantity: qty } },
+        { new: false },
+      ).lean();
+      if (before && before.stockQuantity <= 0) {
+        await FoodItem.updateOne({ _id: line.itemId, stockQuantity: { $gt: 0 } }, { $set: { isAvailable: true } });   // it was switched off automatically when stock hit 0
       }
     } catch (err) {
       logger.warn(`[Cancel] Could not restore stock for item ${line?.itemId}: ${err?.message || err}`);

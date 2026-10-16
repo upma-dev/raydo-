@@ -91,10 +91,27 @@ export const uploadBufferToCloudinary = async ({
   }
   formData.append('signature', signature);
 
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${env.cloudinary.cloudName}/image/upload`, {
-    method: 'POST',
-    body: formData,
-  });
+  // A big photo on a slow / flaky link can drop the connection ("fetch failed"). Retry network errors a few times with a
+  // timeout, instead of failing the whole upload on the first hiccup. Real answers from Cloudinary (4xx etc.) are not retried.
+  const MAX_ATTEMPTS = 3;
+  let response;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      response = await fetch(`https://api.cloudinary.com/v1_1/${env.cloudinary.cloudName}/image/upload`, {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(60000),
+      });
+      break;
+    } catch (networkError) {
+      const reason = networkError?.cause?.code || networkError?.cause?.message || networkError?.message;
+      console.warn(`[cloudinary] upload attempt ${attempt}/${MAX_ATTEMPTS} failed: ${reason}`);
+      if (attempt === MAX_ATTEMPTS) {
+        throw new ApiError(502, 'Image upload failed because of a network problem. Please check your internet and try again.');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 700 * attempt));
+    }
+  }
 
   const payload = await response.json().catch(() => null);
 

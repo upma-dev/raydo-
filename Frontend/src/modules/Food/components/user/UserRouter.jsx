@@ -144,7 +144,8 @@ export default function UserRouter() {
 
           {/* Cart - Now Public */}
           <Route path="cart" element={<Cart />} />
-          <Route path="cart/checkout" element={<Checkout />} />
+          {/* The old Checkout page used hard-coded numbers (8% tax, fixed delivery fee); the cart shows the server's price */}
+          <Route path="cart/checkout" element={<Navigate to="/user/cart" replace />} />
           <Route path="cart/select-address" element={<SelectAddress />} />
           <Route path="cart/address-selector" element={<AddressSelectorPage />} />
 

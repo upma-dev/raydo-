@@ -29,6 +29,7 @@ import { pushDriverLocationRealtime } from '../../../shared/services/rideRealtim
 import api from '../../../shared/api/axiosInstance';
 import { BACKEND_ORIGIN } from '../../../shared/api/runtimeConfig';
 import carIcon from '@/assets/hero_sedan.png';
+import bikeIcon from '@/assets/hero_bike.png';
 import { getLocalDriverToken } from '../services/registrationService';
 import CancellationReceiptModal from '../../shared/components/CancellationReceiptModal';
 import { showChatNotification } from '@/shared/utils/chatNotificationSound';
@@ -355,7 +356,18 @@ const getVehicleMarkerOffset = (width, height) => ({
     y: -(height / 2),
 });
 
-const RotatingVehicleMarker = ({ position, iconUrl = carIcon, heading = 0, title = 'Driver' }) => (
+// Bundled marker per vehicle kind, used when the admin-uploaded map icon URL is missing or fails to load
+const getFallbackVehicleIcon = (iconType = '') => {
+    const value = String(iconType || '').toLowerCase();
+    if (value.includes('bike')) return bikeIcon;
+    return carIcon;
+};
+
+const RotatingVehicleMarker = ({ position, iconUrl = carIcon, fallbackIconUrl = carIcon, heading = 0, title = 'Driver' }) => {
+    const [failedUrl, setFailedUrl] = React.useState('');
+    const src = iconUrl && iconUrl !== failedUrl ? iconUrl : fallbackIconUrl;
+
+    return (
     <OverlayViewF
         position={position}
         mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
@@ -367,15 +379,17 @@ const RotatingVehicleMarker = ({ position, iconUrl = carIcon, heading = 0, title
                 style={{ transform: `rotate(${normalizeHeading(heading)}deg)` }}
             >
                 <img
-                    src={iconUrl || carIcon}
+                    src={src}
                     alt={title}
+                    onError={() => setFailedUrl(iconUrl)}
                     className="h-12 w-12 object-contain drop-shadow-[0_8px_10px_rgba(15,23,42,0.35)]"
                     draggable={false}
                 />
             </div>
         </div>
     </OverlayViewF>
-);
+    );
+};
 
 const getCurrentCoords = () => new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -2440,6 +2454,7 @@ const ActiveTrip = () => {
                         <RotatingVehicleMarker
                             position={driverPosition}
                             iconUrl={vehicleIconUrl}
+                            fallbackIconUrl={getFallbackVehicleIcon(liveRaw.vehicleIconType || effectiveState.vehicleIconType)}
                             heading={displayDriverHeading}
                             title="Driver"
                         />

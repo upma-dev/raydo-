@@ -60,6 +60,9 @@ const resolveTaxiSocketIdentity = (socket) => {
   };
 };
 
+// How long a driver without a live socket stays "online" (covers page changes, app resume and network blips)
+const DRIVER_OFFLINE_GRACE_MS = 30 * 1000;
+
 const registerTaxiSocketConnectionHandlers = (io) => {
   io.on('connection', async (socket) => {
     const identity = resolveTaxiSocketIdentity(socket);
@@ -281,10 +284,30 @@ const registerTaxiSocketConnectionHandlers = (io) => {
     });
 
     socket.on('disconnect', async () => {
-      if (identity.role === 'driver') {
-        clearDriverRoute(identity.sub);
-        await Driver.findByIdAndUpdate(identity.sub, { socketId: null, isOnline: false });
+      if (identity.role !== 'driver') {
+        return;
       }
+
+      clearDriverRoute(identity.sub);
+
+      // Only release the driver if THIS socket is still his current one. A page change / app resume opens the new socket
+      // before the old one's disconnect arrives; that old disconnect must not take the driver offline.
+      const released = await Driver.findOneAndUpdate(
+        { _id: identity.sub, socketId: socket.id },
+        { socketId: null },
+      );
+      if (!released) {
+        return;
+      }
+
+      // A short network drop must not log the driver out of duty: go offline only if no new socket came back in time
+      const timer = setTimeout(() => {
+        Driver.updateOne(
+          { _id: identity.sub, socketId: null, isOnline: true, isOnRide: { $ne: true } },
+          { isOnline: false },
+        ).catch(() => {});
+      }, DRIVER_OFFLINE_GRACE_MS);
+      timer.unref?.();
     });
   });
 };

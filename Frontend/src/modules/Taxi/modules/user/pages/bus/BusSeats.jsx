@@ -10,8 +10,34 @@ const seatLegend = [
   { key: 'available', label: 'Available' },
   { key: 'selected', label: 'Selected' },
   { key: 'booked', label: 'Booked' },
-  { key: 'sleeper', label: 'Sleeper' },
 ];
+
+const getSeatTypeLabel = (seat) => {
+  const label = String(seat?.label || seat?.id || '').toUpperCase();
+  const variant = String(seat?.variant || 'seat').toLowerCase();
+  if (variant === 'sleeper') {
+    if (label.includes('UB')) return 'Upper Berth';
+    if (label.includes('LB')) return 'Lower Berth';
+    return 'Sleeper';
+  }
+  if (variant === 'window') return 'Window';
+  if (variant === 'aisle') return 'Aisle';
+  return 'Seat';
+};
+
+const collectSeatTypes = (layout, bus) => {
+  const seen = new Map();
+  ['lowerDeck', 'upperDeck'].forEach((deck) => {
+    (layout?.blueprint?.[deck] || []).flat().forEach((seat) => {
+      if (seat?.kind !== 'seat') return;
+      const type = getSeatTypeLabel(seat);
+      if (!seen.has(type)) {
+        seen.set(type, { type, price: resolveSeatPrice(bus, seat), sleeper: seat.variant === 'sleeper' });
+      }
+    });
+  });
+  return Array.from(seen.values());
+};
 
 const resolveSeatPrice = (bus, seat) => {
   const variantPricing = bus?.variantPricing || {};
@@ -72,8 +98,9 @@ const SeatDeck = ({ title, rows, selectedSeatIds, onToggle, bus }) => {
 
               const isBooked = seat.status === 'booked';
               const isSelected = selectedSeatIds.includes(seat.id);
-              const isSleeper = seat.variant === 'sleeper' || String(seat.id || '').includes('B');
+              const isSleeper = seat.variant === 'sleeper';
               const seatPrice = resolveSeatPrice(bus, seat);
+              const seatType = getSeatTypeLabel(seat);
 
               return (
                 <motion.button
@@ -96,7 +123,7 @@ const SeatDeck = ({ title, rows, selectedSeatIds, onToggle, bus }) => {
                     borderRadius: isSleeper ? '18px' : '12px',
                   }}
                   aria-label={isBooked ? `Seat ${seat.label || seat.id} sold out` : `Seat ${seat.label || seat.id}`}
-                  title={isBooked ? `Sold out: ${seat.label || seat.id}` : `Available: ${seat.label || seat.id} (₹${seatPrice})`}
+                  title={isBooked ? `Sold out: ${seat.label || seat.id}` : `${seatType} ${seat.label || seat.id} (₹${seatPrice})`}
                 >
                   {isSleeper ? (
                     <>
@@ -120,6 +147,13 @@ const SeatDeck = ({ title, rows, selectedSeatIds, onToggle, bus }) => {
                         >
                           ₹{seatPrice}
                         </span>
+                        <span
+                          className={`text-[7px] font-bold uppercase mt-1 leading-none ${
+                            isSelected ? 'text-slate-300' : 'text-blue-500'
+                          }`}
+                        >
+                          {seatType}
+                        </span>
                       </div>
                     </>
                   ) : (
@@ -130,6 +164,9 @@ const SeatDeck = ({ title, rows, selectedSeatIds, onToggle, bus }) => {
                       </span>
                       <span className={`text-[8px] font-bold mt-0.5 leading-none ${isSelected ? 'text-orange-300' : isBooked ? 'text-slate-400' : 'text-emerald-700'}`}>
                         ₹{seatPrice}
+                      </span>
+                      <span className={`text-[7px] font-bold uppercase mt-0.5 leading-none ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
+                        {seatType}
                       </span>
                     </>
                   )}
@@ -269,6 +306,18 @@ const BusSeats = () => {
                     }`}
                   />
                   <span className="text-[10px] font-bold uppercase text-slate-500">{item.label}</span>
+                </div>
+              ))}
+              {collectSeatTypes(seatLayout, seatLayout?.bus || bus).map((item) => (
+                <div key={item.type} className="flex items-center gap-2">
+                  <div
+                    className={`h-4 w-4 ${
+                      item.sleeper ? 'rounded-xl border border-blue-200 bg-blue-50' : 'rounded border-2 border-slate-300 bg-white'
+                    }`}
+                  />
+                  <span className="text-[10px] font-bold uppercase text-slate-500">
+                    {item.type} · ₹{item.price}
+                  </span>
                 </div>
               ))}
             </div>

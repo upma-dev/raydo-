@@ -331,15 +331,14 @@ const DriverDetails = () => {
         'Not set',
     },
     {
-      label: 'Service Categories',
-      value: formatServiceCategories(
-        onboardingVehicle.serviceCategories ||
-        profile?.service_categories ||
-        profile?.serviceCategories ||
-        profile?.registerFor ||
-        profile?.register_for ||
-        profile?.transport_type,
-      ),
+      label: 'Transport Type',
+      value: (() => {
+        const raw = String(profile?.transport_type || profile?.register_for || profile?.registerFor || onboardingVehicle.registerFor || '').trim().toLowerCase();
+        const cats = profile?.service_categories || profile?.serviceCategories || onboardingVehicle.serviceCategories || [];
+        if (raw === 'both' || raw === 'all' || (Array.isArray(cats) && cats.length > 1)) return 'All';
+        const one = raw || String(cats[0] || '');
+        return one ? one.charAt(0).toUpperCase() + one.slice(1) : 'Not set';
+      })(),
     },
     {
       label: 'Vehicle Type',

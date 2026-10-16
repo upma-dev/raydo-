@@ -1057,7 +1057,7 @@ const RentalVehicleDetail = () => {
       return;
     }
 
-    navigate('/rental/schedule', {
+    navigate('/taxi/user/rental/schedule', {
       state: {
         vehicle,
         duration,
@@ -1069,7 +1069,7 @@ const RentalVehicleDetail = () => {
   };
   // go back when the page was opened without its data (done in an effect, not while rendering)
   useEffect(() => {
-    if (!vehicle) navigate('/rental', { replace: true });
+    if (!vehicle) navigate('/taxi/user/rental', { replace: true });
   }, [vehicle, navigate]);
 
   // every hook has run above, so it is safe to stop here

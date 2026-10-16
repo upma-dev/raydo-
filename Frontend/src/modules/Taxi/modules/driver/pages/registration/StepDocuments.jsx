@@ -92,6 +92,27 @@ const fileToDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
+// Phone photos are 3-10 MB. Shrinking them first makes the upload fast and far less likely to fail on a slow network.
+const compressImageDataUrl = (dataUrl, maxSide = 1600, quality = 0.82) =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const smaller = canvas.toDataURL('image/jpeg', quality);
+        resolve(smaller.length < dataUrl.length ? smaller : dataUrl);
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+
 const normalizeSignupRole = (role) =>
   String(role || 'driver').toLowerCase() === 'owner' ? 'owner' : 'driver';
 
@@ -381,6 +402,7 @@ const StepDocuments = () => {
       if (!String(dataUrl || '').startsWith('data:image/')) {
         throw new Error('Please upload an image file');
       }
+      dataUrl = await compressImageDataUrl(dataUrl);
 
       const mimeType = 'image/jpeg';
       const fileName = fileNameOverride || `capture-${key}-${Date.now()}.jpg`;

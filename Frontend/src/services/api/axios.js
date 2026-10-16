@@ -7,6 +7,7 @@
  */
 
 import axios from "axios";
+import { notifyApiError } from "./friendlyApiError";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -247,6 +248,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (err) => {
     const original = err?.config;
+    notifyApiError(err, original);
 
     // Detect offline network connectivity errors explicitly (status 0 / ERR_NETWORK)
     const isNetworkError =

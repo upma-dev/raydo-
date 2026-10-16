@@ -14,6 +14,7 @@ import rideImg from '@/assets/hero_sedan.png';
 import deliveryImg from '@/assets/hero_parcel.png';
 import bikeImg from '@/assets/hero_bike.png';
 import autoImg from '@/assets/hero_bike.png';
+import rentalImg from '@/assets/hero_bike.png';
 
 function getSavedStops() {
   const stops = [];
@@ -111,6 +112,35 @@ const DEFAULT_SERVICE_CARDS = [
     status: 'available',
     path: '/taxi/user/intercity',
   },
+  // Rental and Car Pooling show up on their own (no App Module needed) while their feature switch is on
+  ...(RENTAL_ENABLED
+    ? [{
+        id: 'rental',
+        name: 'Rental',
+        desc: 'Self drive',
+        icon: rentalImg,
+        fallbackIcon: rentalImg,
+        eta: '15 min',
+        fare: null,
+        fareStatus: 'dynamic',
+        status: 'available',
+        path: '/taxi/user/rental',
+      }]
+    : []),
+  ...(POOLING_ENABLED
+    ? [{
+        id: 'pooling',
+        name: 'Car Pooling',
+        desc: 'Share Cab',
+        icon: poolingImg,
+        fallbackIcon: poolingImg,
+        eta: '4 min',
+        fare: null,
+        fareStatus: 'dynamic',
+        status: 'available',
+        path: '/taxi/user/pooling',
+      }]
+    : []),
 ];
 
 const ServiceGrid = ({ plain = false }) => {
@@ -152,6 +182,7 @@ const ServiceGrid = ({ plain = false }) => {
             const isOutstation = m.service_type === 'outstation' || nameLower.includes('outstation');
             const isPooling = m.service_type === 'pooling' || nameLower.includes('pooling');
             const isBus = m.service_type === 'bus' || nameLower.includes('bus');
+            const isRental = m.service_type === 'rental' || nameLower.includes('rental');
             const isBike = nameLower.includes('bike');
             const isAuto = nameLower.includes('auto');
 
@@ -197,6 +228,11 @@ const ServiceGrid = ({ plain = false }) => {
               eta = '4 min';
               desc = 'Share Cab';
               path = '/taxi/user/pooling';
+            } else if (isRental) {
+              fallbackIcon = rentalImg;
+              eta = '15 min';
+              desc = 'Self drive';
+              path = '/taxi/user/rental';
             }
 
             const resolvedIcon = (adminIcon && String(adminIcon).trim() !== '') ? adminIcon : fallbackIcon;
@@ -227,7 +263,9 @@ const ServiceGrid = ({ plain = false }) => {
                 (defCard.id === 'bike' && cName.includes('bike')) ||
                 (defCard.id === 'parcel' && (cName.includes('parcel') || cName.includes('delivery'))) ||
                 (defCard.id === 'bus' && cName.includes('bus')) ||
-                (defCard.id === 'outstation' && cName.includes('outstation'))
+                (defCard.id === 'outstation' && cName.includes('outstation')) ||
+                (defCard.id === 'rental' && cName.includes('rental')) ||
+                (defCard.id === 'pooling' && cName.includes('pooling'))
               );
             }); 
             if (!exists) {

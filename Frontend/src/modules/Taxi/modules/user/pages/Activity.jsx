@@ -292,7 +292,7 @@ const Activity = () => {
       navigate(`${routePrefix}/profile/bus-bookings/${item.id}`);
     } else if (item.type === 'rental') {
       if (!RENTAL_ENABLED) return;
-      navigate('/rental/confirmed', { state: buildRentalActivityState(item.booking) });
+      navigate('/taxi/user/rental/confirmed', { state: buildRentalActivityState(item.booking) });
     } else if (item.type === 'pooling') {
       if (!POOLING_ENABLED) return;
       navigate(`${routePrefix}/pooling`);

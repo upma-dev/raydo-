@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Search,
   MoreVertical,
@@ -39,6 +39,9 @@ const DriverList = ({ mode = 'approved' }) => {
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [paginator, setPaginator] = useState(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  // Only the newest request may change the screen: an older / slower answer must not overwrite it or end the spinner early
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     adminService.getZones().then((res) => {
@@ -48,6 +51,8 @@ const DriverList = ({ mode = 'approved' }) => {
   }, []);
 
   const fetchDrivers = async ({ nextPage = page, nextLimit = itemsPerPage, nextSearch = searchTerm, nextZone = selectedZone } = {}) => {
+    const requestId = ++requestIdRef.current;
+    const isStale = () => requestId !== requestIdRef.current;
     setIsLoading(true);
     setError('');
     try {
@@ -56,6 +61,7 @@ const DriverList = ({ mode = 'approved' }) => {
         search: String(nextSearch || '').trim(),
         ...(nextZone !== 'all' ? { service_location_id: nextZone, zone: nextZone } : {}),
       });
+      if (isStale()) return;
       const driversList = responseData.data?.results || [];
       if (responseData.success) {
         const approved = driversList.map((d) => ({
@@ -64,9 +70,12 @@ const DriverList = ({ mode = 'approved' }) => {
           serviceLocation: d.service_location_name || d.city || d.service_location?.name || 'India',
           phone: d.phone || d.mobile || 'N/A',
           // the services the driver works in, and the real name of the vehicle type he chose
-          transportType: (Array.isArray(d.service_categories) && d.service_categories.length
-            ? d.service_categories.map((item) => String(item).charAt(0).toUpperCase() + String(item).slice(1)).join(', ')
-            : (d.transport_type || d.register_for || '-')),
+          transportType: (() => {
+            const raw = String(d.transport_type || d.register_for || '').trim().toLowerCase();
+            if (raw === 'both' || raw === 'all' || (Array.isArray(d.service_categories) && d.service_categories.length > 1)) return 'All';
+            const one = raw || (Array.isArray(d.service_categories) ? String(d.service_categories[0] || '') : '');
+            return one ? one.charAt(0).toUpperCase() + one.slice(1) : '-';
+          })(),
           vehicleTypeName: d.vehicle_type_name || d.vehicle_type || '-',
           rating: Number(d.rating_count || d.ratingCount || 0) > 0
             ? Number(d.rating || d.average_rating || d.avg_rating || 0)
@@ -83,28 +92,28 @@ const DriverList = ({ mode = 'approved' }) => {
         setError(responseData.message || 'Failed to fetch drivers');
       }
     } catch (err) {
+      if (isStale()) return;
       setError(err.message || 'Network error occurred.');
     } finally {
-      setIsLoading(false);
+      if (!isStale()) setIsLoading(false);
     }
   };
 
+  // typing in the search box waits 250 ms before it asks the server
   useEffect(() => {
-    fetchDrivers({ nextPage: 1, nextLimit: itemsPerPage, nextSearch: searchTerm, nextZone: selectedZone });
-    setPage(1);
-  }, [itemsPerPage, selectedZone]);
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      fetchDrivers({ nextPage: 1, nextLimit: itemsPerPage, nextSearch: searchTerm, nextZone: selectedZone });
-      setPage(1);
-    }, 250);
+    const timeoutId = window.setTimeout(() => setDebouncedSearch(searchTerm), 250);
     return () => window.clearTimeout(timeoutId);
   }, [searchTerm]);
 
+  // a new filter starts again from page 1
   useEffect(() => {
-    fetchDrivers({ nextPage: page, nextLimit: itemsPerPage, nextSearch: searchTerm, nextZone: selectedZone });
-  }, [page]);
+    setPage(1);
+  }, [itemsPerPage, selectedZone, debouncedSearch]);
+
+  // ONE fetch for every change (first open included)
+  useEffect(() => {
+    fetchDrivers({ nextPage: page, nextLimit: itemsPerPage, nextSearch: debouncedSearch, nextZone: selectedZone });
+  }, [page, itemsPerPage, selectedZone, debouncedSearch]);
 
   const closeMenu = () => {
     setActiveMenu(null);

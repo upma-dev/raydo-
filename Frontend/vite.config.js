@@ -3,8 +3,10 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
+  // Production builds carry no console.log / info / debug at all (warn / error stay, and are redacted at runtime)
+  esbuild: mode === 'production' ? { pure: ['console.log', 'console.info', 'console.debug'] } : {},
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -22,7 +24,13 @@ export default defineConfig({
       '/api/v1': {
         target: 'http://localhost:5000',
         changeOrigin: true,
+      },
+      // Socket.IO shares the API origin in dev (VITE_API_BASE_URL is relative), so it must be proxied too
+      '/socket.io': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        ws: true,
       }
     }
   },
-});
+}));

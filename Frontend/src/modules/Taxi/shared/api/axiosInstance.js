@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL } from './runtimeConfig';
+import { notifyApiError } from '../../../../services/api/friendlyApiError';
 import { syncAdminSessionBridge } from '../../modules/admin/services/adminSession';
 
 const api = axios.create({
@@ -267,6 +268,7 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
+    notifyApiError(error);
     if (error.response) {
       // Global error handling: e.g. deleted or inactive account logout
       if (error.response.status === 401 || error.response.status === 403) {

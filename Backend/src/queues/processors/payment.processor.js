@@ -50,6 +50,15 @@ export const processPaymentJob = async (job) => {
  * Split money to all parties.
  */
 async function handleDeliveryCompleted(data) {
+    // DISABLED ON PURPOSE. Restaurant / rider / platform money is paid by foodTransaction.service
+    // (creditWalletsForTransaction) when the payment is captured, with a unique key per order. This legacy splitter used
+    // other categories (so no duplicate check applied) and credited the restaurant with its COMMISSION, which is the
+    // platform's money. Running both would pay the rider twice.
+    if (process.env.ENABLE_LEGACY_PAYMENT_SPLIT !== 'true') {
+        logger.warn(`[PaymentProcessor] Legacy delivery_completed split skipped for order ${data?.orderId || data?.orderMongoId}`);
+        return;
+    }
+
     const {
         orderMongoId, orderId,
         restaurantId, deliveryPartnerId,

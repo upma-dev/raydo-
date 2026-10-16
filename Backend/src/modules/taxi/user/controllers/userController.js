@@ -263,8 +263,7 @@ const razorpayRequest = async ({ method, path, body, keyId, keySecret }) => {
   return payload;
 };
 
-const BUS_HOLD_MINUTES = 10;
-const BUS_DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const BUS_HOLD_MINUTES = 10;const BUS_DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const normalizeBusTravelDate = (value) => {
   const rawValue = toCleanString(value);
@@ -672,6 +671,7 @@ const serializeBusSearchResult = ({ busService, schedule, availableSeats, travel
   toCity: busService.route?.destinationCity || '',
   seats: Math.max(0, Number(availableSeats || 0)),
   availableSeats: Math.max(0, Number(availableSeats || 0)),
+  totalSeats: flattenBusBlueprintSeats(busService.blueprint).length || Number(busService.capacity || 0),
   // "From" price: the base seat price, or the cheapest seat type when the base price is not set
   price: Number(busService.seatPrice || 0) || cheapestBusVariantPrice(busService.variantPricing),
   variantPricing: busService.variantPricing || null,
@@ -843,6 +843,17 @@ const serializeBusBooking = (booking, busService = null) => {
     seatLabels: Array.isArray(booking.seatLabels) ? booking.seatLabels : [],
     amount: Number(booking.amount || 0),
     currency: booking.currency || 'INR',
+    fare: {
+      baseFare: Number(booking.financialSnapshot?.baseFare ?? booking.amount ?? 0),
+      seatPrices: (booking.financialSnapshot?.seatPricesBreakup || []).map((item) => ({
+        seatId: item.seatId,
+        seatLabel: originalSeatLabels[originalSeatIds.indexOf(item.seatId)] || item.seatId,
+        price: Number(item.price || 0),
+      })),
+      serviceTax: Number(booking.financialSnapshot?.serviceTax || 0),
+      discountAmount: Number(booking.financialSnapshot?.discountAmount || 0),
+      totalPaidAmount: Number(booking.financialSnapshot?.totalPaidAmount ?? booking.amount ?? 0),
+    },
     passenger: booking.passenger || {},
     seatPassengers: Array.isArray(booking.seatPassengers) ? booking.seatPassengers : [],
     boardingPoint: booking.boardingPoint || null,
@@ -2756,6 +2767,7 @@ export const getBusSeatLayout = async (req, res) => {
   await syncAvailableSeatPrices(busService, trip._id);
   const inventories = await TripSeatInventory.find({ tripId: trip._id }).lean();
   const inventoryMap = new Map(inventories.map((item) => [String(item.seatId), item]));
+  const viewerId = req.auth?.sub ? String(req.auth.sub) : '';
 
   const normalizeDeck = (deckRows = []) =>
     deckRows.map((row) =>
@@ -2766,7 +2778,9 @@ export const getBusSeatLayout = async (req, res) => {
 
         const seatId = String(cell.id || '');
         const inv = inventoryMap.get(seatId);
-        const isAvailable = inv ? inv.status === 'available' : String(cell.status || 'available') === 'available';
+        // A seat the viewer is holding themselves (e.g. they closed the payment popup) is theirs to pick again
+        const heldByViewer = inv?.status === 'held' && viewerId && String(inv.bookedBy?.userId || '') === viewerId;
+        const isAvailable = inv ? inv.status === 'available' || heldByViewer : String(cell.status || 'available') === 'available';
 
         return {
           ...cell,
@@ -2783,7 +2797,9 @@ export const getBusSeatLayout = async (req, res) => {
     upperDeck: normalizeDeck(busService.blueprint?.upperDeck || []),
   };
 
-  const availableSeats = inventories.filter((item) => item.status === 'available').length;
+  const availableSeats = inventories.filter(
+    (item) => item.status === 'available' || (item.status === 'held' && viewerId && String(item.bookedBy?.userId || '') === viewerId),
+  ).length;
 
   res.status(200).json({
     success: true,
@@ -3206,6 +3222,37 @@ export const submitMyBusBookingReview = async (req, res) => {
     message: 'Bus rating saved successfully',
     data: serializeBusBooking(booking, busService.toObject()),
   });
+};
+
+// The customer closed / failed the payment popup: give the seats back at once instead of holding them for 10 minutes
+export const releaseMyBusBookingHold = async (req, res) => {
+  await ensureBusServiceEnabled();
+
+  const bookingId = String(req.params?.id || '').trim();
+  if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+    throw new ApiError(400, 'Valid bus booking id is required');
+  }
+
+  const booking = await BusBooking.findOne({ _id: bookingId, userId: req.auth?.sub });
+  if (!booking) {
+    throw new ApiError(404, 'Bus booking not found');
+  }
+
+  // Only an unpaid booking can be released; a confirmed one is cancelled through the normal cancel flow
+  if (String(booking.status) === 'pending') {
+    booking.status = 'expired';
+    booking.failureReason = 'payment_not_completed';
+    booking.payment.status = 'cancelled';
+    await booking.save();
+
+    await TripSeatInventory.updateMany(
+      { tripId: booking.tripId, bookingId: booking._id, status: 'held' },
+      { $set: { status: 'available', bookingId: null, holdId: null, holdExpiresAt: null, bookedBy: {} } },
+    );
+    await BusSeatHold.updateMany({ bookingId: booking._id, status: 'held' }, { $set: { status: 'expired' } });
+  }
+
+  res.status(200).json({ success: true, data: { id: String(booking._id), status: booking.status } });
 };
 
 export const cancelMyBusBooking = async (req, res) => {
@@ -3907,9 +3954,12 @@ export const listMyBusBookings = async (req, res) => {
   const normalizedStatus = toCleanString(req.query?.status).toLowerCase();
   const normalizedTripState = toCleanString(req.query?.tripState).toLowerCase();
   const allowedStatuses = new Set(['pending', 'confirmed', 'failed', 'expired', 'cancelled']);
+  // Unpaid attempts (payment popup closed / hold expired) are not bookings: only show them when asked for explicitly
   const query = {
     userId: req.auth?.sub,
-    ...(allowedStatuses.has(normalizedStatus) ? { status: normalizedStatus } : {}),
+    status: allowedStatuses.has(normalizedStatus)
+      ? normalizedStatus
+      : { $nin: ['pending', 'expired', 'failed'] },
   };
 
   const items = await BusBooking.find(query)

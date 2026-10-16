@@ -1888,7 +1888,9 @@ export const deliveryAPI = {
         new Error("FormData with details and document files is required"),
       );
     }
-    return apiClient.post("/food/delivery/register", formData);
+    return apiClient.post("/food/delivery/register", formData, {
+      timeout: 180000, // multiple document images upload to cloud storage
+    });
   },
   /** PATCH /food/delivery/profile - complete profile after OTP (Bearer token required). */
   completeProfile: (formData) => {
@@ -1899,6 +1901,7 @@ export const deliveryAPI = {
     }
     return apiClient.patch("/food/delivery/profile", formData, {
       contextModule: "delivery",
+      timeout: 180000,
     });
   },
   /** PATCH /food/delivery/profile/details - JSON updates (vehicle number, etc). */

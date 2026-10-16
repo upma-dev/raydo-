@@ -102,7 +102,7 @@ const RentalKYC = () => {
   };
   // go back when the page was opened without its data (done in an effect, not while rendering)
   useEffect(() => {
-    if (!state.vehicle) navigate('/rental', { replace: true });
+    if (!state.vehicle) navigate('/taxi/user/rental', { replace: true });
   }, [state.vehicle, navigate]);
 
   // every hook has run above, so it is safe to stop here
@@ -233,7 +233,7 @@ const RentalKYC = () => {
 
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg px-5 pb-6 pt-3 bg-gradient-to-t from-[#EEF2F7] via-[#F3F4F6]/95 to-transparent pointer-events-none z-30">
         <motion.button whileTap={{ scale: 0.98 }} disabled={!done}
-          onClick={() => navigate('/rental/deposit', {
+          onClick={() => navigate('/taxi/user/rental/deposit', {
             state: {
               ...state,
               rentalKyc: {

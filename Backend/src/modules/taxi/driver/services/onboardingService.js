@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { assertVehicleTypeFitsServices } from '../../services/vehicleServiceRules.js';
+import { assertVehicleTypeFitsServices, narrowServicesForVehicle } from '../../services/vehicleServiceRules.js';
 import { isMasterOtp as isMasterOtpFor } from '../../../../core/otp/masterOtp.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { env } from '../../../../config/env.js';
@@ -79,6 +79,10 @@ const normalizeServiceCategories = (value, fallback = 'taxi') => {
   }
 
   const fallbackValue = String(fallback || 'taxi').trim().toLowerCase();
+  // Transport Type "All" = every service
+  if (fallbackValue === 'all') {
+    return [...ALLOWED_SERVICE_CATEGORIES];
+  }
   if (fallbackValue === 'both') {
     return ['taxi', 'outstation'];
   }
@@ -721,8 +725,11 @@ export const saveDriverVehicle = async ({
   requireField('locationId', locationId, 'Operating city');
 
   // The vehicle type must exist, be enabled, and belong to the service the driver chose
+  let finalServiceCategories = normalizedServiceCategories;
   if (!isOwner && hasValue(vehicleTypeId)) {
-    await assertVehicleTypeFitsServices({ vehicleTypeId, serviceCategories: normalizedServiceCategories });
+    const pickedVehicle = await assertVehicleTypeFitsServices({ vehicleTypeId, serviceCategories: normalizedServiceCategories });
+    // e.g. "All" on a bike becomes taxi + delivery (a bike never gets outstation / pooling)
+    finalServiceCategories = narrowServicesForVehicle(pickedVehicle, normalizedServiceCategories);
   }
 
   if (isOwner) {
@@ -783,7 +790,7 @@ export const saveDriverVehicle = async ({
 
   session.vehicle = {
     registerFor: normalizedRegisterFor,
-    serviceCategories: normalizedServiceCategories,
+    serviceCategories: finalServiceCategories,
     locationId: String(locationId || '').trim(),
     locationName: selectedLocation,
     serviceLocation: selectedServiceLocation

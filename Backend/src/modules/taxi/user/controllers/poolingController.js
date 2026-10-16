@@ -58,10 +58,16 @@ const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 /** The moment the schedule leaves on `travelDate` (India time), or null when the schedule has no usable time. */
 const getDepartureMoment = (travelDate, schedule = {}, route = {}) => {
-  const match = /^(\d{1,2}):(\d{2})/.exec(toCleanString(schedule?.departureTime || route?.departureTime));
+  const match = /^(\d{1,2}):(\d{2})\s*([AaPp][Mm])?/.exec(toCleanString(schedule?.departureTime || route?.departureTime));
   if (!match) return null;
+  let hours = Number(match[1]);
+  // "06:30 PM" is 18:30, "12:15 AM" is 00:15; a time without AM/PM is already 24-hour
+  if (match[3]) {
+    const isPm = match[3].toLowerCase() === 'pm';
+    hours = (hours % 12) + (isPm ? 12 : 0);
+  }
   const [year, month, day] = travelDate.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day, Number(match[1]), Number(match[2])) - IST_OFFSET_MS);
+  return new Date(Date.UTC(year, month - 1, day, hours, Number(match[2])) - IST_OFFSET_MS);
 };
 
 /** The route's own rules: seats per booking, how early you may book, and when booking closes before departure. */
@@ -403,8 +409,10 @@ export const finalizePoolingBooking = async ({
     return { booking: existingBooking, alreadyConfirmed: true };
   }
 
-  const { keyId, keySecret } = await resolveRazorpayCredentials();
-  const order = rzOrder || (skipOrderCheck ? null : await razorpayRequest({ method: 'GET', path: `/orders/${encodeURIComponent(orderId)}`, keyId, keySecret }));
+  // Razorpay is only needed to look the order up (not when the caller already holds it, or skips the check)
+  const needsOrderLookup = !rzOrder && !skipOrderCheck;
+  const { keyId, keySecret } = needsOrderLookup ? await resolveRazorpayCredentials() : {};
+  const order = rzOrder || (needsOrderLookup ? await razorpayRequest({ method: 'GET', path: `/orders/${encodeURIComponent(orderId)}`, keyId, keySecret }) : null);
   const paidPaise = Number(order?.amount_paid ?? order?.amount ?? 0);
 
   // The order was created for ONE user and ONE set of seats: that is what was paid for

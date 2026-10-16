@@ -4,6 +4,7 @@ import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { FoodRestaurantWithdrawal } from '../models/foodRestaurantWithdrawal.model.js';
 import { getRestaurantWithdrawalSettings } from '../../admin/services/admin.service.js';
+import { Transaction } from '../../../../core/payments/models/transaction.model.js';
 
 function toTwoDigitYearString(dateObj) {
     const y = String(dateObj.getFullYear());
@@ -155,22 +156,9 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         0
     );
 
-    // Calculate global estimated payout (all completed/captured transactions)
-    const rawAllTransactions = await FoodTransaction.find({
-        restaurantId: rid
-    })
-        .populate('orderId', 'pricing orderStatus deliveryState')
-        .select('amounts.restaurantShare amounts.restaurantCommission status payment orderId payoutReversed')
-        .lean();
-
-    const allCompletedTx = (rawAllTransactions || []).filter(isCompletedTx);
-
-    const txPayout = allCompletedTx.reduce(
-        (sum, tx) => sum + (Number(resolveTxPayout(tx)) || 0),
-        0
-    );
-
-    // Backup query: count delivered orders directly from FoodOrder to ensure no delivered order earnings are missed
+    // Withdrawable earnings = what the restaurant earned on DELIVERED orders, counted ONCE per order, using the amount that
+    // was actually booked for the restaurant (restaurantShare, which already has a restaurant-funded discount taken off).
+    // Two sources used to be compared with Math.max(), which always picked the bigger one and so ignored that discount.
     const deliveredOrders = await FoodOrder.find({
         restaurantId: rid,
         payoutReversed: { $ne: true },
@@ -178,17 +166,32 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
             { orderStatus: { $in: ['delivered', 'completed'] } },
             { 'deliveryState.currentPhase': { $in: ['delivered', 'completed'] } }
         ]
-    }).select('pricing orderStatus').lean();
+    }).select('pricing').lean();
 
-    const ordersPayout = (deliveredOrders || []).reduce((sum, order) => {
+    const bookedShares = await FoodTransaction.find({
+        restaurantId: rid,
+        orderId: { $in: deliveredOrders.map((o) => o._id) },
+        payoutReversed: { $ne: true }
+    }).select('orderId amounts.restaurantShare').lean();
+    const shareByOrder = new Map(bookedShares.map((t) => [String(t.orderId), Number(t.amounts?.restaurantShare)]));
+
+    const grossEarnings = deliveredOrders.reduce((sum, order) => {
+        const booked = shareByOrder.get(String(order._id));
+        if (Number.isFinite(booked)) return sum + Math.max(0, booked);
         const subtotal = Number(order?.pricing?.subtotal) || 0;
         const packagingFee = Number(order?.pricing?.packagingFee) || 0;
         const commission = Number(order?.pricing?.restaurantCommission) || 0;
-        const share = Math.max(0, subtotal + packagingFee - commission);
-        return sum + share;
+        return sum + Math.max(0, subtotal + packagingFee - commission);
     }, 0);
 
-    const globalEstimatedPayout = Math.max(txPayout, ordersPayout);
+    // Penalties charged to the restaurant (cancelled after accepting) really reduce what it can take out
+    const penaltyAgg = await Transaction.aggregate([
+        { $match: { entityType: 'restaurant', entityId: rid, category: 'cancel_penalty', type: 'debit' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const totalPenalties = Number(penaltyAgg?.[0]?.total || 0);
+
+    const globalEstimatedPayout = Math.round((grossEarnings - totalPenalties) * 100) / 100;
 
     // Subtract pending AND approved/completed/processing/settled withdrawals from available balance.
     // Rejected withdrawals are returned to available balance.
@@ -204,7 +207,8 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         { $group: { _id: null, total: { $sum: '$amount' } } }
     ]);
     const totalDeductedWithdrawals = Number(withdrawalsAgg?.[0]?.total || 0);
-    const availableBalance = Math.max(0, globalEstimatedPayout - totalDeductedWithdrawals);
+    const rawAvailable = Math.round((globalEstimatedPayout - totalDeductedWithdrawals) * 100) / 100;
+    const availableBalance = Math.max(0, rawAvailable);
     const withdrawalSettings = await getRestaurantWithdrawalSettings();
     const minimumWithdrawalAmount = Number(withdrawalSettings?.minimumWithdrawalAmount) || 0;
 
@@ -215,6 +219,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         totalWithdrawn: totalDeductedWithdrawals,
         estimatedPayout: currentCycleEstimatedPayout,
         netAvailable: availableBalance,
+        rawAvailable, // not clamped at zero: negative = more promised in withdrawals than earned
         minimumWithdrawalAmount,
         totalOrders: currentCycleOrders.length,
         payoutDate: null,

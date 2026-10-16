@@ -107,6 +107,8 @@ const paymentSchema = new mongoose.Schema(
             amount: { type: Number, default: 0 },
             refundedTotal: { type: Number, default: 0 },
             refundId: { type: String, default: '' },
+            // every refund id recorded for this order (refundId above is only the latest one)
+            refundIds: { type: [String], default: [] },
             processedAt: { type: Date },
             paidBy: { type: String, default: '' },
             franchiseId: { type: mongoose.Schema.Types.ObjectId, default: undefined },

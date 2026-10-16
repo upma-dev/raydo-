@@ -1,6 +1,6 @@
 import { FoodTransaction } from '../models/foodTransaction.model.js';
 import { FoodRestaurantCommission } from '../../admin/models/restaurantCommission.model.js';
-import { recordTransaction } from '../../../../core/payments/transaction.service.js';
+import { recordTransaction, DuplicateTransactionError } from '../../../../core/payments/transaction.service.js';
 import { Transaction } from '../../../../core/payments/models/transaction.model.js';
 import { logger } from '../../../../utils/logger.js';
 import mongoose from 'mongoose';
@@ -71,9 +71,11 @@ export async function getRestaurantCommissionSnapshot(orderDoc) {
         rules.find((r) => String(r.restaurant || r.restaurant_id || '') === String(restaurantIdRaw)) ||
         null;
 
-    // Fallback default commission rule (10% percentage) if no explicit custom rule is configured for this restaurant
+    // No rule set in Admin > Restaurant Commission = no commission. (A hidden 10% used to apply here.)
+    // To charge a platform-wide default without a per-restaurant rule, set DEFAULT_RESTAURANT_COMMISSION_PERCENT in .env.
+    const fallbackPercent = Math.min(100, Math.max(0, Number(process.env.DEFAULT_RESTAURANT_COMMISSION_PERCENT) || 0));
     const effectiveRule = rule || {
-        defaultCommission: { type: 'percentage', value: 10 }
+        defaultCommission: { type: 'percentage', value: fallbackPercent }
     };
 
     return computeRestaurantCommissionAmount(baseAmount, effectiveRule);
@@ -146,9 +148,18 @@ export async function createInitialTransaction(order) {
         }
     }
 
+    // The rider incentive is paid to the rider on top of the delivery fee, but the customer is NOT charged for it
+    // (it is not part of pricing.total). So it is a platform cost and must come out of the platform's profit,
+    // otherwise the books (and the franchise commission base) show money the platform never kept.
+    platformNetProfit -= riderIncentivePay;
+
     // Ensure nets are finite and rounded
     restaurantNet = Math.round((Number(restaurantNet) || 0) * 100) / 100;
-    platformNetProfit = Math.max(0, Math.round((Number(platformNetProfit) || 0) * 100) / 100);
+    const platformNetRaw = Math.round((Number(platformNetProfit) || 0) * 100) / 100;
+    platformNetProfit = Math.max(0, platformNetRaw);
+    // A platform-funded discount / incentive bigger than the platform's income is a real loss: keep it visible
+    // instead of silently clamping it to zero.
+    const platformShortfall = platformNetRaw < 0 ? Math.round(-platformNetRaw * 100) / 100 : 0;
 
     const transaction = new FoodTransaction({
         orderId: order._id,
@@ -208,6 +219,7 @@ export async function createInitialTransaction(order) {
             riderIncentivePay: riderIncentivePay,
             riderTotalPayout: riderTotalPayout,
             platformNetProfit: platformNetProfit,
+            platformShortfall: platformShortfall,
             taxAmount: tax
         },
         gateway: {
@@ -268,6 +280,14 @@ export async function updateTransactionStatus(orderId, kind, details = {}) {
 
 export async function creditWalletsForTransaction(transaction) {
     if (!transaction || !transaction.orderId) return;
+
+    // Never pay out a cancelled order: a late payment confirmation can arrive after the cancel already reversed everything
+    try {
+        const cancelled = await mongoose.model('FoodOrder').exists({ _id: transaction.orderId, orderStatus: /^cancelled/ });
+        if (cancelled) return;
+    } catch {
+        // if the check itself fails, fall through: the unique dedupe key still prevents double payment
+    }
 
     let restaurantShare = Number(transaction.amounts?.restaurantShare) || 0;
     let riderShare = Number(transaction.amounts?.riderShare || transaction.amounts?.riderTotalPayout) || 0;
@@ -342,11 +362,13 @@ export async function creditWalletsForTransaction(transaction) {
                     description: `Order payout credit for order ${transaction.orderId}`,
                     category: 'order_payout',
                     orderId: String(transaction.orderId),
+                    dedupeKey: `order_payout:${transaction.orderId}:${restId}`,
                 });
                 logger.info(`[FoodTransaction] Credited store wallet ${restId} with ₹${restaurantShare} for order ${transaction.orderId}`);
             }
         } catch (err) {
-            logger.error(`[FoodTransaction] Error crediting store wallet for order ${transaction.orderId}: ${err?.message || err}`);
+            // DuplicateTransactionError = a parallel call already paid this order: nothing more to do for the restaurant
+            if (!(err instanceof DuplicateTransactionError)) logger.error(`[FoodTransaction] Error crediting store wallet for order ${transaction.orderId}: ${err?.message || err}`);
         }
     }
 
@@ -366,11 +388,12 @@ export async function creditWalletsForTransaction(transaction) {
                     description: `Delivery payout credit for order ${transaction.orderId}`,
                     category: 'delivery_payout',
                     orderId: String(transaction.orderId),
+                    dedupeKey: `delivery_payout:${transaction.orderId}:${riderId}`,
                 });
                 logger.info(`[FoodTransaction] Credited delivery partner wallet ${riderId} with ₹${riderShare} for order ${transaction.orderId}`);
             }
         } catch (err) {
-            logger.error(`[FoodTransaction] Error crediting delivery partner wallet for order ${transaction.orderId}: ${err?.message || err}`);
+            if (!(err instanceof DuplicateTransactionError)) logger.error(`[FoodTransaction] Error crediting delivery partner wallet for order ${transaction.orderId}: ${err?.message || err}`);
         }
     }
 }
@@ -412,11 +435,17 @@ export async function creditRiderForCancelledOrder(orderId) {
     if (!riderId || share <= 0) return null;
     const existing = await Transaction.findOne({ orderId, entityType: 'deliveryBoy', category: 'delivery_payout' }).lean();
     if (existing) return null;
-    return recordTransaction({
-        entityType: 'deliveryBoy', entityId: riderId, type: 'credit', amount: share,
-        description: `Delivery payout for order ${orderId}: cancelled after pickup`,
-        category: 'delivery_payout', orderId: String(orderId),
-    });
+    try {
+        return await recordTransaction({
+            entityType: 'deliveryBoy', entityId: riderId, type: 'credit', amount: share,
+            description: `Delivery payout for order ${orderId}: cancelled after pickup`,
+            category: 'delivery_payout', orderId: String(orderId),
+            dedupeKey: `delivery_payout:${orderId}:${riderId}`,   // same key as the normal payout: the rider is never paid twice
+        });
+    } catch (err) {
+        if (err instanceof DuplicateTransactionError) return null;
+        throw err;
+    }
 }
 
 /** Restaurant cancelled an order it had already accepted: take the admin-set penalty from its wallet (once per order). */
@@ -425,11 +454,17 @@ export async function chargeRestaurantCancelPenalty(orderId, restaurantId, amoun
     if (penalty <= 0 || !restaurantId) return null;
     const existing = await Transaction.findOne({ orderId, entityType: 'restaurant', category: 'cancel_penalty' }).lean();
     if (existing) return null;
-    return recordTransaction({
-        entityType: 'restaurant', entityId: String(restaurantId), type: 'debit', amount: penalty,
-        description: `Penalty: order ${orderId} cancelled by the restaurant after accepting it`,
-        category: 'cancel_penalty', orderId: String(orderId), allowNegative: true,
-    });
+    try {
+        return await recordTransaction({
+            entityType: 'restaurant', entityId: String(restaurantId), type: 'debit', amount: penalty,
+            description: `Penalty: order ${orderId} cancelled by the restaurant after accepting it`,
+            category: 'cancel_penalty', orderId: String(orderId), allowNegative: true,
+            dedupeKey: `cancel_penalty:${orderId}:${restaurantId}`,
+        });
+    } catch (err) {
+        if (err instanceof DuplicateTransactionError) return null;
+        throw err;
+    }
 }
 
 /**
@@ -467,9 +502,11 @@ export async function reverseWalletsForOrder(orderId, { onlyRestaurant = false, 
                 category: reversalCategory,
                 orderId: String(orderId),
                 allowNegative: true,
+                dedupeKey: `${reversalCategory}:${orderId}:${credit.entityId}`,
             });
             results.push({ entityType: credit.entityType, amount: credit.amount });
         } catch (err) {
+            if (err instanceof DuplicateTransactionError) continue;   // already reversed by a parallel call
             logger.error(`[FoodTransaction] Could not reverse ${credit.category} for order ${orderId}: ${err?.message || err}`);
         }
     }

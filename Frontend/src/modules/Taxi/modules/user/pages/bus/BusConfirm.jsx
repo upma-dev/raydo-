@@ -182,6 +182,27 @@ const BusConfirm = () => {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5 space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Final Bill</p>
+              {(booking.fare?.seatPrices || []).map((item) => (
+                <div key={item.seatId} className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                  <span>Seat {item.seatLabel}</span>
+                  <span className="font-bold text-slate-900">₹{item.price}</span>
+                </div>
+              ))}
+              {Number(booking.fare?.serviceTax) > 0 ? (
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                  <span>Taxes</span>
+                  <span className="font-bold text-slate-900">₹{booking.fare.serviceTax}</span>
+                </div>
+              ) : null}
+              <div className="flex items-center justify-between border-t border-dashed border-slate-200 pt-2 text-sm font-black text-slate-900">
+                <span>Total Paid</span>
+                <span>₹{Number(booking.fare?.totalPaidAmount ?? booking.amount ?? 0)}</span>
+              </div>
+              <p className="text-[10px] font-bold text-slate-400">Payment: {booking.payment?.status || 'paid'}</p>
+            </div>
+
             <div className="bg-slate-50 rounded-2xl p-5 flex justify-between items-center border border-slate-100">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Passenger</p>

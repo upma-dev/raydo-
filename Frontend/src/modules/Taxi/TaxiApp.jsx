@@ -145,6 +145,7 @@ const OwnerBusServicePage = lazy(() => import('./modules/driver/pages/OwnerBusSe
 const OwnerBusBookingsPage = lazy(() => import('./modules/driver/pages/OwnerBusBookingsPage'));
 const ActiveTrip = lazy(() => import('./modules/driver/pages/ActiveTrip'));
 const DriverWallet = lazy(() => import('./modules/driver/pages/DriverWallet'));
+const OwnerWallet = lazy(() => import('./modules/driver/pages/OwnerWallet'));
 const DriverEarnings = lazy(() => import('./modules/driver/pages/DriverEarnings'));
 const DriverProfile = lazy(() => import('./modules/driver/pages/DriverProfile'));
 const ServiceCenterDashboard = lazy(() => import('./modules/driver/pages/ServiceCenterDashboard'));
@@ -1119,7 +1120,7 @@ function TaxiApp() {
                 <Route path="bus-service/:id" element={<OwnerBusServicePage />} />
                 <Route path="bus-bookings" element={<OwnerBusBookingsPage />} />
                 <Route path="profile" element={<DriverProfile />} />
-                <Route path="wallet" element={<DriverWallet />} />
+                <Route path="wallet" element={<OwnerWallet />} />
                 <Route path="earnings" element={<DriverEarnings />} />
                 <Route path="history" element={<RideRequests />} />
                 <Route path="edit-profile" element={<EditProfile />} />
@@ -1492,6 +1493,7 @@ function TaxiApp() {
                   />
                   */}
                   <Route path="vehicle-type" element={<AdminVehicleType />} />
+                  <Route path="vehicle-services" element={<Navigate to="/taxi/admin/pricing/vehicle-type" replace />} />
                   <Route
                     path="vehicle-type/create"
                     element={<AdminVehicleType mode="create" />}

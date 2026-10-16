@@ -64,7 +64,7 @@ export function getRazorpayInstance() {
     return new Razorpay({ key_id: KEY_ID, key_secret: KEY_SECRET });
 }
 
-export function createRazorpayOrder(amountPaise, currency = 'INR', receipt = '') {
+export function createRazorpayOrder(amountPaise, currency = 'INR', receipt = '', notes = undefined) {
     const instance = getRazorpayInstance();
     if (!instance) return Promise.reject(new Error('Razorpay not configured'));
     return instance.orders
@@ -72,6 +72,8 @@ export function createRazorpayOrder(amountPaise, currency = 'INR', receipt = '')
             amount: Math.round(amountPaise),
             currency,
             receipt: receipt || undefined,
+            // notes (e.g. full userId + purpose) let the webhook settle a payment even if the app never calls verify
+            notes: notes && Object.keys(notes).length ? notes : undefined,
             // Capture the money at once. An authorized-but-not-captured payment CANNOT be refunded (Razorpay only voids it after days).
             payment_capture: 1
         })
@@ -80,7 +82,7 @@ export function createRazorpayOrder(amountPaise, currency = 'INR', receipt = '')
         });
 }
 
-export async function createRazorpayCheckoutOrder(amountPaise, currency = 'INR', receipt = '') {
+export async function createRazorpayCheckoutOrder(amountPaise, currency = 'INR', receipt = '', notes = undefined) {
     if (!isRazorpayConfigured()) {
         throw new Error('Razorpay payment gateway is not configured');
     }
@@ -90,7 +92,7 @@ export async function createRazorpayCheckoutOrder(amountPaise, currency = 'INR',
         throw new Error('Amount too low for online payment');
     }
 
-    const order = await createRazorpayOrder(roundedAmount, currency, receipt);
+    const order = await createRazorpayOrder(roundedAmount, currency, receipt, notes);
     if (!order?.id) {
         throw new Error('Razorpay order was created without an order id');
     }

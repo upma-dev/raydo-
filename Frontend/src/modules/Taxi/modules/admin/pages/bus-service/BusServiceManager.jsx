@@ -210,6 +210,7 @@ const BusServiceManager = ({
   description = 'Define coaches, preview seat blueprints, manage inventory, and publish recurring departures with multi-stop routes.',
   emptyLabel = 'No buses found.',
   defaultStatus = 'draft',
+  appMode = false,
 }) => {
   const buildFreshDraft = () => ({
     ...createBusDraft(),
@@ -814,7 +815,8 @@ const BusServiceManager = ({
   };
 
   return (
-    <div className="space-y-5 sm:space-y-8">
+    <div className={appMode ? 'bus-app space-y-4' : 'space-y-5 sm:space-y-8'}>
+      {appMode ? null : (
       <section className="rounded-3xl bg-slate-900 p-5 text-white shadow-xl shadow-slate-200 sm:p-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-3xl">
@@ -872,6 +874,7 @@ const BusServiceManager = ({
           </div>
         </div>
       </section>
+      )}
 
       {currentMode === 'list' ? (
       <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm sm:p-8">
@@ -917,7 +920,7 @@ const BusServiceManager = ({
           </div>
 
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <div className="flex items-center gap-3 text-sm font-semibold text-slate-400">
+            <div className="hidden items-center gap-3 text-sm font-semibold text-slate-400">
               <span>show</span>
               <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-900">
                 {filteredCatalog.length}
@@ -946,7 +949,7 @@ const BusServiceManager = ({
           </div>
         </div>
 
-        <div className="mt-8 space-y-3 md:hidden">
+        <div className={appMode ? 'mt-5 space-y-3' : 'mt-8 space-y-3 md:hidden'}>
           {isLoadingCatalog ? (
             <div className="rounded-[24px] border border-slate-100 bg-white px-5 py-8 text-center text-sm font-bold text-slate-400">
               Loading bus services...
@@ -1012,7 +1015,7 @@ const BusServiceManager = ({
           )}
         </div>
 
-        <div className="mt-8 hidden overflow-hidden rounded-[28px] border border-slate-100 md:block">
+        <div className={appMode ? 'hidden' : 'mt-8 hidden overflow-hidden rounded-[28px] border border-slate-100 md:block'}>
           <div className="grid gap-4 bg-slate-100 px-6 py-5 text-sm font-black text-slate-700" style={{ gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 1fr) 120px 120px 170px' }}>
             <p>Name</p>
             <p>Driver</p>
@@ -1498,7 +1501,7 @@ const BusServiceManager = ({
             </div>
           </div>
 
-          <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
+          <div className={appMode ? 'hidden' : 'rounded-3xl border border-slate-100 bg-white p-6 shadow-sm'}>
             <h3 className="text-sm font-bold text-slate-900">Module Overview</h3>
             <div className="mt-4 space-y-4 text-xs font-medium text-slate-500">
               <div className="flex items-start gap-3">

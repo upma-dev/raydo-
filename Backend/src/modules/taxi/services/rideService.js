@@ -24,6 +24,7 @@ import { sendPushNotificationToEntities } from './pushNotificationService.js';
 import { Notification } from '../admin/promotions/models/Notification.js';
 import { creditFranchiseCommission } from '../admin/services/taxiFranchiseService.js';
 import { quoteIntercityFare } from './intercityFareService.js';
+import { getDrivingRoute } from './routeMetricsService.js';
 
 export { getRideRoom } from './dispatchService.js';
 
@@ -790,8 +791,7 @@ const normalizeRideTransportType = (value = 'taxi') => {
   return normalized;
 };
 
-const TWO_WHEELER_KEYS = ['bike', 'scooter', '2wheeler', '2-wheeler', '2_wheeler', 'two_wheeler', 'twowheeler'];
-const TRUCK_MOVER_KEYS = ['truck', 'lcv', 'hcv', 'mcv', 'loader', 'mover', 'movers', 'packers'];
+import { TWO_WHEELER_KEYS, TRUCK_MOVER_KEYS, TWO_WHEELER_RE, TRUCK_MOVER_RE, isHeavyParcel } from './vehicleClass.js';
 
 const isTwoWheelerVehicle = (name = '', type = '', icon = '') => {
   const str = `${name} ${type} ${icon}`.toLowerCase();
@@ -813,10 +813,12 @@ const buildDriverVehicleAcceptFilter = async (ride) => {
   const vehicles = await Vehicle.find({ _id: { $in: vehicleTypeIds } }).select('name vehicle_type icon_types').lean();
   const vehicleTypeKeys = normalizeVehicleKeys(vehicles);
 
-  const isRideTwoWheeler = vehicles.some((v) => isTwoWheelerVehicle(v.name, v.vehicle_type, v.icon_types)) ||
-    isTwoWheelerVehicle(ride.vehicleIconType || '', ride.serviceType || '');
+  const heavyParcel = isHeavyParcel(ride);
 
-  const isRideTruckOrMover = vehicles.some((v) => isTruckOrMoverVehicle(v.name, v.vehicle_type, v.icon_types)) ||
+  const isRideTwoWheeler = !heavyParcel && (vehicles.some((v) => isTwoWheelerVehicle(v.name, v.vehicle_type, v.icon_types)) ||
+    isTwoWheelerVehicle(ride.vehicleIconType || '', ride.serviceType || ''));
+
+  const isRideTruckOrMover = heavyParcel || vehicles.some((v) => isTruckOrMoverVehicle(v.name, v.vehicle_type, v.icon_types)) ||
     isTruckOrMoverVehicle(ride.vehicleIconType || '', ride.serviceType || '');
 
   const normServiceType = String(ride?.serviceType || '').toLowerCase();
@@ -848,7 +850,7 @@ const buildDriverVehicleAcceptFilter = async (ride) => {
     return {
       $and: [
         baseFilter,
-        { vehicleType: { $nin: TRUCK_MOVER_KEYS }, vehicleIconType: { $nin: TRUCK_MOVER_KEYS } },
+        { vehicleType: { $not: TRUCK_MOVER_RE }, vehicleIconType: { $not: TRUCK_MOVER_RE } },
       ],
     };
   }
@@ -857,7 +859,7 @@ const buildDriverVehicleAcceptFilter = async (ride) => {
     return {
       $and: [
         baseFilter,
-        { vehicleType: { $nin: TWO_WHEELER_KEYS }, vehicleIconType: { $nin: TWO_WHEELER_KEYS } },
+        { vehicleType: { $not: TWO_WHEELER_RE }, vehicleIconType: { $not: TWO_WHEELER_RE } },
       ],
     };
   }
@@ -966,6 +968,20 @@ export const createRideRecord = async ({
     };
   }
 
+  // The distance the captain sees must match the real road distance, not whatever the app measured (straight line vs
+  // road). Measure pickup -> drop on the server and use a real Google answer; keep the app value only as a fallback.
+  if (!intercityQuote) {
+    try {
+      const serverRoute = await getDrivingRoute({ origin: pickupCoords, destination: dropCoords });
+      if (serverRoute?.source === 'google' && serverRoute.distanceMeters > 0) {
+        estimatedDistanceMeters = serverRoute.distanceMeters;
+        estimatedDurationMinutes = serverRoute.durationMinutes;
+      }
+    } catch (routeError) {
+      console.warn('[createRideRecord] server route measurement failed:', routeError?.message || routeError);
+    }
+  }
+
   const safeFare = Number(fare);
   const safeEstimatedDistanceMeters = Math.max(0, Number(estimatedDistanceMeters || 0));
   const safeEstimatedDurationMinutes = Math.max(0, Number(estimatedDurationMinutes || 0));
@@ -1040,9 +1056,10 @@ export const createRideRecord = async ({
       bidStepAmount: effectiveBidStepAmount,
     })
     : pricingNegotiationMode === 'user_increment_only'
+      // Rapido style: the ride starts at the fare the rider was shown. The rider may only raise it later, up to the ceiling.
       ? clampBidAmountWithinRange({
         amount: safeFare,
-        minFare: bidRideRange.userBidFloorFare,
+        minFare: safeFare,
         maxFare: bidRideRange.userBidCeilingFare,
         baseFare: safeFare,
         bidStepAmount: effectiveBidStepAmount,
@@ -1050,9 +1067,7 @@ export const createRideRecord = async ({
       : safeFare;
   const effectiveBidFloorFare = pricingNegotiationMode === 'driver_bid'
     ? bidRideRange.driverBidFloorFare
-    : pricingNegotiationMode === 'user_increment_only'
-      ? bidRideRange.userBidFloorFare
-      : safeFare;
+    : safeFare;
   const effectiveBidCeilingMaxFare = pricingNegotiationMode === 'driver_bid'
     ? Math.min(bidRideRange.userBidCeilingFare, bidRideRange.driverBidCeilingFare)
     : pricingNegotiationMode === 'user_increment_only'
@@ -1839,7 +1854,14 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
 
   if (nextStatus === RIDE_LIVE_STATUS.COMPLETED) {
     ride.completedAt = new Date();
+  }
 
+  // The pickup wait is fixed the moment the trip starts, so bill it then (not only at completion) - the rider's
+  // receipt screen opens before the driver closes the ride and must already show the final fare.
+  if (
+    (nextStatus === RIDE_LIVE_STATUS.STARTED || nextStatus === RIDE_LIVE_STATUS.COMPLETED)
+    && !(Number(ride.fareBeforeWaiting) > 0)
+  ) {
     const arrivedAt = ride.arrivedAt;
     const startedAt = ride.startedAt;
     const waitingChargeRate = Number(ride.pricingSnapshot?.waiting_charge ?? 0);

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTaxiTransportTypes } from '../../../../shared/hooks/useTaxiTransportTypes';
+import { transportChoicesForVehicle, vehicleCanDo, coerceTransport } from '../../../../shared/utils/vehicleServices';
 import { normalizeDriverDocumentTemplates } from '../../../driver/utils/documentTemplates';
 import { adminService } from '../../services/adminService';
 
@@ -46,6 +47,9 @@ const normalizeVehicleOptions = (payload) => {
       value: String(item?.vehicle_type || item?.name || item?.slug || item?._id || '').toLowerCase(),
       label: item?.vehicle_type || item?.name || 'Vehicle',
       transportType: String(item?.transport_type || '').toLowerCase(),
+      allowed_services: item?.allowed_services,
+      name: item?.name,
+      icon_types: item?.icon_types,
       raw: item,
     }))
     .filter((item) => item.id);
@@ -152,7 +156,6 @@ const initialFormData = {
   password: '',
   password_confirmation: '',
   transport_type: 'taxi',
-  service_categories: ['taxi'],
   vehicle_type_id: '',
   vehicle_make: '',
   vehicle_model: '',
@@ -216,6 +219,7 @@ const CreateDriver = () => {
   }, []);
 
   useEffect(() => {
+    const isAllTransport = formData.transport_type === 'both' || formData.transport_type === 'all';
     const fetchVehicleTypes = async () => {
       if (!formData.service_location_id || !formData.transport_type) {
         setVehicleTypes([]);
@@ -234,7 +238,7 @@ const CreateDriver = () => {
         try {
           const locationResponse = await adminService.getLocationVehicleTypes(
             formData.service_location_id,
-            formData.transport_type,
+            isAllTransport ? 'both' : formData.transport_type,
           );
           options = normalizeVehicleOptions(locationResponse);
         } catch {
@@ -243,11 +247,11 @@ const CreateDriver = () => {
 
         if (options.length === 0) {
           const catalogResponse = await adminService.getVehicleTypes(
-            formData.transport_type === 'both' ? undefined : formData.transport_type,
+            isAllTransport ? undefined : formData.transport_type,
           );
           options = normalizeVehicleOptions(catalogResponse).filter((item) => {
             if (!item.transportType) return true;
-            if (formData.transport_type === 'both') {
+            if (isAllTransport) {
               return ['taxi', 'delivery', 'both'].includes(item.transportType);
             }
             return item.transportType === formData.transport_type || item.transportType === 'both';
@@ -364,31 +368,29 @@ const CreateDriver = () => {
     }));
   };
 
+  // The vehicle decides what the driver may do: a bike never gets Outstation / Pooling (those are for 4-wheelers).
+  const selectedVehicleRecord = vehicleTypes.find((item) => item.id === formData.vehicle_type_id) || null;
+  const allowedTransportIds = selectedVehicleRecord ? transportChoicesForVehicle(selectedVehicleRecord).map((item) => item.id) : null;
+  const visibleTransportTypes = allowedTransportIds
+    ? transportTypes.filter((item) => allowedTransportIds.includes(String(item.name || '').toLowerCase()))
+    : transportTypes;
+  const visibleVehicleTypes = vehicleTypes.filter((item) => vehicleCanDo(item, formData.transport_type));
+
+  useEffect(() => {
+    if (!selectedVehicleRecord) return;
+    const fixed = coerceTransport(selectedVehicleRecord, formData.transport_type);
+    const current = String(formData.transport_type || '').toLowerCase() === 'both' ? 'all' : String(formData.transport_type || '').toLowerCase();
+    if (fixed !== current) setFormData((prev) => ({ ...prev, transport_type: fixed }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVehicleRecord, formData.transport_type]);
+
   const handleTransportChange = (event) => {
     const nextTransportType = event.target.value;
     setFormData((current) => ({
       ...current,
       transport_type: nextTransportType,
       vehicle_type_id: '',
-      service_categories:
-        nextTransportType === 'both'
-          ? ['taxi', 'outstation']
-          : [nextTransportType === 'delivery' ? 'delivery' : nextTransportType === 'pooling' ? 'pooling' : 'taxi'],
     }));
-  };
-
-  const toggleServiceCategory = (categoryId) => {
-    setFormData((current) => {
-      const exists = current.service_categories.includes(categoryId);
-      const nextValues = exists
-        ? current.service_categories.filter((item) => item !== categoryId)
-        : [...current.service_categories, categoryId];
-
-      return {
-        ...current,
-        service_categories: nextValues,
-      };
-    });
   };
 
   const handleProfileChange = async (event) => {
@@ -516,10 +518,6 @@ const CreateDriver = () => {
       return 'Please select area';
     }
 
-    if (isFieldRequired('serviceCategories', true) && formData.service_categories.length === 0) {
-      return 'Please select at least one service category';
-    }
-
     if (!formData.vehicle_type_id) {
       return 'Please select vehicle type';
     }
@@ -621,7 +619,6 @@ const CreateDriver = () => {
         country: formData.country,
         profile_picture: formData.profile_picture,
         transport_type: formData.transport_type,
-        serviceCategories: formData.service_categories,
         vehicle_type_id: formData.vehicle_type_id,
         vehicle_type: selectedVehicle?.label || '',
         vehicle_make: formData.vehicle_make.trim(),
@@ -836,7 +833,7 @@ const CreateDriver = () => {
                 <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-400">Transport Type</label>
                 <select value={formData.transport_type} onChange={handleTransportChange} className={selectClass}>
                   <option value="">Select transport type</option>
-                  {transportTypes.map((type) => (
+                  {visibleTransportTypes.map((type) => (
                     <option key={type.id || type._id || type.name} value={type.name}>
                       {type.display_name || type.name}
                     </option>
@@ -844,31 +841,6 @@ const CreateDriver = () => {
                 </select>
               </div>
             </div>
-
-            {shouldShowField('serviceCategories', true) ? (
-              <div className="mt-5">
-                <label className="mb-3 block text-[11px] font-black uppercase tracking-widest text-slate-400">{serviceCategoryField.name}</label>
-                <div className="flex flex-wrap gap-3">
-                  {serviceCategoryChoices.map((item) => {
-                    const selected = formData.service_categories.includes(item.id);
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => toggleServiceCategory(item.id)}
-                        className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-widest transition-all ${
-                          selected
-                            ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/10'
-                            : 'border border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
 
             <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
               {shouldShowField('vehicleTypeId', true) ? (
@@ -881,7 +853,7 @@ const CreateDriver = () => {
                     disabled={!formData.service_location_id || isLoadingVehicles}
                   >
                     <option value="">{isLoadingVehicles ? 'Loading...' : 'Select vehicle type'}</option>
-                    {vehicleTypes.map((vehicle) => (
+                    {visibleVehicleTypes.map((vehicle) => (
                       <option key={vehicle.id} value={vehicle.id}>
                         {vehicle.label}
                       </option>

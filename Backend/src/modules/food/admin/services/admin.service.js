@@ -5077,13 +5077,14 @@ export async function updateWithdrawalStatus(id, { status, adminNote, rejectionR
         processedAt: new Date()
     };
 
-    const updated = await FoodRestaurantWithdrawal.findByIdAndUpdate(
-        id,
+    // Guard on the status we just checked, so two admins acting together cannot both move the same request
+    const updated = await FoodRestaurantWithdrawal.findOneAndUpdate(
+        { _id: id, status: currentDoc.status },
         { $set: update },
         { new: true }
     ).populate('restaurantId', 'restaurantName').lean();
 
-    if (!updated) throw new ValidationError('Withdrawal request not found');
+    if (!updated) throw new ValidationError('This withdrawal was just changed by someone else. Refresh and try again.');
 
     if (['approved', 'completed', 'settled'].includes(nextStatus)) {
         try {
@@ -5092,7 +5093,9 @@ export async function updateWithdrawalStatus(id, { status, adminNote, rejectionR
                 {
                     restaurantId: targetRestaurantId,
                     status: { $in: ['captured', 'authorized'] },
-                    'settlement.isRestaurantSettled': { $ne: true }
+                    'settlement.isRestaurantSettled': { $ne: true },
+                    // only what existed when the restaurant asked for this money; later orders stay withdrawable
+                    ...(updated.createdAt ? { createdAt: { $lte: updated.createdAt } } : {})
                 },
                 {
                     $set: {
@@ -5168,39 +5171,60 @@ export async function getDeliveryWithdrawals(query = {}) {
 export async function updateDeliveryWithdrawalStatus(id, { status, adminNote, rejectionReason, transactionId }) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) throw new ValidationError('Invalid withdrawal ID');
 
-    const update = {
-        status: String(status).toLowerCase(),
-        adminNote,
-        rejectionReason,
-        transactionId,
-        processedAt: new Date()
-    };
+    // Payout words used by the admin screens all mean "approved" for a delivery withdrawal
+    const requested = String(status || '').toLowerCase().trim();
+    const nextStatus = ['approved', 'processed', 'completed', 'settled'].includes(requested)
+        ? 'approved'
+        : requested === 'rejected' ? 'rejected' : null;
+    if (!nextStatus) throw new ValidationError('Status must be approved or rejected');
 
-    const updated = await FoodDeliveryWithdrawal.findByIdAndUpdate(
-        id,
-        { $set: update },
-        { new: true }
-    ).populate('deliveryPartnerId', 'name phone profilePartnerId').lean();
+    // A withdrawal moves forward exactly once: pending -> approved | rejected. The status check is part of the
+    // update itself, so a double click, a retry or two admins can never approve (and debit) the same request twice,
+    // and an approved request can never be "un-approved" to free the balance again.
+    const claimed = await FoodDeliveryWithdrawal.findOneAndUpdate(
+        { _id: id, status: 'pending' },
+        { $set: { status: nextStatus, adminNote, rejectionReason, transactionId, processedAt: new Date() } },
+        { new: true },
+    ).lean();
 
-    if (!updated) throw new ValidationError('Withdrawal request not found');
+    if (!claimed) {
+        const current = await FoodDeliveryWithdrawal.findById(id).select('status').lean();
+        if (!current) throw new ValidationError('Withdrawal request not found');
+        throw new ValidationError(`A ${current.status} withdrawal cannot be changed to ${nextStatus}.`);
+    }
+    // The raw partner id decides whose wallet is debited; it must not depend on the partner document still being there
+    const partnerId = claimed.deliveryPartnerId;
+    const updated = claimed;
 
-    // If approved, deduct from wallet balance
-    if (['approved', 'processed', 'completed', 'settled'].includes(String(status).toLowerCase())) {
+    if (nextStatus === 'approved') {
         const amount = Number(updated.amount || 0);
-        if (amount > 0) {
-            await FoodDeliveryWallet.findOneAndUpdate(
-                { deliveryPartnerId: updated.deliveryPartnerId?._id || updated.deliveryPartnerId },
-                {
-                    $inc: {
-                        balance: -amount,
-                        totalSettled: amount
-                    }
+        if (amount > 0 && partnerId) {
+            try {
+                // Through the ledger (a Transaction row + the wallet in one step), keyed by the withdrawal so it can only happen once
+                const { recordTransaction, DuplicateTransactionError } = await import('../../../../core/payments/transaction.service.js');
+                try {
+                    await recordTransaction({
+                        entityType: 'deliveryBoy',
+                        entityId: String(partnerId),
+                        type: 'debit',
+                        amount,
+                        description: `Withdrawal ${updated._id} paid out`,
+                        category: 'settlement_payout',
+                        allowNegative: true,
+                        dedupeKey: `delivery_withdrawal:${updated._id}`,
+                    });
+                } catch (err) {
+                    if (!(err instanceof DuplicateTransactionError)) throw err;
                 }
-            );
+                await FoodDeliveryWallet.updateOne({ deliveryPartnerId: partnerId }, { $inc: { totalSettled: amount } });
+            } catch (err) {
+                // Nothing was paid out in the books: put the request back so the admin can retry safely
+                await FoodDeliveryWithdrawal.updateOne({ _id: updated._id, status: 'approved' }, { $set: { status: 'pending' }, $unset: { processedAt: 1 } });
+                throw err;
+            }
         }
 
         try {
-            const partnerId = updated.deliveryPartnerId?._id || updated.deliveryPartnerId;
             if (partnerId) {
                 const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
                 await notifyOwnersSafely(
@@ -5221,7 +5245,7 @@ export async function updateDeliveryWithdrawalStatus(id, { status, adminNote, re
         }
     }
 
-    return updated;
+    return FoodDeliveryWithdrawal.findById(updated._id).populate('deliveryPartnerId', 'name phone profilePartnerId').lean();
 }
 
 /**

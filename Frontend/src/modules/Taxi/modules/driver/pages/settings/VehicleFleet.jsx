@@ -131,7 +131,7 @@ const buildVisibleVehicleTypes = (allTypes, driver) => {
 
     const activeTypes = allTypes.filter((type) => {
         const isActive = type.active !== false && Number(type.status ?? 1) !== 0;
-        const transportType = String(type.transport_type || type.is_taxi || 'taxi').toLowerCase();
+        const transportType = String(type.transport_type || 'taxi').toLowerCase();
 
         if (!isActive) {
             return false;

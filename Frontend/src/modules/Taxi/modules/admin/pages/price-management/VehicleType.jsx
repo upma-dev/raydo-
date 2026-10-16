@@ -17,7 +17,13 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../../../shared/api/axiosInstance';
-import { useTaxiTransportTypes } from '../../../../shared/hooks/useTaxiTransportTypes';
+import {
+  ALL_SERVICES,
+  SERVICE_LABELS,
+  isTwoWheelerVehicle,
+  servicesFromTransportType,
+  transportTypeForServices,
+} from '../../../../shared/utils/vehicleServices';
 
 import CarIcon from '@/assets/hero_sedan.png';
 import BikeIcon from '@/assets/hero_bike.png';
@@ -77,22 +83,14 @@ const normalizeIconType = (value = '') => {
 
 const OBJECT_ID_PATTERN = /^[a-fA-F0-9]{24}$/;
 
-const normalizeTransportType = (value = '') => {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'delivery') return 'delivery';
-  if (normalized === 'pooling') return 'pooling';
-  if (normalized === 'outstation') return 'outstation';
-  if (normalized === 'both' || normalized === 'all') return 'both';
-  return 'taxi';
+// What the admin ticked, or (for a vehicle type that never had services saved) what its old transport type implies
+const servicesOfVehicle = (vehicle = {}) => {
+  const saved = Array.isArray(vehicle.allowed_services) ? vehicle.allowed_services.filter((item) => ALL_SERVICES.includes(item)) : [];
+  if (saved.length > 0) return saved;
+  return servicesFromTransportType(vehicle.transport_type, { twoWheeler: isTwoWheelerVehicle(vehicle) });
 };
 
-const normalizeTaxiMode = (value = '') => {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'delivery') return 'delivery';
-  if (normalized === 'pooling') return 'pooling';
-  if (normalized === 'both' || normalized === 'all') return 'both';
-  return 'taxi';
-};
+const FARE_MODE_LABELS = { normal: 'Fixed', bidding: 'Bidding', both: 'Fixed + Bidding' };
 
 const sanitizeObjectIdList = (items = []) =>
   (Array.isArray(items) ? items : [])
@@ -109,14 +107,13 @@ const defaultFormData = {
   name: '',
   short_description: '',
   description: '',
-  transport_type: 'taxi',
+  services: ['taxi', 'outstation'],
   dispatch_type: 'normal',
   icon_types: 'car',
   image: '',
   map_icon: '',
   capacity: 0,
   size: '',
-  is_taxi: 'taxi',
   is_accept_share_ride: 0,
   delivery_category: '',
   delivery_distance_pricing: {
@@ -263,24 +260,7 @@ const VehicleType = ({ mode: propMode }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [pagination, setPagination] = useState({ total: 0, current_page: 1 });
   const [errorMessage, setErrorMessage] = useState('');
-  const [formData, setFormData] = useState({ ...defaultFormData, transport_type: '' });
-  const { transportTypes: dbTransportTypes } = useTaxiTransportTypes();
-  const transportTypeOptions = useMemo(() => {
-    if (Array.isArray(dbTransportTypes) && dbTransportTypes.length > 0) {
-      return dbTransportTypes.map((t) => ({
-        id: String(t.id || t._id || t.name || '').toLowerCase(),
-        name: String(t.name || t.id || '').toLowerCase(),
-        display_name: t.display_name || t.name || t.id,
-      }));
-    }
-    return [
-      { id: 'taxi', name: 'taxi', display_name: 'Taxi / Ride' },
-      { id: 'delivery', name: 'delivery', display_name: 'Delivery' },
-      { id: 'both', name: 'both', display_name: 'Both (Taxi & Delivery)' },
-      { id: 'pooling', name: 'pooling', display_name: 'Pooling' },
-      { id: 'outstation', name: 'outstation', display_name: 'Outstation' },
-    ];
-  }, [dbTransportTypes]);
+  const [formData, setFormData] = useState({ ...defaultFormData });
 
   useEffect(() => {
     let mounted = true;
@@ -315,14 +295,13 @@ const VehicleType = ({ mode: propMode }) => {
               name: selectedVehicle.name || '',
               short_description: selectedVehicle.short_description || '',
               description: selectedVehicle.description || '',
-              transport_type: selectedVehicle.transport_type || 'taxi',
+              services: servicesOfVehicle(selectedVehicle),
               dispatch_type: selectedVehicle.dispatch_type || selectedVehicle.trip_dispatch_type || 'normal',
               icon_types: normalizeIconType(selectedVehicle.icon_types || selectedVehicle.icon_types_for),
               image: selectedVehicle.image || '',
               map_icon: selectedVehicle.map_icon || selectedVehicle.icon || selectedVehicle.image || '',
               capacity: Number(selectedVehicle.capacity || 0),
               size: String(selectedVehicle.size || ''),
-              is_taxi: selectedVehicle.is_taxi || 'taxi',
               is_accept_share_ride: Number(selectedVehicle.is_accept_share_ride || 0),
               delivery_category: String(selectedVehicle.delivery_category || ''),
               delivery_distance_pricing: normalizeDeliveryDistancePricing(selectedVehicle.delivery_distance_pricing),
@@ -379,9 +358,21 @@ const VehicleType = ({ mode: propMode }) => {
   );
 
   const showsDeliveryCategorySelector = useMemo(
-    () => ['delivery', 'both'].includes(normalizeTransportType(formData.transport_type)),
-    [formData.transport_type],
+    () => formData.services.includes('delivery'),
+    [formData.services],
   );
+
+  const toggleService = (service) => {
+    setFormData((prev) => {
+      const next = prev.services.includes(service)
+        ? prev.services.filter((item) => item !== service)
+        : [...prev.services, service];
+      // Parcel details only make sense while Parcel is ticked
+      return next.includes('delivery')
+        ? { ...prev, services: next }
+        : { ...prev, services: next, delivery_category: '', delivery_distance_pricing: normalizeDeliveryDistancePricing() };
+    });
+  };
 
   const updateForm = (field, value) => {
     let sanitizedValue = value;
@@ -422,15 +413,19 @@ const VehicleType = ({ mode: propMode }) => {
     setErrorMessage('');
 
     try {
+      if (formData.services.length === 0) {
+        throw new Error('Tick at least one service this vehicle type can do.');
+      }
       if (showsDeliveryCategorySelector && !formData.delivery_category) {
-        throw new Error('Choose a delivery category for this delivery-enabled vehicle type.');
+        throw new Error('Choose a parcel category for this parcel-enabled vehicle type.');
       }
 
       const payload = {
         name: formData.name.trim(),
         short_description: formData.short_description.trim(),
         description: formData.description.trim(),
-        transport_type: normalizeTransportType(formData.transport_type),
+        allowed_services: formData.services,
+        transport_type: transportTypeForServices(formData.services),
         dispatch_type: formData.dispatch_type,
         icon_types: normalizeIconType(formData.icon_types),
         image: formData.image || '',
@@ -438,7 +433,6 @@ const VehicleType = ({ mode: propMode }) => {
         map_icon: formData.map_icon || '',
         capacity: Number(formData.capacity || 0),
         size: formData.size,
-        is_taxi: normalizeTaxiMode(formData.is_taxi || formData.transport_type),
         is_accept_share_ride: Number(formData.is_accept_share_ride || 0),
         delivery_category: showsDeliveryCategorySelector ? formData.delivery_category : '',
         delivery_distance_pricing: showsDeliveryCategorySelector
@@ -574,8 +568,8 @@ const VehicleType = ({ mode: propMode }) => {
                 <Package size={20} />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Delivery Types</p>
-                <p className="text-2xl font-bold text-slate-900">{vehicles.filter((item) => ['delivery', 'both'].includes(String(item.transport_type || '').toLowerCase())).length}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Parcel Types</p>
+                <p className="text-2xl font-bold text-slate-900">{vehicles.filter((item) => servicesOfVehicle(item).includes('delivery')).length}</p>
               </div>
             </div>
           </div>
@@ -593,8 +587,8 @@ const VehicleType = ({ mode: propMode }) => {
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Vehicle</th>
-                  <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Transport</th>
-                  <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Dispatch</th>
+                  <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Services</th>
+                  <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Fare Mode</th>
                   <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Active</th>
                   <th className="px-6 py-4 text-right text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Action</th>
                 </tr>
@@ -622,17 +616,15 @@ const VehicleType = ({ mode: propMode }) => {
                       </div>
                     </td>
                     <td className="px-6 py-5">
-                      <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                        String(vehicle.transport_type || '').toLowerCase() === 'delivery'
-                          ? 'bg-orange-50 text-orange-600'
-                          : String(vehicle.transport_type || '').toLowerCase() === 'both'
-                            ? 'bg-emerald-50 text-emerald-600'
-                            : 'bg-blue-50 text-blue-600'
-                      }`}>
-                        {vehicle.transport_type}
-                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {servicesOfVehicle(vehicle).map((service) => (
+                          <span key={service} className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
+                            {SERVICE_LABELS[service]}
+                          </span>
+                        ))}
+                      </div>
                     </td>
-                    <td className="px-6 py-5 text-sm font-medium text-slate-700">{vehicle.trip_dispatch_type || vehicle.dispatch_type || 'normal'}</td>
+                    <td className="px-6 py-5 text-sm font-medium text-slate-700">{FARE_MODE_LABELS[vehicle.trip_dispatch_type || vehicle.dispatch_type || 'normal'] || 'Fixed'}</td>
                     <td className="px-6 py-5">
                       <StatusToggle
                         active={vehicle.active !== false && Number(vehicle.status ?? 1) !== 0}
@@ -696,27 +688,28 @@ const VehicleType = ({ mode: propMode }) => {
 
       <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
         <div className="grid grid-cols-1 gap-8 p-6 lg:grid-cols-2 lg:p-8">
-          <div>
-            <label className={labelClass}>Transport Type *</label>
-            <select
-              value={formData.transport_type}
-              onChange={(e) => {
-                const nextTransportType = e.target.value;
-                updateForm('transport_type', nextTransportType);
-                if (!['delivery', 'both'].includes(normalizeTransportType(nextTransportType))) {
-                  updateForm('delivery_category', '');
-                  updateForm('delivery_distance_pricing', normalizeDeliveryDistancePricing());
-                }
-              }}
-              className={inputClass}
-            >
-               <option value="">Select Transport Type</option>
-               {transportTypeOptions.map((t) => (
-                 <option key={t.id || t._id || t.name} value={t.name}>{t.display_name}</option>
-               ))}
-            </select>
+          <div className="lg:col-span-2">
+            <label className={labelClass}>Services this vehicle can do *</label>
+            <div className="flex flex-wrap gap-2">
+              {ALL_SERVICES.map((service) => {
+                const selected = formData.services.includes(service);
+                return (
+                  <button
+                    key={service}
+                    type="button"
+                    onClick={() => toggleService(service)}
+                    className={`rounded-full px-5 py-2 text-sm font-semibold transition-all ${
+                      selected ? 'bg-orange-500 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {SERVICE_LABELS[service]}
+                  </button>
+                );
+              })}
+            </div>
             <p className="mt-2 text-xs text-slate-500">
-              Choose `Both` for vehicle types like bikes that can handle ride and parcel flows.
+              Tick every service this vehicle type can do, for example a bike: Ride + Parcel; a car: Ride + Outstation + Car Pooling.
+              Drivers on this vehicle only see these services.
             </p>
           </div>
 
@@ -996,12 +989,13 @@ const VehicleType = ({ mode: propMode }) => {
           </div>
 
           <div>
-            <label className={labelClass}>Trip Dispatch Type *</label>
+            <label className={labelClass}>Fare Mode *</label>
             <select value={formData.dispatch_type} onChange={(e) => updateForm('dispatch_type', e.target.value)} className={inputClass}>
-              <option value="normal">Normal</option>
-              <option value="bidding">Bidding</option>
-              <option value="both">Both</option>
+              {Object.entries(FARE_MODE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
             </select>
+            <p className="mt-2 text-xs text-slate-500">Fixed = fare set by the app. Bidding = riders and drivers negotiate.</p>
           </div>
 
           <div>
@@ -1013,16 +1007,6 @@ const VehicleType = ({ mode: propMode }) => {
               className={inputClass}
               placeholder="2"
             />
-          </div>
-
-          <div>
-            <label className={labelClass}>Operational Scope *</label>
-            <select value={formData.is_taxi} onChange={(e) => updateForm('is_taxi', e.target.value)} className={inputClass}>
-              <option value="">Select Scope</option>
-              {transportTypeOptions.map((t) => (
-                <option key={t.id || t._id || t.name} value={t.name}>{t.display_name}</option>
-              ))}
-            </select>
           </div>
 
           <div className="lg:col-span-2">
@@ -1053,7 +1037,7 @@ const VehicleType = ({ mode: propMode }) => {
             <div className="flex items-start gap-3 rounded-2xl bg-amber-50 px-4 py-3">
               <Info size={16} className="mt-0.5 shrink-0 text-amber-600" />
               <p className="text-sm text-amber-800">
-                This form is fully dynamic from your DB. Transport type, icon type, and supported vehicles all save to the real vehicle catalog.
+                This form is fully dynamic from your DB. Services, icon type, and supported vehicles all save to the real vehicle catalog.
               </p>
             </div>
             <label className="flex items-center gap-3 text-sm font-medium text-slate-700">

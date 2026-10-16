@@ -55,6 +55,14 @@ const vehicleSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // The services this vehicle type can do (the admin ticks them; transport_type is derived from them, see
+    // transportTypeForServices). Empty = the default rule (two-wheelers: taxi + delivery only,
+    // every other vehicle: all services). See services/vehicleServiceRules.js
+    allowed_services: {
+      type: [String],
+      enum: ['taxi', 'outstation', 'delivery', 'pooling'],
+      default: [],
+    },
     dispatch_type: {
       type: String,
       enum: ['normal', 'bidding', 'both'],
@@ -79,11 +87,6 @@ const vehicleSchema = new mongoose.Schema(
     size: {
       type: String,
       default: '',
-    },
-    is_taxi: {
-      type: String,
-      enum: ['taxi', 'delivery', 'pooling', 'both'],
-      default: 'taxi',
     },
     is_accept_share_ride: {
       type: Number,

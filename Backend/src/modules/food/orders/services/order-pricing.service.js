@@ -12,6 +12,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { isFoodItemAvailableNow } from '../../utils/foodAvailability.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { haversineKm } from './order.helpers.js';
+import { resolveOrderItems } from './order-items.service.js';
 
 function extractCoords(addressLike) {
   const coords = addressLike?.location?.coordinates;
@@ -178,11 +179,8 @@ export async function calculateOrderPricing(userId, dto) {
     throw new ValidationError(availability.message || "Restaurant is currently closed and not accepting orders");
   }
 
-  const items = Array.isArray(dto.items) ? dto.items : [];
-  const subtotal = items.reduce(
-    (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
-    0,
-  );
+  // Prices come from the database, never from the app (see order-items.service.js)
+  const { items, subtotal } = await resolveOrderItems(dto.restaurantId, dto.items, { at: availabilityDate });
 
   let feeDoc = await FoodFeeSettings.findOne({ isActive: true })
     .sort({ createdAt: -1 })
@@ -451,12 +449,13 @@ export async function calculateOrderPricing(userId, dto) {
     }
   }
 
-  const total = Math.max(
+  const total = Math.round(Math.max(
     0,
     subtotal + packagingFee + deliveryFee + platformFee + tax + surgeAmount - discount,
-  );
+  ) * 100) / 100;
 
   return {
+    items,
     pricing: {
       subtotal,
       tax,

@@ -30,6 +30,7 @@ export default function FeeSettings() {
   const [slabModalOpen, setSlabModalOpen] = useState(false)
   const [editingRule, setEditingRule] = useState(null)
   const [savingRule, setSavingRule] = useState(false)
+  const [previewKm, setPreviewKm] = useState("")
   const [form, setForm] = useState({
     name: "",
     minDistance: "0",
@@ -165,6 +166,24 @@ export default function FeeSettings() {
     return null
   }
 
+  // Same formula as the backend (order-pricing.service.js): what the customer pays for a given distance in this slab
+  const computeSlabFee = (distanceKm, slab) => {
+    const km = Math.max(0, toNum(distanceKm, 0))
+    const base = toNum(slab.basePayout, 0)
+    const perKm = toNum(slab.commissionPerKm, 0)
+    const isBase = toNum(slab.minDistance, 0) <= 0
+    let flat = base
+    let billableKm = km
+    if (!isBase) {
+      const baseSlab = sortedDistanceRules.find((r) => toNum(r.minDistance, 0) <= 0 && r._id !== editingRule?._id)
+      flat = baseSlab ? toNum(baseSlab.basePayout, 0) : 0
+      const baseMax = baseSlab && baseSlab.maxDistance != null ? toNum(baseSlab.maxDistance, 0) : null
+      billableKm = baseMax == null ? km : Math.max(0, km - baseMax)
+    }
+    const perKmPart = Math.round(perKm * billableKm * 100) / 100
+    return { total: Math.round((flat + perKmPart) * 100) / 100, flat, perKm, billableKm, perKmPart }
+  }
+
   const openEditSlab = (rule) => {
     setEditingRule(rule)
     const isUnlimited = rule.maxDistance == null
@@ -177,6 +196,7 @@ export default function FeeSettings() {
       commissionPerKm: String(rule.commissionPerKm ?? 0),
       status: Boolean(rule.status),
     })
+    setPreviewKm("")
     setSlabModalOpen(true)
   }
 
@@ -494,7 +514,7 @@ export default function FeeSettings() {
                       const max = rule.maxDistance == null ? null : toNum(rule.maxDistance, 0)
                       const isBase = min <= 0
                       const adminCfg = getDistanceRuleAdminCommissionConfig(rule._id) || { adminDeliveryCommissionPercent: 0 }
-                      const userDeliveryFeeDisplay = `Rs.${toNum(rule.commissionPerKm, 0)}/km`
+                      const userDeliveryFeeDisplay = `₹${toNum(rule.basePayout, 0)} + ₹${toNum(rule.commissionPerKm, 0)}/km`
                       return (
                         <tr key={rule._id} className="border-t border-slate-200">
                           <td className="px-4 py-3 text-slate-900">{min} km</td>
@@ -801,6 +821,31 @@ export default function FeeSettings() {
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Per Km Charge (₹)</label>
                 <input type="number" min="0" step="0.01" className="w-full px-3 py-2 border border-slate-300 rounded-lg" value={form.commissionPerKm} onChange={(e) => setForm((f) => ({ ...f, commissionPerKm: e.target.value }))} />
               </div>
+              {(() => {
+                const minKm = toNum(form.minDistance, 0)
+                const maxKm = form.maxDistanceUnlimited || form.maxDistance === "" ? null : toNum(form.maxDistance, 0)
+                const sampleKm = previewKm !== "" ? toNum(previewKm, 0) : (maxKm ?? minKm + 1)
+                const fee = computeSlabFee(sampleKm, form)
+                const atMin = computeSlabFee(minKm, form).total
+                const atMax = maxKm == null ? null : computeSlabFee(maxKm, form).total
+                return (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                    <div className="text-sm font-semibold text-emerald-800 mb-2">Customer Delivery Fee Preview</div>
+                    <div className="flex items-center gap-2 text-sm text-slate-700 mb-2">
+                      <span>Distance</span>
+                      <input type="number" min="0" step="0.1" value={previewKm !== "" ? previewKm : String(sampleKm)} onChange={(e) => setPreviewKm(e.target.value)} className="w-20 px-2 py-1 border border-slate-300 rounded-md bg-white" />
+                      <span>km →</span>
+                      <span className="font-bold text-emerald-700 text-base">₹{fee.total}</span>
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      ₹{fee.flat} base + ₹{fee.perKm} × {Math.round(fee.billableKm * 100) / 100} km = ₹{fee.total}
+                    </div>
+                    <div className="text-xs text-slate-600 mt-1">
+                      Is slab me fee: ₹{atMin} ({minKm} km){atMax != null ? ` se ₹${atMax} (${maxKm} km)` : " se aage distance ke hisaab se badhegi"}
+                    </div>
+                  </div>
+                )
+              })()}
               <label className="inline-flex items-center gap-2 text-sm text-slate-700">
                 <input type="checkbox" checked={Boolean(form.status)} onChange={(e) => setForm((f) => ({ ...f, status: e.target.checked }))} />
                 Active

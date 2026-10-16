@@ -1,0 +1,53 @@
+/* App-style overrides for owner portal screens that reuse admin/website components. */
+.bus-app section {
+  border-radius: 20px !important;
+  padding: 16px !important;
+  border-color: #d6e6fb !important;
+  box-shadow: 0 4px 14px rgba(11, 42, 91, 0.06) !important;
+}
+
+/* Wide breakpoint grids are cramped inside the phone-width column. */
+.bus-app .grid[class*='grid-cols-'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+.bus-app .grid[class*='xl:grid-cols-['] {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.bus-app input,
+.bus-app select,
+.bus-app textarea {
+  border-radius: 14px !important;
+  border-color: #d6e6fb !important;
+  background: #f7faff;
+}
+.bus-app input:focus,
+.bus-app select:focus,
+.bus-app textarea:focus {
+  border-color: #2f80ed !important;
+  box-shadow: 0 0 0 3px rgba(47, 128, 237, 0.15) !important;
+}
+
+.bus-app .bg-slate-900 {
+  background-color: #0b2a5b !important;
+}
+.bus-app .text-slate-900 {
+  color: #0b2a5b;
+}
+.bus-app .bg-slate-50,
+.bus-app .bg-slate-100 {
+  background-color: #eef5ff;
+}
+
+/* Keep the save bar above the bottom navigation. */
+.bus-app section.sticky {
+  bottom: 72px !important;
+}
+.bus-app section.sticky > div {
+  gap: 12px;
+}
+.bus-app section.sticky .flex-wrap > div,
+.bus-app section.sticky button {
+  flex: 1 1 auto;
+  justify-content: center;
+}

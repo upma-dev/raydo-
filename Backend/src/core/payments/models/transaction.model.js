@@ -87,6 +87,13 @@ const transactionSchema = new mongoose.Schema(
 
         module: { type: String, default: 'food', trim: true },
 
+        /**
+         * Idempotency key for system postings (order payouts, reversals, penalties, withdrawal debits).
+         * The unique partial index below makes a second posting for the same thing impossible even when
+         * two requests (webhook + app verify, double click...) run at the same moment.
+         */
+        dedupeKey: { type: String, default: undefined },
+
         metadata: { type: mongoose.Schema.Types.Mixed, default: undefined }
     },
     { collection: 'transactions', timestamps: true }
@@ -95,5 +102,6 @@ const transactionSchema = new mongoose.Schema(
 transactionSchema.index({ entityType: 1, entityId: 1, createdAt: -1 });
 transactionSchema.index({ orderId: 1, entityType: 1 });
 transactionSchema.index({ paymentId: 1, type: 1 });
+transactionSchema.index({ dedupeKey: 1 }, { unique: true, partialFilterExpression: { dedupeKey: { $type: 'string' } } });
 
 export const Transaction = mongoose.model('Transaction', transactionSchema);

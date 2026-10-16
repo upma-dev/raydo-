@@ -8,7 +8,26 @@ import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransa
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
 import { getRiderCashPosition } from './riderCash.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
+import { Transaction } from '../../../../core/payments/models/transaction.model.js';
 import { createRazorpayCheckoutOrder, isRazorpayConfigured, verifyPaymentSignature, fetchRazorpayOrder, fetchRazorpayPayment } from '../../orders/helpers/razorpay.helper.js';
+
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+/**
+ * Payout the ledger gave this rider for orders that are NOT delivered: a rider who already picked up an order that was
+ * then cancelled keeps the payout (see cancelOrderCore). Delivered orders are counted from the orders themselves, so
+ * they are left out here to avoid counting them twice.
+ */
+const riderLedgerExtraEarnings = async (partnerId) => {
+    const rows = await Transaction.aggregate([
+        { $match: { entityType: 'deliveryBoy', entityId: partnerId, category: { $in: ['delivery_payout', 'delivery_payout_reversal'] }, orderId: { $ne: null } } },
+        { $group: { _id: '$orderId', net: { $sum: { $cond: [{ $eq: ['$type', 'credit'] }, '$amount', { $multiply: ['$amount', -1] }] } } } },
+    ]);
+    if (!rows.length) return 0;
+    const deliveredIds = await FoodOrder.find({ _id: { $in: rows.map((r) => r._id) }, orderStatus: 'delivered' }).distinct('_id');
+    const delivered = new Set(deliveredIds.map(String));
+    return round2(rows.filter((r) => !delivered.has(String(r._id))).reduce((sum, r) => sum + Math.max(0, r.net), 0));
+};
 
 /**
  * Enhanced wallet fetch for delivery partners.
@@ -95,11 +114,15 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
 
     // Pocket Balance = (Earnings + Bonus) - Total Withdrawn (approved) - Pending Withdrawals
     // Wait, usually pocket balance subtracts pending too so user knows how much is "left" to request.
-    const grossPocketBalance = Math.max(0, (totalEarned + totalBonus) - (totalWithdrawn + pendingWithdrawals));
+    const ledgerExtraEarnings = await riderLedgerExtraEarnings(partnerId);
+    const rawGrossPocket = round2((totalEarned + ledgerExtraEarnings + totalBonus) - (totalWithdrawn + pendingWithdrawals));
+    const grossPocketBalance = Math.max(0, rawGrossPocket);
 
     // COD cash the rider is still holding belongs to the platform. It is netted against earnings, so a rider cannot
     // keep the customers' cash AND withdraw the same orders' earnings. Depositing the cash frees the earnings again.
     const pocketBalance = Math.max(0, grossPocketBalance - cashInHand);
+    // Not clamped at zero: a negative value means more has been promised (withdrawals) than earned
+    const rawPocketBalance = round2(rawGrossPocket - cashInHand);
 
     // Fetch transactions for UI (Orders, Bonuses, Withdrawals)
     const [ordersTx] = await Promise.all([
@@ -157,8 +180,9 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return {
-        totalBalance: totalEarned + totalBonus, // Gross lifetime earnings
+        totalBalance: totalEarned + ledgerExtraEarnings + totalBonus, // Gross lifetime earnings
         pocketBalance, // Available to withdraw (earnings minus COD cash still in hand)
+        rawPocketBalance,
         grossPocketBalance, // Earnings not yet withdrawn, before the COD cash in hand is netted off
         cashDeductedFromBalance: Math.min(cashInHand, grossPocketBalance),
         cashInHand, // COD to be deposited/deducted
@@ -198,7 +222,7 @@ export const requestDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
 
     const withdrawal = await FoodDeliveryWithdrawal.create({
         deliveryPartnerId,
-        amount,
+        amount: round2(amount),
         paymentMethod,
         bankDetails: bankDetails || {
             accountNumber: partner.bankAccountNumber,
@@ -210,6 +234,14 @@ export const requestDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
         upiQrCode: partner.upiQrCode,
         status: 'pending'
     });
+
+    // Re-check AFTER the request exists. Two requests sent at the same moment both pass the check above, but now each one
+    // sees the other as pending: if together they promise more than the rider has, the later one is withdrawn again.
+    const after = await getDeliveryPartnerWalletEnhanced(deliveryPartnerId);
+    if (after.rawPocketBalance < -0.009) {
+        await FoodDeliveryWithdrawal.deleteOne({ _id: withdrawal._id, status: 'pending' });
+        throw new ValidationError('Insufficient balance for this withdrawal');
+    }
 
     return withdrawal;
 };
@@ -236,7 +268,7 @@ export const createDeliveryCashDepositOrder = async (deliveryPartnerId, amountIn
     }
 
     try {
-        const razorpay = await createRazorpayCheckoutOrder(amountPaise, 'INR', receipt);
+        const razorpay = await createRazorpayCheckoutOrder(amountPaise, 'INR', receipt, { purpose: 'cash_deposit', deliveryPartnerId: String(deliveryPartnerId) });
         return { razorpay };
     } catch (error) {
         throw new ValidationError(error?.message || 'Payment gateway error');
@@ -294,24 +326,57 @@ export const verifyDeliveryCashDepositPayment = async (deliveryPartnerId, payloa
         throw new ValidationError('Deposit amount cannot exceed cash in hand. Contact support for a refund of this payment.');
     }
 
-    const existing = await FoodDeliveryCashDeposit.findOne({ deliveryPartnerId, razorpayOrderId: orderId });
-    const deposit = existing
-        ? await FoodDeliveryCashDeposit.findByIdAndUpdate(
-            existing._id,
+    // ONE atomic upsert. The unique index on razorpayPaymentId means that when two verify calls for the same payment
+    // run together only one can write it; the other gets a duplicate-key error and just returns the existing deposit.
+    let deposit;
+    try {
+        deposit = await FoodDeliveryCashDeposit.findOneAndUpdate(
+            { deliveryPartnerId, razorpayOrderId: orderId },
             { $set: { amount, paymentMethod: 'razorpay', status: 'Completed', razorpayOrderId: orderId, razorpayPaymentId: paymentId } },
-            { new: true }
-        )
-        : await FoodDeliveryCashDeposit.create({
-            deliveryPartnerId,
-            amount,
-            paymentMethod: 'razorpay',
-            status: 'Completed',
-            razorpayOrderId: orderId,
-            razorpayPaymentId: paymentId
-        });
+            { new: true, upsert: true, setDefaultsOnInsert: true },
+        );
+    } catch (err) {
+        if (err?.code !== 11000) throw err;
+        deposit = await FoodDeliveryCashDeposit.findOne({ razorpayPaymentId: paymentId, status: 'Completed' }).lean();
+        if (!deposit || String(deposit.deliveryPartnerId) !== String(deliveryPartnerId)) {
+            throw new ValidationError('This payment has already been used');
+        }
+    }
 
     return {
         deposit,
         wallet: await getDeliveryPartnerWalletEnhanced(deliveryPartnerId)
     };
+};
+
+/**
+ * Webhook path for a cash deposit: records the deposit even if the app never called verify.
+ * Same one-payment-one-deposit rule as verifyDeliveryCashDepositPayment (unique index on razorpayPaymentId).
+ */
+export const settleDeliveryCashDepositFromWebhook = async ({ rzOrder, paymentId, amountPaise }) => {
+    const deliveryPartnerId = String(rzOrder?.notes?.deliveryPartnerId || '').trim();
+    if (rzOrder?.notes?.purpose !== 'cash_deposit' || !deliveryPartnerId) return { handled: false };
+    if (!String(rzOrder?.receipt || '').startsWith(`cash_deposit_${deliveryPartnerId.slice(-8)}_`)) return { handled: true, recorded: false, reason: 'receipt mismatch' };
+    if (Number(rzOrder.amount) !== Number(amountPaise)) return { handled: true, recorded: false, reason: 'amount mismatch' };
+
+    const amount = Math.round(Number(amountPaise)) / 100;
+    if (!Number.isFinite(amount) || amount < 1) return { handled: true, recorded: false, reason: 'bad amount' };
+
+    const existing = await FoodDeliveryCashDeposit.findOne({ razorpayPaymentId: paymentId, status: 'Completed' }).lean();
+    if (existing) return { handled: true, recorded: false, reason: 'already recorded' };
+
+    const wallet = await getDeliveryPartnerWalletEnhanced(deliveryPartnerId);
+    if (amount > wallet.cashInHand) return { handled: true, recorded: false, reason: 'exceeds cash in hand (needs manual refund)' };
+
+    try {
+        await FoodDeliveryCashDeposit.findOneAndUpdate(
+            { deliveryPartnerId, razorpayOrderId: String(rzOrder.id) },
+            { $set: { amount, paymentMethod: 'razorpay', status: 'Completed', razorpayOrderId: String(rzOrder.id), razorpayPaymentId: paymentId } },
+            { new: true, upsert: true, setDefaultsOnInsert: true },
+        );
+    } catch (err) {
+        if (err?.code !== 11000) throw err;
+        return { handled: true, recorded: false, reason: 'already recorded' };
+    }
+    return { handled: true, recorded: true, deliveryPartnerId, amount };
 };

@@ -19,6 +19,7 @@ import {
     normalizeDriverPortalRole,
 } from '../../services/registrationService';
 import { POOLING_ENABLED } from '../../../../shared/featureFlags';
+import { transportChoicesForVehicle, vehicleCanDo, coerceTransport } from '../../../../shared/utils/vehicleServices';
 
 const VEHICLE_NUMBER_REGEX = /^[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4}$/;
 const getAllowedServiceCategories = () => (
@@ -66,6 +67,25 @@ const normalizeServiceCategories = (value, registerFor = 'taxi') => {
     }
 
     return getAllowedServiceCategories().includes(fallback) ? [fallback] : ['taxi'];
+};
+
+// One choice says what the driver works in. "All" = every service.
+const TRANSPORT_CHOICES = [
+    { id: 'taxi', label: 'Taxi' },
+    { id: 'outstation', label: 'Outstation' },
+    { id: 'delivery', label: 'Delivery' },
+    ...(POOLING_ENABLED ? [{ id: 'pooling', label: 'Pooling' }] : []),
+    { id: 'all', label: 'All' },
+];
+
+const resolveInitialTransport = (session = {}) => {
+    const raw = String(session.registerFor || 'taxi').trim().toLowerCase();
+    const services = normalizeServiceCategories(
+        session.serviceCategories || session.vehicleSession?.vehicle?.serviceCategories || [],
+        raw,
+    );
+    if (raw === 'all' || raw === 'both' || services.length > 1) return 'all';
+    return TRANSPORT_CHOICES.some((item) => item.id === services[0]) ? services[0] : 'taxi';
 };
 
 const getPrimaryRegisterFor = (serviceCategories = [], fallback = 'taxi') => {
@@ -135,8 +155,7 @@ const StepVehicle = () => {
     const [vehicleFieldConfigs, setVehicleFieldConfigs] = useState(defaultVehicleFieldConfigs);
 
     const [formData, setFormData] = useState({
-        registerFor: getPrimaryRegisterFor(session.serviceCategories || session.vehicleSession?.vehicle?.serviceCategories || [], session.registerFor || 'taxi'),
-        serviceCategories: normalizeServiceCategories(session.serviceCategories || session.vehicleSession?.vehicle?.serviceCategories || [], session.registerFor || 'taxi'),
+        registerFor: resolveInitialTransport(session),
         locationId: session.locationId || session.serviceLocationId || session.service_location_id || session.vehicleSession?.vehicle?.locationId || '',
         vehicleTypeId: session.vehicleTypeId || session.vehicleSession?.vehicle?.vehicleTypeId || '',
         make: session.make || session.vehicleSession?.vehicle?.make || '',
@@ -157,14 +176,23 @@ const StepVehicle = () => {
     const selectableVehicleTypes = vehicleTypes.filter((type) => {
         if (type?.active === false || Number(type?.status ?? 1) === 0) return false;
         const transport = String(type?.transport_type || 'taxi').toLowerCase();
-        const chosen = (Array.isArray(formData?.serviceCategories) && formData.serviceCategories.length
-            ? formData.serviceCategories
-            : [formData?.registerFor || 'taxi']).map((item) => String(item).toLowerCase());
-        return chosen.every((service) => {
-            const allowed = service === 'delivery' ? ['delivery', 'both'] : service === 'pooling' ? ['pooling', 'both'] : ['taxi', 'both'];
-            return allowed.includes(transport);
-        });
+        const chosen = String(formData?.registerFor || 'taxi').toLowerCase();
+        if (!vehicleCanDo(type, chosen)) return false; // e.g. a bike is not offered for Outstation / Pooling
+        if (chosen === 'all') return true; // an "All" driver may use any active vehicle type
+        const allowed = chosen === 'delivery' ? ['delivery', 'both'] : chosen === 'pooling' ? ['pooling', 'both'] : ['taxi', 'both'];
+        return allowed.includes(transport);
     });
+    // The vehicle decides what the driver may do: a bike only gets Taxi / Delivery (Outstation and Pooling are for 4-wheelers)
+    const pickedVehicle = vehicleTypes.find((type) => String(type._id || type.id) === String(formData.vehicleTypeId)) || null;
+    const transportChoices = pickedVehicle
+        ? transportChoicesForVehicle(pickedVehicle, { poolingEnabled: POOLING_ENABLED })
+        : TRANSPORT_CHOICES;
+    useEffect(() => {
+        if (!pickedVehicle) return;
+        const fixed = coerceTransport(pickedVehicle, formData.registerFor, { poolingEnabled: POOLING_ENABLED });
+        if (fixed !== formData.registerFor) setFormData((p) => ({ ...p, registerFor: fixed }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pickedVehicle, formData.registerFor]);
     // a vehicle type picked earlier that no longer fits the chosen service is cleared (so it cannot be saved by mistake)
     useEffect(() => {
         if (!formData.vehicleTypeId || vehicleTypes.length === 0) return;
@@ -172,7 +200,7 @@ const StepVehicle = () => {
             setFormData((p) => ({ ...p, vehicleTypeId: '' }));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [vehicleTypes, formData.serviceCategories, formData.registerFor]);
+    }, [vehicleTypes, formData.registerFor]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const trimmedModel = String(formData.model || '').trim();
@@ -359,7 +387,6 @@ const StepVehicle = () => {
                     registrationId: session.registrationId,
                     phone: session.phone,
                     registerFor: formData.registerFor,
-                    serviceCategories: formData.serviceCategories,
                     locationId: formData.locationId,
                     locationName: selectedServiceLocation?.name || selectedServiceLocation?.service_location_name || '',
                     serviceLocation: selectedServiceLocation || null,
@@ -607,6 +634,32 @@ const StepVehicle = () => {
                             </div>
                         ) : (
                             <div className="space-y-5 animate-in fade-in slide-in-from-top-4 duration-500">
+                                <div className="space-y-3 pt-1">
+                                    <div className="px-1">
+                                        <label className="block text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 opacity-70">Transport Type</label>
+                                        <p className="text-[11px] font-medium text-slate-400 mt-1">Choose what you want to work in. Pick "All" to take every kind of trip.</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2.5">
+                                        {transportChoices.map((item) => {
+                                            const selected = formData.registerFor === item.id;
+                                            return (
+                                                <button
+                                                    key={item.id}
+                                                    type="button"
+                                                    onClick={() => setFormData((p) => ({ ...p, registerFor: item.id, vehicleTypeId: '' }))}
+                                                    className={`rounded-full px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all ${
+                                                        selected
+                                                            ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/10'
+                                                            : 'border border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    {item.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
                                 {shouldShowField('vehicleTypeId', true) && (
                                     <div className="space-y-4 pt-1">
                                          <div className="space-y-1 px-1">

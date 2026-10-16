@@ -6,6 +6,13 @@ import { Driver } from '../models/Driver.js';
 import { WalletTransaction } from '../models/WalletTransaction.js';
 import { Ride } from '../../user/models/Ride.js';
 import { getWalletSettings } from '../../services/appSettingsService.js';
+import { Owner } from '../../admin/models/Owner.js';
+import {
+  applyOwnerWalletAdjustment,
+  computeFleetRideSplit,
+  resolveOwnerEarningSettings,
+  round2,
+} from './ownerWalletService.js';
 
 const normalizeAmount = (value, fieldName = 'amount') => {
   const amount = Number(value);
@@ -141,13 +148,23 @@ const getWalletSnapshot = async (driver) => {
     cashLimit: rules.cashLimit,
     minimumBalanceForOrders: rules.minimumBalanceForOrders,
     availableForOrders: Math.round((balance - rules.minimumBalanceForOrders) * 100) / 100,
-    isBlocked: Boolean(driver?.wallet?.isBlocked),
+    // Decided from the CURRENT admin rules and balance. The saved wallet.isBlocked flag can be stale (it was set under an
+    // older minimum balance), so it must never block a driver whose balance meets today's minimum.
+    isBlocked: !rules.isWalletEnabled || balance < rules.minimumBalanceForOrders,
     rules,
   };
 };
 
 export const serializeDriverWallet = async (driver) => {
   const wallet = await getWalletSnapshot(driver);
+
+  // Dispatch filters on the saved wallet.isBlocked, so bring it in line with the current rules (e.g. admin lowered the minimum)
+  if (driver?._id && Boolean(driver?.wallet?.isBlocked) !== wallet.isBlocked) {
+    await Driver.findByIdAndUpdate(driver._id, {
+      'wallet.cashLimit': wallet.cashLimit,
+      'wallet.isBlocked': wallet.isBlocked,
+    });
+  }
 
   return {
     balance: wallet.balance,
@@ -158,7 +175,7 @@ export const serializeDriverWallet = async (driver) => {
     isTransferEnabled: wallet.rules.isTransferEnabled,
     minimumTopUpAmount: wallet.rules.minimumTopUpAmount,
     minimumTransferAmount: wallet.rules.minimumTransferAmount,
-    isBlocked: wallet.isBlocked || !wallet.rules.isWalletEnabled || wallet.balance <= wallet.minimumBalanceForOrders,
+    isBlocked: wallet.isBlocked,
   };
 };
 
@@ -173,7 +190,7 @@ export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session } = 
   }
 
   const wallet = await getWalletSnapshot(driver);
-  const isBlocked = wallet.isBlocked || !wallet.rules.isWalletEnabled || wallet.balance <= wallet.minimumBalanceForOrders;
+  const isBlocked = wallet.isBlocked;
 
   if (isBlocked) {
     await Driver.findByIdAndUpdate(driver._id, {
@@ -218,7 +235,7 @@ export const applyDriverWalletAdjustment = async ({
 
   const before = await getWalletSnapshot(driver);
   const balanceAfter = Math.round((before.balance + normalizedAmount) * 100) / 100;
-  const isBlockedAfter = !before.rules.isWalletEnabled || balanceAfter <= before.minimumBalanceForOrders;
+  const isBlockedAfter = !before.rules.isWalletEnabled || balanceAfter < before.minimumBalanceForOrders;
 
   const updatedDriver = await Driver.findByIdAndUpdate(
     driverId,
@@ -365,6 +382,105 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
         { $set: { 'cancellation.payment_status': 'paid_in_next_ride' } },
         { session }
       );
+    }
+
+    // Fleet driver: the ride earning belongs to the owner (fully or by the admin-set share).
+    const fleetDriver = await Driver.findById(ride.driverId).select('owner_id').session(session).lean();
+    const fleetOwner = fleetDriver?.owner_id
+      ? await Owner.findById(fleetDriver.owner_id).select('earning_settings').session(session).lean()
+      : null;
+
+    if (fleetOwner) {
+      const { model, ownerSharePercent } = resolveOwnerEarningSettings(fleetOwner);
+      const split = computeFleetRideSplit({
+        paymentMethod,
+        fare,
+        driverEarnings,
+        commissionAmount,
+        previousCancellationFee,
+        ownerSharePercent,
+      });
+
+      await Ride.updateOne(
+        { _id: ride._id },
+        {
+          $set: {
+            ownerSettlement: {
+              ownerId: fleetOwner._id,
+              model,
+              ownerSharePercent,
+              netEarning: split.netEarning,
+              ownerShare: split.ownerShare,
+              driverShare: split.driverShare,
+              platformDue: split.platformDue,
+              cashDueFromDriver: split.cashDueFromDriver,
+              paymentMethod,
+            },
+          },
+        },
+        { session },
+      );
+
+      const fleetMeta = {
+        fare,
+        baseRideFare,
+        previousCancellationFee,
+        commissionAmount,
+        netEarning: split.netEarning,
+        ownerShare: split.ownerShare,
+        driverShare: split.driverShare,
+        ownerSharePercent,
+        model,
+        paymentMethod,
+      };
+
+      if (split.ownerWalletChange) {
+        await applyOwnerWalletAdjustment({
+          ownerId: fleetOwner._id,
+          amount: split.ownerWalletChange,
+          category: paymentMethod === 'cash' ? 'ride_commission' : 'ride_share',
+          title: paymentMethod === 'cash'
+            ? 'Admin commission for cash ride'
+            : `Ride earning (${ownerSharePercent}% owner share)`,
+          rideId: ride._id,
+          driverId: ride.driverId,
+          metadata: fleetMeta,
+          session,
+        });
+      }
+
+      if (split.cashDueFromDriver > 0) {
+        await Driver.updateOne(
+          { _id: ride.driverId },
+          { $inc: { owner_cash_due: split.cashDueFromDriver } },
+          { session },
+        );
+      }
+
+      let fleetResult = null;
+      if (split.driverWalletChange > 0) {
+        fleetResult = await applyDriverWalletAdjustment({
+          driverId: ride.driverId,
+          rideId: ride._id,
+          amount: split.driverWalletChange,
+          type: 'ride_earning',
+          description: `Driver share of fleet ride (${round2(100 - ownerSharePercent)}%)`,
+          metadata: { ...fleetMeta, source: 'fleet_driver_share' },
+          session,
+        });
+      }
+
+      await session.commitTransaction();
+
+      import('../../../food/admin/services/franchiseTaxi.service.js')
+        .then((m) => m.creditFranchiseForRide(ride._id))
+        .catch((e) => console.error('[Franchise] taxi credit hook failed:', e?.message || e));
+
+      if (fleetResult) {
+        return { ...fleetResult, ride };
+      }
+      const driverDoc = await Driver.findById(ride.driverId);
+      return { driver: driverDoc, wallet: driverDoc ? await serializeDriverWallet(driverDoc) : null, transaction: null, ride };
     }
 
     if (!amount) {

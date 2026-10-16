@@ -32,8 +32,13 @@ const normalizeVehicleTypeIds = (vehicleTypeIds = [], vehicleTypeId = null) => {
   return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
 };
 
-const TWO_WHEELER_KEYS = ['bike', 'scooter', '2wheeler', '2-wheeler', '2_wheeler', 'two_wheeler', 'twowheeler'];
-const TRUCK_MOVER_KEYS = ['truck', 'lcv', 'hcv', 'mcv', 'loader', 'mover', 'movers', 'packers'];
+import { TWO_WHEELER_KEYS, TRUCK_MOVER_KEYS, TWO_WHEELER_RE, TRUCK_MOVER_RE } from './vehicleClass.js';
+import { SELFIE_VALIDITY_MS } from './driverSelfiePolicy.js';
+// Cycle / electric scooter captains only take short trips; anything longer than this goes to bike / car / etc.
+export const SHORT_RANGE_MAX_METERS = 7000;
+const SHORT_RANGE_VEHICLE_RE = /cycle|bicycle|e-?scooter|electric|e-?bike|ev/i;
+export const isShortRangeVehicle = (...parts) => SHORT_RANGE_VEHICLE_RE.test(parts.filter(Boolean).join(' '));
+
 
 const isTwoWheelerVehicle = (name = '', type = '', icon = '') => {
   const str = `${name} ${type} ${icon}`.toLowerCase();
@@ -125,18 +130,28 @@ const buildServiceCategoryFilter = (serviceType = 'ride') => {
   };
 };
 
-const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds, vehicleTypeKeys, allowedVehicles = [], serviceType = 'ride' }) => {
+const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds, vehicleTypeKeys, allowedVehicles = [], serviceType = 'ride', tripDistanceMeters = 0, heavyParcel = false }) => {
   const normalizedVehicleTypeIds = normalizeVehicleTypeIds(vehicleTypeIds, vehicleTypeId);
   const normalizedVehicleTypeKeys = Array.isArray(vehicleTypeKeys)
     ? [...new Set(vehicleTypeKeys.map(normalizeVehicleKey).filter(Boolean))]
     : [];
+  // A driver's saved vehicle type id AND the vehicle he actually drives (vehicleType / vehicleIconType) must agree with
+  // the ride, so a car driver is never sent a bike ride just because his vehicleTypeId points at the Bike type.
+  // The name/icon match alone is kept only for drivers that have no vehicleTypeId saved.
+  const keyMatch = normalizedVehicleTypeKeys.length
+    ? [
+        { vehicleType: { $in: normalizedVehicleTypeKeys } },
+        { vehicleIconType: { $in: normalizedVehicleTypeKeys } },
+      ]
+    : [];
   const vehicleTypeClauses = [
-    ...(normalizedVehicleTypeIds.length ? [{ vehicleTypeId: { $in: normalizedVehicleTypeIds } }] : []),
-    ...(normalizedVehicleTypeKeys.length
-      ? [
-          { vehicleType: { $in: normalizedVehicleTypeKeys } },
-          { vehicleIconType: { $in: normalizedVehicleTypeKeys } },
-        ]
+    ...(normalizedVehicleTypeIds.length
+      ? [keyMatch.length
+          ? { vehicleTypeId: { $in: normalizedVehicleTypeIds }, $or: keyMatch }
+          : { vehicleTypeId: { $in: normalizedVehicleTypeIds } }]
+      : []),
+    ...(keyMatch.length
+      ? [{ vehicleTypeId: null, $or: keyMatch }]
       : []),
   ];
   const vehicleTypeFilter =
@@ -144,30 +159,39 @@ const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds, vehicl
       ? { $or: vehicleTypeClauses }
       : vehicleTypeClauses[0] || {};
 
-  const isRideTwoWheeler = allowedVehicles.some((v) => isTwoWheelerVehicle(v.name, v.vehicle_type, v.icon_types));
-  const isRideTruckOrMover = allowedVehicles.some((v) => isTruckOrMoverVehicle(v.name, v.vehicle_type, v.icon_types));
+  // A heavy / large parcel (Trucks, Packers & Movers) never goes to a two-wheeler, whatever vehicle the booking listed
+  const isRideTwoWheeler = !heavyParcel && allowedVehicles.some((v) => isTwoWheelerVehicle(v.name, v.vehicle_type, v.icon_types));
+  const isRideTruckOrMover = heavyParcel || allowedVehicles.some((v) => isTruckOrMoverVehicle(v.name, v.vehicle_type, v.icon_types));
 
   let categoryExclusionFilter = {};
   if (isRideTwoWheeler) {
     categoryExclusionFilter = {
-      vehicleType: { $nin: TRUCK_MOVER_KEYS },
-      vehicleIconType: { $nin: TRUCK_MOVER_KEYS },
+      vehicleType: { $not: TRUCK_MOVER_RE },
+      vehicleIconType: { $not: TRUCK_MOVER_RE },
     };
   } else if (isRideTruckOrMover) {
     categoryExclusionFilter = {
-      vehicleType: { $nin: TWO_WHEELER_KEYS },
-      vehicleIconType: { $nin: TWO_WHEELER_KEYS },
+      vehicleType: { $not: TWO_WHEELER_RE },
+      vehicleIconType: { $not: TWO_WHEELER_RE },
     };
   }
 
   const serviceCategoryFilter = buildServiceCategoryFilter(serviceType);
+  const isLongTrip = Number(tripDistanceMeters) > SHORT_RANGE_MAX_METERS;
 
   const conditions = [
     { isOnline: true },
     { socketId: { $ne: null } },
     { isOnRide: false },
     { 'wallet.isBlocked': { $ne: true } },
+    // The hourly selfie verification must be current to receive requests
+    { 'onlineSelfie.capturedAt': { $gte: new Date(Date.now() - SELFIE_VALIDITY_MS) } },
   ];
+
+  if (isLongTrip) {
+    conditions.push({ vehicleType: { $not: SHORT_RANGE_VEHICLE_RE } });
+    conditions.push({ vehicleIconType: { $not: SHORT_RANGE_VEHICLE_RE } });
+  }
 
   if (zoneId) {
     conditions.push({ zoneId });
@@ -324,8 +348,12 @@ const findDriversForZone = async ({
   vehicleTypeKeys,
   allowedVehicles = [],
   serviceType = 'ride',
+  tripDistanceMeters = 0,
+  heavyParcel = false,
 }) => {
   const commonFilters = buildDriverMatchFilters({
+    heavyParcel,
+    tripDistanceMeters,
     zoneId,
     vehicleTypeIds: normalizedVehicleTypeIds,
     vehicleTypeKeys,
@@ -370,6 +398,8 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
     vehicleTypeId,
     vehicleTypeIds,
     serviceType = 'ride',
+    tripDistanceMeters = 0,
+    heavyParcel = false,
   } = options;
   const normalizedVehicleTypeIds = normalizeVehicleTypeIds(vehicleTypeIds, vehicleTypeId);
   const allowedVehicles = normalizedVehicleTypeIds.length
@@ -389,6 +419,8 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
     vehicleTypeKeys,
     allowedVehicles,
     serviceType,
+    tripDistanceMeters,
+    heavyParcel,
   });
 
   const blockedDriverIds = await getDriverIdsBlockedByUpcomingScheduledRides(
@@ -406,6 +438,8 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
       vehicleTypeKeys,
       allowedVehicles,
       serviceType,
+      tripDistanceMeters,
+      heavyParcel,
     });
 
     const fallbackBlockedDriverIds = await getDriverIdsBlockedByUpcomingScheduledRides(

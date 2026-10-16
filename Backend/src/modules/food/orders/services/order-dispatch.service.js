@@ -124,6 +124,21 @@ async function listNearbyOnlineDeliveryPartners(
   return { partners: picked };
 }
 
+// Cycle / scooter riders only get short orders; anything above this road distance goes to bike / car riders.
+const SHORT_RANGE_MAX_KM = 7;
+const SHORT_RANGE_VEHICLE_RE = /cycle|bicycle|scooter|e-?bike|electric|ev/i;
+const ROAD_DISTANCE_FACTOR = 1.3; // straight line -> approx. road distance
+
+export const isShortRangeVehicle = (vehicleType = '') => SHORT_RANGE_VEHICLE_RE.test(String(vehicleType || ''));
+
+function estimateOrderDistanceKm(order) {
+  const from = order?.restaurantId?.location?.coordinates;
+  const to = order?.deliveryAddress?.location?.coordinates;
+  if (!Array.isArray(from) || !Array.isArray(to) || from.length < 2 || to.length < 2) return null;
+  const km = haversineKm(Number(from[1]), Number(from[0]), Number(to[1]), Number(to[0]));
+  return Number.isFinite(km) ? km * ROAD_DISTANCE_FACTOR : null;
+}
+
 async function filterPartnersByCodCashLimit(partners = [], order = null) {
   if (!Array.isArray(partners) || partners.length === 0) return [];
 
@@ -280,9 +295,16 @@ export async function tryAutoAssign(orderId, options = {}) {
       ? await FoodDeliveryPartner.find({
           _id: { $in: partnerIdsToVerify },
           availabilityStatus: 'online'
-        }).select('_id').lean()
+        }).select('_id vehicleType').lean()
       : [];
-    const onlineIdsSet = new Set(onlineDocs.map(d => d._id.toString()));
+    // Long orders (> 7 km) must not be offered to cycle / scooter riders.
+    const orderDistanceKm = estimateOrderDistanceKm(order);
+    const isLongOrder = orderDistanceKm != null && orderDistanceKm > SHORT_RANGE_MAX_KM;
+    const onlineIdsSet = new Set(
+      onlineDocs
+        .filter(d => !(isLongOrder && isShortRangeVehicle(d.vehicleType)))
+        .map(d => d._id.toString())
+    );
 
     const codEligibleOnlinePartners = codEligiblePartners.filter(p => onlineIdsSet.has(p.partnerId?.toString?.()));
     const excludedPartnerIds = new Set(
@@ -297,7 +319,7 @@ export async function tryAutoAssign(orderId, options = {}) {
     if (eligible.length === 0) {
       let targets = codEligibleOnlinePartners.filter(p => !excludedPartnerIds.has(p.partnerId.toString()));
       if (targets.length === 0 && forceRebroadcast) {
-        targets = codEligibleOnlinePartners.length > 0 ? codEligibleOnlinePartners : partners;
+        targets = codEligibleOnlinePartners.length > 0 || isLongOrder ? codEligibleOnlinePartners : partners;
       }
       if (targets.length === 0) {
         logger.info(`tryAutoAssign: No available online partners for order ${order._id}. Retrying in 15s...`);

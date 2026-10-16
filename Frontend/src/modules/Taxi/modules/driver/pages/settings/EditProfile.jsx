@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useImageUpload } from '../../../../shared/hooks/useImageUpload';
 import { getCurrentDriver, updateDriverProfile } from '../../services/registrationService';
 import toast from 'react-hot-toast';
+import { transportChoicesForVehicle, coerceTransport } from '../../../../shared/utils/vehicleServices';
 
 const Motion = motion;
 const NAME_REGEX = /^[A-Za-z]+(?:[ .'-][A-Za-z]+)*$/;
@@ -12,13 +13,6 @@ const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const normalizeName = (value) => String(value || '').replace(/[^A-Za-z .'-]/g, '').replace(/\s+/g, ' ');
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const unwrapDriver = (response) => response?.data?.data || response?.data || response || {};
-
-const serviceCategoryOptions = [
-  { value: 'taxi', label: 'Taxi' },
-  { value: 'outstation', label: 'Outstation' },
-  { value: 'delivery', label: 'Delivery' },
-  { value: 'pooling', label: 'Pooling' },
-];
 
 const transportTypeOptions = [
   { value: 'taxi', label: 'Taxi' },
@@ -41,7 +35,6 @@ const EditProfile = () => {
         phone: '',
         email: '',
         transportType: 'taxi',
-        serviceCategories: ['taxi'],
     });
     const [errors, setErrors] = useState({});
 
@@ -60,17 +53,14 @@ const EditProfile = () => {
                 const res = await getCurrentDriver();
                 const data = unwrapDriver(res);
                 setDriver(data);
-                const rawCategories = Array.isArray(data.serviceCategories) && data.serviceCategories.length > 0
-                    ? data.serviceCategories
-                    : Array.isArray(data.service_categories) && data.service_categories.length > 0
-                        ? data.service_categories
-                        : ['taxi'];
                 setFormData({
                     name: data.name || '',
                     phone: data.phone || '',
                     email: data.email || '',
-                    transportType: String(data.registerFor || data.transport_type || 'taxi').toLowerCase() === 'both' ? 'all' : (data.registerFor || data.transport_type || 'taxi'),
-                    serviceCategories: rawCategories,
+                    transportType: coerceTransport(
+                        { allowedServices: data.allowedServices, name: data.vehicleType, icon_types: data.vehicleIconType },
+                        data.registerFor || data.transport_type || 'taxi',
+                    ),
                 });
             } catch (error) {
                 console.error('Failed to load profile:', error);
@@ -82,18 +72,10 @@ const EditProfile = () => {
         fetchProfile();
     }, []);
 
-    const toggleCategory = (catValue) => {
-        setFormData((prev) => {
-            const exists = prev.serviceCategories.includes(catValue);
-            const nextCategories = exists
-                ? prev.serviceCategories.filter((c) => c !== catValue)
-                : [...prev.serviceCategories, catValue];
-            return {
-                ...prev,
-                serviceCategories: nextCategories.length > 0 ? nextCategories : [catValue],
-            };
-        });
-    };
+    // A bike / scooter only gets Taxi and Delivery (Outstation and Pooling are for 4-wheelers); the admin can change this per vehicle
+    const vehicleForRules = { allowedServices: driver?.allowedServices, name: driver?.vehicleType, icon_types: driver?.vehicleIconType };
+    const allowedTransportIds = transportChoicesForVehicle(vehicleForRules).map((item) => item.id);
+    const visibleTransportOptions = transportTypeOptions.filter((opt) => allowedTransportIds.includes(opt.value));
 
     const handleSave = async () => {
         const nextErrors = {};
@@ -121,8 +103,6 @@ const EditProfile = () => {
                 email,
                 registerFor: formData.transportType,
                 transport_type: formData.transportType,
-                serviceCategories: formData.serviceCategories,
-                service_categories: formData.serviceCategories,
                 profileImage: driver?.profileImage || ''
             };
             await updateDriverProfile(payload);
@@ -252,38 +232,10 @@ const EditProfile = () => {
                             onChange={(e) => setFormData(prev => ({ ...prev, transportType: e.target.value }))}
                             className="w-full text-[15px] font-semibold text-slate-900 bg-transparent border-none p-0 focus:ring-0 tracking-tight cursor-pointer"
                         >
-                            {transportTypeOptions.map((opt) => (
+                            {visibleTransportOptions.map((opt) => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                             ))}
                         </select>
-                    </div>
-
-                    {/* Service Categories Interactive Pills */}
-                    <div className="bg-white p-4 py-5 rounded-2xl border border-slate-100 shadow-sm space-y-3">
-                        <div className="flex items-center gap-2 text-slate-400">
-                            <Layers size={16} />
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Service Categories</span>
-                        </div>
-                        <div className="flex flex-wrap gap-2 pt-1">
-                            {serviceCategoryOptions.map((opt) => {
-                                const isSelected = formData.serviceCategories.includes(opt.value);
-                                return (
-                                    <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() => toggleCategory(opt.value)}
-                                        className={`rounded-full px-4 py-2 text-xs font-bold transition-all ${
-                                            isSelected
-                                                ? 'bg-[#4F46E5] text-white shadow-sm scale-105'
-                                                : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
-                                        }`}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                        <p className="text-[10px] text-slate-400 font-medium pt-1">Tap categories to enable/disable future service requests</p>
                     </div>
                 </div>
 

@@ -321,7 +321,7 @@ const RentalSchedule = () => {
   };
   // go back when the page was opened without its data (done in an effect, not while rendering)
   useEffect(() => {
-    if (!vehicle) navigate('/rental', { replace: true });
+    if (!vehicle) navigate('/taxi/user/rental', { replace: true });
   }, [vehicle, navigate]);
 
   // every hook has run above, so it is safe to stop here
@@ -473,7 +473,7 @@ const RentalSchedule = () => {
           whileTap={{ scale: 0.98 }}
           disabled={!isValid}
           onClick={() =>
-            navigate('/rental/kyc', {
+            navigate('/taxi/user/rental/kyc', {
               state: {
                 vehicle,
                 duration,

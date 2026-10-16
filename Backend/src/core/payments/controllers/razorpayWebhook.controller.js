@@ -43,7 +43,23 @@ export const handleRazorpayWebhook = async (req, res) => {
             const found = await FoodOrder.findOne({ "payment.razorpay.orderId": rzOrderId }).select('_id pricing.total payment.status orderStatus').lean();
 
             if (!found) {
-                logger.warn(`Webhook [payment.captured]: No food order for RZ-Order: ${rzOrderId}`);
+                // Not a food order: it may be a wallet top-up or a rider cash deposit (their order notes carry the full owner id)
+                try {
+                    const { fetchRazorpayOrder } = await import('../../../modules/food/orders/helpers/razorpay.helper.js');
+                    const rzOrder = await fetchRazorpayOrder(rzOrderId);
+                    const args = { rzOrder, paymentId: rzPaymentId, amountPaise: Number(paymentObj.amount) };
+                    const { settleWalletTopupFromWebhook } = await import('../../../modules/food/user/services/userWallet.service.js');
+                    let r = await settleWalletTopupFromWebhook(args);
+                    if (!r.handled) {
+                        const { settleDeliveryCashDepositFromWebhook } = await import('../../../modules/food/delivery/services/deliveryFinance.service.js');
+                        r = await settleDeliveryCashDepositFromWebhook(args);
+                    }
+                    if (r.handled) logger.info(`Webhook [payment.captured]: ${rzOrder.notes?.purpose} ${rzPaymentId} -> ${JSON.stringify(r)}`);
+                    else logger.warn(`Webhook [payment.captured]: No food order for RZ-Order: ${rzOrderId}`);
+                } catch (e) {
+                    // 500 makes Razorpay retry the webhook
+                    throw new Error(`top-up/deposit settle failed for ${rzOrderId}: ${e?.message || e}`);
+                }
             } else if (Math.round((Number(found.pricing?.total) || 0) * 100) !== Number(paymentObj.amount)) {
                 // Never confirm an order for a different amount than it costs
                 logger.error(`Webhook [payment.captured]: AMOUNT MISMATCH for order ${found._id}: expected ${Math.round((Number(found.pricing?.total) || 0) * 100)} paise, got ${paymentObj.amount}`);
@@ -66,6 +82,7 @@ export const handleRazorpayWebhook = async (req, res) => {
             const order = await FoodOrder.findOne({
                 "payment.razorpay.paymentId": rzPaymentId,
                 "payment.refund.refundId": { $ne: rzRefundId },
+                "payment.refund.refundIds": { $ne: rzRefundId },   // any earlier refund of this order, not just the latest
                 "payment.refund.status": { $ne: 'pending' },
             });
 
@@ -75,15 +92,18 @@ export const handleRazorpayWebhook = async (req, res) => {
                 const newTotal = Math.round((prev + refundAmount) * 100) / 100;
                 const isFull = newTotal >= total;
                 const done = await FoodOrder.updateOne(
-                    { _id: order._id, "payment.refund.refundId": { $ne: rzRefundId }, "payment.refund.status": { $ne: 'pending' } },
-                    { $set: {
-                        ...(isFull ? { "payment.status": 'refunded' } : {}),
-                        "payment.refund.status": 'processed',
-                        "payment.refund.amount": refundAmount,
-                        "payment.refund.refundedTotal": newTotal,
-                        "payment.refund.refundId": rzRefundId,
-                        "payment.refund.processedAt": new Date(),
-                    } },
+                    { _id: order._id, "payment.refund.refundId": { $ne: rzRefundId }, "payment.refund.refundIds": { $ne: rzRefundId }, "payment.refund.status": { $ne: 'pending' } },
+                    {
+                        $set: {
+                            ...(isFull ? { "payment.status": 'refunded' } : {}),
+                            "payment.refund.status": 'processed',
+                            "payment.refund.amount": refundAmount,
+                            "payment.refund.refundedTotal": newTotal,
+                            "payment.refund.refundId": rzRefundId,
+                            "payment.refund.processedAt": new Date(),
+                        },
+                        $addToSet: { "payment.refund.refundIds": rzRefundId },
+                    },
                 );
                 if (done.modifiedCount) {
                     logger.info(`Webhook [refund.processed]: Synced Order ${order.order_id || order._id} (refunded ${newTotal}/${total})`);
@@ -116,12 +136,15 @@ export const handleRazorpayWebhook = async (req, res) => {
                 // Open the refund again so the admin can retry it (refund button / "refund via API" / manual-done)
                 await FoodOrder.updateOne(
                     { _id: order._id, "payment.refund.refundId": rzRefundId, "payment.refund.status": 'processed' },
-                    { $set: {
-                        ...(order.payment.status === 'refunded' ? { "payment.status": 'paid' } : {}),
-                        "payment.refund.status": 'failed',
-                        "payment.refund.refundedTotal": back,
-                        "payment.refund.amount": refundAmount,
-                    } },
+                    {
+                        $set: {
+                            ...(order.payment.status === 'refunded' ? { "payment.status": 'paid' } : {}),
+                            "payment.refund.status": 'failed',
+                            "payment.refund.refundedTotal": back,
+                            "payment.refund.amount": refundAmount,
+                        },
+                        $pull: { "payment.refund.refundIds": rzRefundId },
+                    },
                 );
                 logger.error(`Webhook [refund.failed]: Order ${order.order_id || order._id} refund ${rzRefundId} FAILED at Razorpay`);
                 try {

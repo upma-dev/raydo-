@@ -462,7 +462,7 @@ const AddVehicle = () => {
                             </p>
                             <p className="mt-2 text-sm font-semibold text-slate-900">
                               {formatTransportType(
-                                selectedType.transport_type || selectedType.is_taxi,
+                                selectedType.transport_type,
                               )}
                             </p>
                           </div>

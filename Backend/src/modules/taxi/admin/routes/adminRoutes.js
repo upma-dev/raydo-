@@ -166,6 +166,8 @@ import {
   adjustDriverWallet,
   listOwnerWalletHistory,
   adjustOwnerWallet,
+  getOwnerEarningSettings,
+  updateOwnerEarningSettings,
   updateAppModule,
   updateAirport,
   updateAdminAccount,
@@ -284,6 +286,8 @@ adminRouter.get('/admin/wallet/drivers/:id/history', listDriverWalletHistory);
 
 adminRouter.post('/admin/wallet/owners/:id/adjust', adjustOwnerWallet);
 adminRouter.get('/admin/wallet/owners/:id/history', listOwnerWalletHistory);
+adminRouter.get('/admin/owners/:id/earning-settings', getOwnerEarningSettings);
+adminRouter.patch('/admin/owners/:id/earning-settings', updateOwnerEarningSettings);
 
 adminRouter.get('/admin/wallet/drivers/negative-balance', authenticate(['admin']), getNegativeBalanceDrivers);
 adminRouter.get('/admin/wallet/drivers/withdrawals', authenticate(['admin']), getDriverWithdrawalSummaries);

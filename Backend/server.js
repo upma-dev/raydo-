@@ -213,8 +213,13 @@ const startServer = async () => {
                 await settlePaidOnlineRides();
                 const { creditFranchiseForBusBookings } = await import('./src/modules/food/admin/services/franchiseTaxi.service.js');
                 await creditFranchiseForBusBookings();
-                const { creditFranchiseForPoolingAndRental } = await import('./src/modules/food/admin/services/franchiseTaxi.service.js');
+                const { creditFranchiseForPoolingAndRental, creditPendingFranchiseRides } = await import('./src/modules/food/admin/services/franchiseTaxi.service.js');
                 await creditFranchiseForPoolingAndRental();
+                // Rides whose franchise credit was missed (server stopped right after the ride settled)
+                await creditPendingFranchiseRides();
+                // Fleet owners: credit bus ticket earnings once the journey date has passed
+                const { settleOwnerBusBookings } = await import('./src/modules/taxi/driver/services/ownerWalletService.js');
+                await settleOwnerBusBookings();
             } catch (err) {
                 logger.error(`Taxi settlement check error: ${err.message}`);
             }

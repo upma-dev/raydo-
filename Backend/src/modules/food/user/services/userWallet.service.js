@@ -14,22 +14,35 @@ const ensureWallet = async (userId) => {
     return FoodUserWallet.create({ userId: oid, balance: 0, transactions: [] });
 };
 
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+// Every balance change is ONE atomic update ($inc + the history row together). The old code read the wallet, changed
+// it in memory and saved it, so two parallel changes could overwrite each other (lost money / double spend).
+const applyWalletChange = async (userId, { delta, tx, requireBalance = false }) => {
+    await ensureWallet(userId);
+    const oid = new mongoose.Types.ObjectId(String(userId));
+    const filter = { userId: oid };
+    if (requireBalance) filter.balance = { $gte: -delta };
+    const updated = await FoodUserWallet.findOneAndUpdate(
+        filter,
+        {
+            $inc: { balance: delta, ...(tx.referral ? { referralEarnings: delta } : {}) },
+            $push: { transactions: { $each: [{ type: tx.type, amount: Math.abs(delta), status: 'Completed', description: tx.description, metadata: tx.metadata }], $position: 0 } },
+        },
+        { new: true },
+    );
+    return updated;
+};
+
 export const creditReferralReward = async (userId, amountInr, metadata = {}) => {
-    const amount = Number(amountInr);
+    const amount = round2(amountInr);
     if (!Number.isFinite(amount) || amount <= 0) {
         return { wallet: await getUserWallet(userId) };
     }
-    const wallet = await ensureWallet(userId);
-    wallet.transactions.unshift({
-        type: 'addition',
-        amount,
-        status: 'Completed',
-        description: 'Referral reward',
-        metadata: { source: 'referral_reward', ...(metadata || {}) }
+    await applyWalletChange(userId, {
+        delta: amount,
+        tx: { type: 'addition', description: 'Referral reward', metadata: { source: 'referral_reward', ...(metadata || {}) }, referral: true },
     });
-    wallet.balance = Number(wallet.balance || 0) + amount;
-    wallet.referralEarnings = Number(wallet.referralEarnings || 0) + amount;
-    await wallet.save();
     return { wallet: await getUserWallet(userId) };
 };
 
@@ -79,7 +92,7 @@ export const createWalletTopupOrder = async (userId, amountInr) => {
 
     const receipt = `wallet_topup_${String(userId).slice(-8)}_${Date.now()}`;
     try {
-        const razorpay = await createRazorpayCheckoutOrder(amountPaise, 'INR', receipt);
+        const razorpay = await createRazorpayCheckoutOrder(amountPaise, 'INR', receipt, { purpose: 'wallet_topup', userId: String(userId) });
         return { razorpay };
     } catch (error) {
         throw new ValidationError(error?.message || 'Payment gateway error');
@@ -160,48 +173,71 @@ export const verifyWalletTopupPayment = async (userId, payload) => {
     return { wallet: await getUserWallet(userId) };
 };
 
+/**
+ * Webhook path for a wallet top-up: credits the money even if the app never called verify (app closed / network drop).
+ * Safe to run together with verifyWalletTopupPayment: the $ne guard on razorpayPaymentId credits a payment only once.
+ * `rzOrder` is the Razorpay order (fetched server-side); its notes carry the full userId set when the order was created.
+ */
+export const settleWalletTopupFromWebhook = async ({ rzOrder, paymentId, amountPaise }) => {
+    const userId = String(rzOrder?.notes?.userId || '').trim();
+    if (rzOrder?.notes?.purpose !== 'wallet_topup' || !userId) return { handled: false };
+    if (!String(rzOrder?.receipt || '').startsWith(`wallet_topup_${userId.slice(-8)}_`)) return { handled: true, credited: false, reason: 'receipt mismatch' };
+    if (Number(rzOrder.amount) !== Number(amountPaise)) return { handled: true, credited: false, reason: 'amount mismatch' };
+
+    const amount = Math.round(Number(amountPaise)) / 100;
+    if (!Number.isFinite(amount) || amount <= 0) return { handled: true, credited: false, reason: 'bad amount' };
+
+    await ensureWallet(userId);
+    const credited = await FoodUserWallet.updateOne(
+        { userId, 'transactions.razorpayPaymentId': { $ne: paymentId } },
+        {
+            $inc: { balance: amount },
+            $push: {
+                transactions: {
+                    $each: [{
+                        type: 'addition',
+                        amount,
+                        status: 'Completed',
+                        description: 'Wallet top-up',
+                        metadata: { source: 'wallet_topup', mode: 'razorpay', via: 'webhook' },
+                        razorpayOrderId: String(rzOrder.id),
+                        razorpayPaymentId: paymentId,
+                    }],
+                    $position: 0,
+                },
+            },
+        },
+    );
+    return { handled: true, credited: Boolean(credited.modifiedCount), userId, amount };
+};
+
 export const deductWalletBalance = async (userId, amountInr, description = 'Order payment', metadata = {}) => {
-    const amount = Number(amountInr);
+    const amount = round2(amountInr);
     if (!Number.isFinite(amount) || amount <= 0) {
         throw new ValidationError('Invalid deduction amount');
     }
 
-    const wallet = await ensureWallet(userId);
-    if (wallet.balance < amount) {
-        throw new ValidationError('Insufficient wallet balance');
-    }
-
-    wallet.transactions.unshift({
-        type: 'deduction',
-        amount,
-        status: 'Completed',
-        description,
-        metadata: { source: 'order_payment', ...(metadata || {}) }
+    // The "enough balance" check is part of the same atomic update, so parallel orders cannot both spend the same money
+    const updated = await applyWalletChange(userId, {
+        delta: -amount,
+        requireBalance: true,
+        tx: { type: 'deduction', description, metadata: { source: 'order_payment', ...(metadata || {}) } },
     });
-
-    wallet.balance = Number(wallet.balance) - amount;
-    await wallet.save();
+    if (!updated) throw new ValidationError('Insufficient wallet balance');
 
     return { wallet: await getUserWallet(userId) };
 };
 
 export const refundWalletBalance = async (userId, amountInr, description = 'Order refund', metadata = {}) => {
-    const amount = Number(amountInr);
+    const amount = round2(amountInr);
     if (!Number.isFinite(amount) || amount <= 0) {
         return { wallet: await getUserWallet(userId) };
     }
 
-    const wallet = await ensureWallet(userId);
-    wallet.transactions.unshift({
-        type: 'refund',
-        amount,
-        status: 'Completed',
-        description,
-        metadata: { source: 'order_refund', ...(metadata || {}) }
+    await applyWalletChange(userId, {
+        delta: amount,
+        tx: { type: 'refund', description, metadata: { source: 'order_refund', ...(metadata || {}) } },
     });
-
-    wallet.balance = Number(wallet.balance) + amount;
-    await wallet.save();
 
     return { wallet: await getUserWallet(userId) };
 };

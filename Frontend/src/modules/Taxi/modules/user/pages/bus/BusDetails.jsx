@@ -237,6 +237,12 @@ const BusDetails = () => {
         droppingPointId: droppingPointId || undefined,
       });
       const order = unwrapPayload(orderResponse);
+      const pendingBookingId = order.booking?.id;
+      const releaseSeats = () => {
+        if (pendingBookingId) {
+          userBusService.releaseBookingHold(pendingBookingId).catch(() => {});
+        }
+      };
 
       if (!order.keyId || !order.orderId) {
         throw new Error('Unable to start bus payment');
@@ -256,6 +262,7 @@ const BusDetails = () => {
         },
         modal: {
           ondismiss: () => {
+            releaseSeats();
             setIsPaying(false);
           },
         },
@@ -284,6 +291,7 @@ const BusDetails = () => {
 
       rzp.on('payment.failed', (event) => {
         const message = event?.error?.description || event?.error?.reason || 'Payment failed';
+        releaseSeats();
         setError(message);
         setIsPaying(false);
       });
@@ -483,6 +491,20 @@ const BusDetails = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-3">
+          <h3 className="text-lg font-bold text-slate-900">Fare Details</h3>
+          {selectedSeats.map((seat) => (
+            <div key={seat.id} className="flex items-center justify-between text-sm font-semibold text-slate-600">
+              <span>Seat {seat.label || seat.id}</span>
+              <span className="font-bold text-slate-900">₹{Number(seat.price || 0)}</span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between border-t border-dashed border-slate-200 pt-3 text-sm font-black text-slate-900">
+            <span>Total Payable</span>
+            <span>₹{Number(totalFare || 0)}</span>
           </div>
         </div>
 

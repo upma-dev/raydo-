@@ -27,6 +27,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import DriverBottomNav from '../../shared/components/DriverBottomNav';
 import { clearDriverAuthState, getCurrentDriver, updateDriverProfile } from '../services/registrationService';
+import { transportChoicesForVehicle, coerceTransport } from '../../../shared/utils/vehicleServices';
 
 const unwrapDriver = (response) => response?.data?.data || response?.data || response || null;
 const ROUTE_BOOKING_STORAGE_KEY = 'driver_route_booking_preferences';
@@ -79,6 +80,8 @@ const DriverProfile = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [routeBookingBusy, setRouteBookingBusy] = useState(false);
+    const [savingTransport, setSavingTransport] = useState(false);
+    const [transportMessage, setTransportMessage] = useState('');
     const role = localStorage.getItem('role') || 'driver';
     const isOwner = role === 'owner';
     const routePrefix = isOwner ? '/taxi/owner' : '/taxi/driver';
@@ -113,6 +116,27 @@ const DriverProfile = () => {
             active = false;
         };
     }, []);
+
+    // What the driver wants to work in. A bike / scooter only gets Taxi and Delivery (the admin can change this per vehicle).
+    const vehicleForRules = { allowedServices: driver?.allowedServices, name: driver?.vehicleType, icon_types: driver?.vehicleIconType };
+    const transportChoices = transportChoicesForVehicle(vehicleForRules);
+    const activeTransport = coerceTransport(vehicleForRules, driver?.registerFor || driver?.transport_type || 'taxi');
+
+    const handleTransportSelect = async (choiceId) => {
+        if (savingTransport || choiceId === activeTransport) return;
+        setSavingTransport(true);
+        setTransportMessage('');
+        try {
+            await updateDriverProfile({ registerFor: choiceId, transport_type: choiceId });
+            const fresh = unwrapDriver(await getCurrentDriver());
+            setDriver(fresh);
+            setTransportMessage('Updated. You will now get requests for this service.');
+        } catch (err) {
+            setTransportMessage(err?.message || 'Could not update. Please try again.');
+        } finally {
+            setSavingTransport(false);
+        }
+    };
 
     const handleLogout = () => {
         clearDriverAuthState();
@@ -316,20 +340,37 @@ const DriverProfile = () => {
                                 <p className="text-[10px] font-medium text-slate-400">Email</p>
                                 <p className="text-[12px] font-bold text-slate-900 break-all">{driverEmail}</p>
                             </div>
-                            <div>
+                            <div className="col-span-2">
                                 <p className="text-[10px] font-medium text-slate-400">Transport Type</p>
-                                <p className="text-[12px] font-bold text-slate-900 capitalize">{String(driver?.registerFor || driver?.transport_type || 'taxi').toLowerCase() === 'both' ? 'All' : (driver?.registerFor || driver?.transport_type || 'Taxi')}</p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-medium text-slate-400">Active Services</p>
-                                <p className="text-[12px] font-bold text-indigo-600">
-                                    {(Array.isArray(driver?.serviceCategories) && driver.serviceCategories.length > 0
-                                        ? driver.serviceCategories
-                                        : Array.isArray(driver?.service_categories) && driver.service_categories.length > 0
-                                            ? driver.service_categories
-                                            : ['taxi']
-                                    ).map(c => String(c).charAt(0).toUpperCase() + String(c).slice(1)).join(', ')}
-                                </p>
+                                {isOwner ? (
+                                    <p className="text-[12px] font-bold text-slate-900 capitalize">{String(driver?.registerFor || driver?.transport_type || 'taxi').toLowerCase() === 'both' ? 'All' : (driver?.registerFor || driver?.transport_type || 'Taxi')}</p>
+                                ) : (
+                                    <>
+                                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                            {transportChoices.map((choice) => {
+                                                const selected = choice.id === activeTransport;
+                                                return (
+                                                    <button
+                                                        key={choice.id}
+                                                        type="button"
+                                                        disabled={savingTransport}
+                                                        onClick={() => handleTransportSelect(choice.id)}
+                                                        className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition-all disabled:opacity-60 ${
+                                                            selected
+                                                                ? 'bg-slate-900 text-white shadow-sm'
+                                                                : 'border border-slate-200 bg-white text-slate-600'
+                                                        }`}
+                                                    >
+                                                        {choice.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="mt-1.5 text-[10px] font-medium text-slate-400">
+                                            {transportMessage || 'Choose what you want to work in. "All" = every service your vehicle can do.'}
+                                        </p>
+                                    </>
+                                )}
                             </div>
                             <div>
                                 <p className="text-[10px] font-medium text-slate-400">Vehicle No.</p>

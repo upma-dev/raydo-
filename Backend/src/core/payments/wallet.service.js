@@ -78,30 +78,47 @@ export async function getWalletWithTransactions(entityType, entityId, { page = 1
  * Locked amount cannot be withdrawn but is still part of balances.
  */
 export async function lockWalletAmount(entityType, entityId, amount) {
+    const value = Math.round((Number(amount) || 0) * 100) / 100;
+    if (!(value > 0)) throw new Error('Lock amount must be positive');
     const wallet = await ensureWallet(entityType, entityId);
-    const available = (Number(wallet.balance) || 0) - (Number(wallet.lockedAmount) || 0);
+    const Model = wallet.constructor;
 
-    if (amount > available) {
-        throw new Error(`Cannot lock ${amount}. Available: ${available}`);
+    // One atomic update: the "enough free balance" check and the lock happen together, so two parallel locks
+    // can never lock more than the wallet really has.
+    const updated = await Model.findOneAndUpdate(
+        {
+            _id: wallet._id,
+            $expr: { $gte: [{ $subtract: ['$balance', { $ifNull: ['$lockedAmount', 0] }] }, value] },
+        },
+        { $inc: { lockedAmount: value } },
+        { new: true },
+    );
+    if (!updated) {
+        const fresh = await Model.findById(wallet._id).lean();
+        const available = (Number(fresh?.balance) || 0) - (Number(fresh?.lockedAmount) || 0);
+        throw new Error(`Cannot lock ${value}. Available: ${available}`);
     }
 
-    wallet.lockedAmount = (Number(wallet.lockedAmount) || 0) + amount;
-    await wallet.save();
-
-    logger.info(`Locked ${amount} for ${entityType}:${entityId}. Total locked: ${wallet.lockedAmount}`);
-    return { lockedAmount: wallet.lockedAmount, balance: wallet.balance };
+    logger.info(`Locked ${value} for ${entityType}:${entityId}. Total locked: ${updated.lockedAmount}`);
+    return { lockedAmount: updated.lockedAmount, balance: updated.balance };
 }
 
 /**
  * Unlock amount in wallet (after settlement is processed/cancelled).
  */
 export async function unlockWalletAmount(entityType, entityId, amount) {
+    const value = Math.round((Number(amount) || 0) * 100) / 100;
     const wallet = await ensureWallet(entityType, entityId);
-    wallet.lockedAmount = Math.max(0, (Number(wallet.lockedAmount) || 0) - amount);
-    await wallet.save();
+    const Model = wallet.constructor;
 
-    logger.info(`Unlocked ${amount} for ${entityType}:${entityId}. Total locked: ${wallet.lockedAmount}`);
-    return { lockedAmount: wallet.lockedAmount, balance: wallet.balance };
+    const updated = await Model.findOneAndUpdate(
+        { _id: wallet._id },
+        [{ $set: { lockedAmount: { $max: [0, { $subtract: [{ $ifNull: ['$lockedAmount', 0] }, value] }] } } }],
+        { new: true },
+    );
+
+    logger.info(`Unlocked ${value} for ${entityType}:${entityId}. Total locked: ${updated?.lockedAmount}`);
+    return { lockedAmount: updated?.lockedAmount ?? 0, balance: updated?.balance ?? wallet.balance };
 }
 
 /**

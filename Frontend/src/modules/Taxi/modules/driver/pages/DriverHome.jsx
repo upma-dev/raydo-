@@ -343,7 +343,8 @@ const getWalletAlertState = (wallet = {}, { ignoreRestrictions = false } = {}) =
     const warningThreshold = cashLimit > 0
         ? Math.min(cashLimit, Math.max(50, cashLimit * 0.15))
         : 0;
-    const belowMinimumBalance = balance <= minimumBalanceForOrders;
+    // blocked only when the balance is BELOW the admin's minimum (a minimum of 0 with a balance of 0 is fine)
+    const belowMinimumBalance = balance < minimumBalanceForOrders;
     const cashLimitExceeded = cashLimit > 0 && remainingCashLimit <= 0;
     const rawBlocked = Boolean(wallet.isBlocked) || belowMinimumBalance || cashLimitExceeded;
     const isBlocked = ignoreRestrictions ? false : rawBlocked;
@@ -521,7 +522,6 @@ const isExpiredDateValue = (value) => {
 
 const DRIVER_ROUTE_BOOKING_STORAGE_KEY = 'driver_route_booking_preferences';
 const DRIVER_VEHICLE_REAPPROVAL_PENDING_KEY = 'driver_vehicle_reapproval_pending';
-const getTodaySelfieKey = () => new Date().toISOString().slice(0, 10);
 
 const readRouteBookingPreferences = () => {
     try {
@@ -553,9 +553,18 @@ const normalizeRouteBookingPreferences = (routeBooking = null) => {
 const isDriverVehicleApprovalPending = (driver = {}) =>
     driver?.approve === false || String(driver?.status || '').toLowerCase() === 'pending';
 
-const hasSelfieForToday = (onlineSelfie = null) =>
-    String(onlineSelfie?.forDate || '').trim() === getTodaySelfieKey() &&
-    Boolean(String(onlineSelfie?.imageUrl || '').trim());
+// The online selfie is valid for one hour; after that the driver verifies again (the server enforces the same rule)
+const SELFIE_VALIDITY_MS = 60 * 60 * 1000;
+
+const hasFreshSelfie = (onlineSelfie = null) => {
+    const capturedAt = onlineSelfie?.capturedAt ? new Date(onlineSelfie.capturedAt).getTime() : 0;
+    return (
+        Boolean(String(onlineSelfie?.imageUrl || '').trim()) &&
+        Number.isFinite(capturedAt) &&
+        capturedAt > 0 &&
+        Date.now() - capturedAt < SELFIE_VALIDITY_MS
+    );
+};
 
 const mapStyles = [
   { "elementType": "geometry", "stylers": [{ "color": "#f5f5f5" }] },
@@ -1434,7 +1443,7 @@ const DriverHome = () => {
             return;
         }
 
-        if (hasSelfieForToday(onlineSelfie)) {
+        if (hasFreshSelfie(onlineSelfie)) {
             goOnline();
             return;
         }
@@ -1930,14 +1939,36 @@ const DriverHome = () => {
                 socket.io.off('reconnect_attempt', onSocketReconnectAttempt);
                 clearInterval(locationInterval);
             };
-        } else {
+        } else if (!isHydratingDriver) {
+            // Not while the saved state is still loading: isOnline starts as false on every visit to this page (for example
+            // when the driver comes back after a ride), and disconnecting then would take him offline on the server.
             console.info('[driver-home] driver offline, disconnecting socket');
             clearRecoveryBurst();
             setSocketStatus('offline');
             socketService.disconnect();
         }
         return undefined;
-    }, [clearRecoveryBurst, fetchActiveJob, isOnline, isOwnerManagedDriver, loadScheduledRides, navigate, scheduleRecoveryBurst]);
+    }, [clearRecoveryBurst, fetchActiveJob, isHydratingDriver, isOnline, isOwnerManagedDriver, loadScheduledRides, navigate, scheduleRecoveryBurst]);
+
+    // Hourly selfie verification while online: ask again as soon as the last selfie is older than one hour
+    useEffect(() => {
+        if (!isOnline || isHydratingDriver) {
+            return undefined;
+        }
+
+        const checkSelfieExpiry = () => {
+            if (hasFreshSelfie(onlineSelfie)) {
+                return;
+            }
+            setStatusMessage('Hourly selfie verification is due. Please verify to keep receiving rides.');
+            setSelfieError('');
+            setShowOnlineSelfiePrompt(true);
+        };
+
+        checkSelfieExpiry();
+        const intervalId = window.setInterval(checkSelfieExpiry, 60 * 1000);
+        return () => window.clearInterval(intervalId);
+    }, [isHydratingDriver, isOnline, onlineSelfie]);
 
     useEffect(() => {
         if (!isOnline) {

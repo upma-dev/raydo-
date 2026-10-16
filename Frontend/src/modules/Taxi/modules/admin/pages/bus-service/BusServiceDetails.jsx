@@ -474,6 +474,108 @@ const BusServiceDetails = () => {
           </div>
         </div>
       </section>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="rounded-[32px] border border-slate-100 bg-white p-8 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Seat Layout</p>
+            <p className="text-xs font-bold text-slate-500">
+              {bus.blueprint?.templateKey || 'No template'} | {countTotalSeats(bus.blueprint)} seats
+            </p>
+          </div>
+          {[
+            { title: 'Lower Deck', rows: bus.blueprint?.lowerDeck },
+            { title: 'Upper Deck', rows: bus.blueprint?.upperDeck },
+          ].map(({ title, rows }) =>
+            rows?.length ? (
+              <div key={title} className="mt-6">
+                <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-600">{title}</p>
+                <div className="space-y-2">
+                  {rows.map((row, rowIndex) => (
+                    <div
+                      key={`${title}-${rowIndex}`}
+                      className="grid gap-2"
+                      style={{ gridTemplateColumns: `repeat(${Math.max(1, row.length)}, minmax(0, 1fr))` }}
+                    >
+                      {row.map((cell, cellIndex) =>
+                        cell?.kind === 'seat' ? (
+                          <div
+                            key={cell.id || `${rowIndex}-${cellIndex}`}
+                            className={`rounded-xl border px-2 py-2 text-center ${
+                              cell.status === 'blocked'
+                                ? 'border-slate-200 bg-slate-200 text-slate-400'
+                                : cell.variant === 'sleeper'
+                                  ? 'border-blue-200 bg-blue-50'
+                                  : 'border-slate-200 bg-white'
+                            }`}
+                          >
+                            <p className="text-[11px] font-black text-slate-800">{cell.label || cell.id}</p>
+                            <p className="text-[9px] font-bold uppercase text-slate-400">{cell.variant || 'seat'}</p>
+                          </div>
+                        ) : (
+                          <div key={`${rowIndex}-${cellIndex}`} />
+                        ),
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null,
+          )}
+          {!countTotalSeats(bus.blueprint) ? (
+            <p className="mt-5 text-sm font-semibold text-slate-500">No seat layout configured. Edit the bus and choose a seat template.</p>
+          ) : null}
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-[32px] border border-slate-100 bg-white p-8 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Seat Pricing</p>
+            <div className="mt-5 space-y-3">
+              {[
+                ['Standard Seat', bus.variantPricing?.seat],
+                ['Window Seat', bus.variantPricing?.window],
+                ['Aisle Seat', bus.variantPricing?.aisle],
+                ['Sleeper Berth', bus.variantPricing?.sleeper],
+              ].map(([label, price]) => (
+                <div key={label} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                  <p className="text-sm font-black text-slate-900">{label}</p>
+                  <p className="text-sm font-black text-slate-900">Rs {price || 0}</p>
+                </div>
+              ))}
+              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                <p className="text-sm font-black text-slate-900">Admin Commission</p>
+                <p className="text-sm font-black text-slate-900">{bus.adminCommissionPercentage || 0}%</p>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                <p className="text-sm font-black text-slate-900">Service Tax</p>
+                <p className="text-sm font-black text-slate-900">{bus.serviceTaxPercentage || 0}%</p>
+              </div>
+            </div>
+          </div>
+
+          {bus.returnRouteEnabled ? (
+            <div className="rounded-[32px] border border-slate-100 bg-white p-8 shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Return Route</p>
+              <p className="mt-3 text-lg font-black text-slate-900">
+                {bus.returnRoute?.originCity || 'Origin'} to {bus.returnRoute?.destinationCity || 'Destination'}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                {bus.returnRoute?.distanceKm || 'N/A'} km | {bus.returnRoute?.durationHours || 'N/A'} hrs
+              </p>
+              <div className="mt-4 space-y-2">
+                {returnStops.map((stop, index) => (
+                  <div key={stop.id || `return-stop-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                    <p className="text-sm font-black text-slate-900">{stop.pointName || stop.city || `Stop ${index + 1}`}</p>
+                    <p className="text-[11px] font-semibold text-slate-500">
+                      {stop.stopType} | {stop.arrivalTime || '--:--'} / {stop.departureTime || '--:--'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
       {rejectionModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl space-y-4">

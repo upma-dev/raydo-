@@ -79,7 +79,12 @@ const DriverBottomNav = () => {
       ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-100 bg-white px-2 pb-[max(env(safe-area-inset-bottom),6px)] pt-1.5 shadow-[0_-6px_20px_rgba(0,0,0,0.06)] md:hidden">
+    <nav
+      className={`fixed bottom-0 z-50 border-t px-2 pb-[max(env(safe-area-inset-bottom),6px)] pt-1.5 ${
+        isOwner
+          ? "left-1/2 w-full max-w-xl -translate-x-1/2 border-[#D6E6FB] bg-white shadow-[0_-8px_24px_rgba(11,42,91,0.10)]"
+          : "left-0 right-0 border-slate-100 bg-white shadow-[0_-6px_20px_rgba(0,0,0,0.06)] md:hidden"
+      }`}>
       <div
         className="mx-auto grid h-[58px] w-full max-w-lg items-stretch gap-0.5"
         style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
@@ -96,8 +101,12 @@ const DriverBottomNav = () => {
             to={item.path}
             className={`relative flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-center transition-colors duration-200 ${
               isActive
-                ? "bg-slate-100 text-black"
-                : "text-black/60 font-bold opacity-80"
+                ? isOwner
+                  ? "bg-[#E8F1FF] text-[#0B2A5B]"
+                  : "bg-slate-100 text-black"
+                : isOwner
+                  ? "text-[#6B83A6] font-bold"
+                  : "text-black/60 font-bold opacity-80"
             }`}>
             <div
               className={`${isActive ? "scale-105" : ""}`}>
@@ -115,7 +124,7 @@ const DriverBottomNav = () => {
               {item.label}
             </span>
             {isActive && (
-              <div className="absolute -top-1.5 h-[2px] w-7 rounded-full bg-slate-900" />
+              <div className={`absolute -top-1.5 h-[2px] w-7 rounded-full ${isOwner ? "bg-[#2F80ED]" : "bg-slate-900"}`} />
             )}
           </NavLink>
         );

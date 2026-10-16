@@ -10,7 +10,7 @@
  * Kept for Pooling / Set Price: RentalVehicleType APIs, SetPrice package routes.
  * Flip to true to re-enable without hunting commented blocks.
  */
-export const RENTAL_ENABLED = false
+export const RENTAL_ENABLED = true
 
 /**
  * Master switch for the Taxi Car Pooling end-to-end product surface.

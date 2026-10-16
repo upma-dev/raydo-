@@ -157,7 +157,7 @@ const BikeRentalHome = () => {
       // Ignore storage failures and continue with navigation state.
     }
 
-    navigate('/rental/vehicle', { state: payload });
+    navigate('/taxi/user/rental/vehicle', { state: payload });
   };
 
   useEffect(() => {

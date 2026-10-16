@@ -518,6 +518,18 @@ const rideSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Fleet rides only: how the net earning was shared between the fleet owner and the driver at settlement.
+    ownerSettlement: {
+      ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'TaxiOwner', default: null },
+      model: { type: String, default: '' },
+      ownerSharePercent: { type: Number, default: 0 },
+      netEarning: { type: Number, default: 0 },
+      ownerShare: { type: Number, default: 0 },
+      driverShare: { type: Number, default: 0 },
+      platformDue: { type: Number, default: 0 },
+      cashDueFromDriver: { type: Number, default: 0 },
+      paymentMethod: { type: String, default: '' },
+    },
     // Admin refund of a COMPLETED ride (see rideRefundService). 'processing' / 'processed' block a second refund.
     adminRefund: {
       status: { type: String, enum: ['none', 'processing', 'processed', 'failed'], default: 'none' },

@@ -136,11 +136,6 @@ const PoolingConfirm = () => {
     setIsBooking(true);
 
     try {
-      const scriptLoaded = await loadRazorpayScript();
-      if (!scriptLoaded) {
-        throw new Error('Razorpay SDK failed to load');
-      }
-
       const orderResponse = await userService.createPoolingBookingOrder({
         routeId: route._id,
         vehicleId: vehicle._id,
@@ -151,6 +146,11 @@ const PoolingConfirm = () => {
         dropStopId: dropStop.id,
       });
       const order = unwrapPayload(orderResponse);
+
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        throw new Error('Razorpay SDK failed to load');
+      }
 
       if (!order.keyId || !order.orderId) {
         throw new Error('Unable to start pooling payment');

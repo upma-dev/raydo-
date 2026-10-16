@@ -32,6 +32,8 @@ import { getFirebaseDB } from '../../../../config/firebase.js';
 import * as foodTransactionService from './foodTransaction.service.js';
 import * as userWalletService from '../../user/services/userWallet.service.js';
 import { calculateOrderPricing, resolveOrderZoneId } from './order-pricing.service.js';
+import { reserveStock, releaseStock } from './order-items.service.js';
+import { claimCoupon, releaseCouponClaim } from './order-coupon.service.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
@@ -148,16 +150,13 @@ export async function createOrder(userId, dto) {
     const isCash = paymentMethod === "cash";
     const isWallet = paymentMethod === "wallet";
 
-    // Ensure pricing is present and consistent.
-    const computedSubtotal = (dto.items || []).reduce((sum, item) => {
-      const price = Number(item?.price);
-      const qty = Number(item?.quantity);
-      if (!Number.isFinite(price) || !Number.isFinite(qty)) return sum;
-      return sum + Math.max(0, price) * Math.max(0, qty);
-    }, 0);
+    // The cart sends the coupon either at the top level or inside pricing: accept both
+    const couponCodeInput = String(dto.couponCode || dto.pricing?.couponCode || '').trim().toUpperCase();
 
+    // Prices are re-read from the database here (see order-items.service.js); the app's prices are never trusted.
     const pricingResult = await calculateOrderPricing(userId, {
       ...dto,
+      couponCode: couponCodeInput || undefined,
       restaurantId: String(restaurantId),
       address: dto.address || dto.deliveryAddress,
       deliveryAddress: dto.deliveryAddress || dto.address,
@@ -165,8 +164,9 @@ export async function createOrder(userId, dto) {
     if (!pricingResult?.pricing) {
       throw new ValidationError("Unable to calculate order pricing from fee settings");
     }
+    const orderItems = pricingResult.items;
     const normalizedPricing = {
-      subtotal: Number(pricingResult.pricing.subtotal ?? computedSubtotal) || 0,
+      subtotal: Number(pricingResult.pricing.subtotal) || 0,
       tax: Number(pricingResult.pricing.tax ?? 0) || 0,
       packagingFee: Number(pricingResult.pricing.packagingFee ?? 0) || 0,
       deliveryFee: Number(pricingResult.pricing.deliveryFee ?? 0) || 0,
@@ -288,7 +288,7 @@ export async function createOrder(userId, dto) {
       zoneId: orderZoneId,
       franchiseId: orderFranchiseId,
       territoryId: restaurant.territoryId || null,
-      items: (dto.items || []).map(item => ({
+      items: orderItems.map(item => ({
         ...item,
         itemId: toObjectId(item.itemId, 'Item ID')
       })),
@@ -323,64 +323,72 @@ export async function createOrder(userId, dto) {
 
     let razorpayPayload = null;
 
-    if (paymentMethod === "razorpay") {
-      const amountPaise = Math.round((normalizedPricing.total || 0) * 100);
-      try {
-        razorpayPayload = await createRazorpayCheckoutOrder(amountPaise, "INR", order._id.toString());
-        payment.razorpay = { orderId: razorpayPayload.orderId, paymentId: "", signature: "" };
-        payment.status = "created";
-        // Update order payment state before saving
-        order.payment = payment;
-      } catch (err) {
-        logger.error(`Razorpay order creation failed: ${err.message}`);
-        throw new ValidationError(err?.message || "Payment gateway error");
+    // Everything below can fail half way (gateway down, wallet too low, DB error). Whatever this order has already
+    // taken (coupon use, stock, wallet money) is therefore tracked and given back if it does not get placed.
+    let couponClaim = null;
+    let reservedStock = [];
+    let walletCharged = false;
+    const undoReservations = async () => {
+      await releaseStock(reservedStock);
+      await releaseCouponClaim(couponClaim);
+      if (walletCharged) {
+        await userWalletService.refundWalletBalance(userId, normalizedPricing.total, 'Refund for an order that could not be placed', { orderId: order._id })
+          .catch((e) => logger.error(`[CRITICAL] Wallet refund after failed order ${order._id}: ${e?.message || e}`));
       }
-    }
+    };
 
-    if (!order.shareTrackingId) {
-      order.shareTrackingId = crypto.randomUUID();
-    }
-
-    await order.save();
-
-    // Automatic Inventory Control: Deduct ordered stock and notify if out of stock or low stock
     try {
-      const { FoodItem } = await import('../../admin/models/food.model.js');
-      const { notifyInventoryControl } = await import('../../restaurant/services/restaurantFood.service.js');
-      for (const item of (dto.items || [])) {
-        if (item?.itemId && mongoose.Types.ObjectId.isValid(String(item.itemId))) {
-          const foodDoc = await FoodItem.findById(item.itemId);
-          if (foodDoc && typeof foodDoc.stockQuantity === 'number' && foodDoc.stockQuantity !== null) {
-            const prevStock = foodDoc.stockQuantity;
-            const prevAvailable = foodDoc.isAvailable;
-            const newStock = Math.max(0, foodDoc.stockQuantity - (Number(item.quantity) || 1));
-            foodDoc.stockQuantity = newStock;
-            if (newStock === 0) {
-              foodDoc.isAvailable = false;
-            }
-            await foodDoc.save();
+      // Atomic claims: the coupon limit and the stock are taken in one step, so parallel orders cannot oversell or over-use
+      if (normalizedPricing.discount > 0 && normalizedPricing.couponCode) {
+        couponClaim = await claimCoupon({ code: normalizedPricing.couponCode, userId: toObjectId(userId, 'User ID') });
+      }
+      reservedStock = await reserveStock(orderItems);
 
-            void notifyInventoryControl({
-              foodItem: foodDoc,
-              previousIsAvailable: prevAvailable,
-              currentIsAvailable: foodDoc.isAvailable,
-              stockQuantity: newStock,
-              restaurantId
-            });
-          }
+      if (paymentMethod === "razorpay") {
+        const amountPaise = Math.round((normalizedPricing.total || 0) * 100);
+        try {
+          razorpayPayload = await createRazorpayCheckoutOrder(amountPaise, "INR", order._id.toString());
+          payment.razorpay = { orderId: razorpayPayload.orderId, paymentId: "", signature: "" };
+          payment.status = "created";
+          // Update order payment state before saving
+          order.payment = payment;
+        } catch (err) {
+          logger.error(`Razorpay order creation failed: ${err.message}`);
+          throw new ValidationError(err?.message || "Payment gateway error");
         }
+      }
+
+      if (isWallet) {
+        // Take the money BEFORE the order exists, so an order marked "paid" can never exist without the payment
+        await userWalletService.deductWalletBalance(userId, normalizedPricing.total, `Payment for order #${order._id}`, { orderId: order._id });
+        walletCharged = true;
+      }
+
+      if (!order.shareTrackingId) {
+        order.shareTrackingId = crypto.randomUUID();
+      }
+
+      await order.save();
+    } catch (err) {
+      await undoReservations();
+      throw err;
+    }
+
+    // Inventory alerts (the stock itself was already taken atomically above)
+    try {
+      const { notifyInventoryControl } = await import('../../restaurant/services/restaurantFood.service.js');
+      for (const r of reservedStock) {
+        const nowAvailable = r.stockQuantity > 0 ? r.previousIsAvailable : false;
+        void notifyInventoryControl({
+          foodItem: { ...r.food, stockQuantity: r.stockQuantity, isAvailable: nowAvailable },
+          previousIsAvailable: r.previousIsAvailable,
+          currentIsAvailable: nowAvailable,
+          stockQuantity: r.stockQuantity,
+          restaurantId,
+        });
       }
     } catch (invErr) {
       logger.error(`Inventory control update error for order ${order._id}: ${invErr.message}`);
-    }
-
-    if (isWallet) {
-      try {
-        await userWalletService.deductWalletBalance(userId, order.pricing.total, `Payment for order #${order.order_id || order._id}`, { orderId: order._id });
-      } catch (err) {
-        await FoodOrder.deleteOne({ _id: order._id });
-        throw err;
-      }
     }
 
     // Phase 2: Create initial transaction (Non-blocking but logged)
@@ -456,23 +464,7 @@ export async function createOrder(userId, dto) {
       logger.warn(`Notifications failed for order ${order._id}: ${err.message}`);
     }
 
-    // Handle Coupon usage
-    const couponCode = dto.pricing?.couponCode ? String(dto.pricing.couponCode).trim().toUpperCase() : "";
-    if (couponCode) {
-      try {
-        const offer = await FoodOffer.findOne({ couponCode }).lean();
-        if (offer) {
-          await FoodOffer.updateOne({ _id: offer._id }, { $inc: { usedCount: 1 } });
-          await FoodOfferUsage.updateOne(
-            { offerId: offer._id, userId: toObjectId(userId, 'User ID') },
-            { $inc: { count: 1 }, $set: { lastUsedAt: new Date() } },
-            { upsert: true },
-          );
-        }
-      } catch (err) {
-        logger.error(`Coupon usage update failed: ${err.message}`);
-      }
-    }
+    // Coupon use was already claimed atomically before the order was saved (claimCoupon)
 
     const saved = normalizeOrderForClient(order);
     return { order: saved, razorpay: razorpayPayload };

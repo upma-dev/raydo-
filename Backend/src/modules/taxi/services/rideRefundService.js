@@ -2,6 +2,7 @@ import { ApiError } from '../../../utils/ApiError.js';
 import { Ride } from '../user/models/Ride.js';
 import { UserWallet } from '../user/models/UserWallet.js';
 import { applyDriverWalletAdjustment } from '../driver/services/walletService.js';
+import { applyOwnerWalletAdjustment } from '../driver/services/ownerWalletService.js';
 import { reverseFranchiseCommission } from '../admin/services/taxiFranchiseService.js';
 import { resolveConfiguredGatewayCredentials } from './paymentGatewayService.js';
 import { sendPushNotificationToEntities } from './pushNotificationService.js';
@@ -136,7 +137,47 @@ export const refundCompletedRide = async ({ rideId, amount, reason = '', method 
   // --- 2) Take the earning back from the driver (the rider is already refunded, so errors here are recorded, not thrown)
   let driverDebited = 0;
   let driverNote = '';
-  if (deductFromDriver && claimed.driverId && Number(claimed.driverEarnings) > 0) {
+  const fleetSettlement = claimed.ownerSettlement?.ownerId ? claimed.ownerSettlement : null;
+  if (deductFromDriver && fleetSettlement) {
+    // Fleet ride: take back each side's share of the earning, in proportion to the refund.
+    const ratio = refundAmount / fare;
+    const ownerDebit = round2(Number(fleetSettlement.ownerShare || 0) * ratio);
+    const driverDebit = round2(Number(fleetSettlement.driverShare || 0) * ratio);
+    const notes = [];
+    if (ownerDebit > 0) {
+      try {
+        await applyOwnerWalletAdjustment({
+          ownerId: fleetSettlement.ownerId,
+          amount: -ownerDebit,
+          category: 'ride_refund',
+          title: 'Ride refunded to rider: owner share taken back',
+          rideId: claimed._id,
+          driverId: claimed.driverId,
+          metadata: { refundAmount, refundRef },
+        });
+        driverDebited += ownerDebit;
+      } catch (err) {
+        notes.push(`Owner wallet could not be debited: ${err?.message || err}`);
+      }
+    }
+    // Cash fleet ride: the driver share is in the driver's hand, not his wallet; nothing to take from the wallet.
+    if (driverDebit > 0 && fleetSettlement.paymentMethod !== 'cash') {
+      try {
+        await applyDriverWalletAdjustment({
+          driverId: claimed.driverId,
+          rideId: claimed._id,
+          amount: -driverDebit,
+          type: 'adjustment',
+          description: 'Ride refunded to rider: driver share taken back',
+          metadata: { source: 'ride_refund', rideId: String(claimed._id), refundAmount, refundRef },
+        });
+        driverDebited += driverDebit;
+      } catch (err) {
+        notes.push(`Driver wallet could not be debited: ${err?.message || err}`);
+      }
+    }
+    driverNote = notes.join(' | ');
+  } else if (deductFromDriver && claimed.driverId && Number(claimed.driverEarnings) > 0) {
     const debit = round2(Number(claimed.driverEarnings) * (refundAmount / fare));
     try {
       await applyDriverWalletAdjustment({
