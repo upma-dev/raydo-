@@ -19,6 +19,8 @@ import { logger } from './src/utils/logger.js';
 import { initializeFirebaseRealtime } from './src/config/firebase.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10000;
+// PM2 cluster sets NODE_APP_INSTANCE (0,1,...); undefined when run without PM2
+const isPrimary = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
 let server = null;
 let expireOffersInterval = null;
 let fssaiExpiryInterval = null;
@@ -66,18 +68,6 @@ const startServer = async () => {
         // 1. Connect to Database (MongoDB)
         await connectDB();
 
-        // Every franchise login must only reach the modules its franchise bought (repairs older accounts, idempotent)
-        try {
-            // The franchise ledger's unique index is what stops any credit from being paid twice: make sure it exists
-            const { default: FranchiseLedger } = await import('./src/modules/food/admin/models/franchiseLedger.model.js');
-            await FranchiseLedger.init();
-            const { backfillFranchiseAccess } = await import('./src/modules/food/admin/services/franchise.service.js');
-            const fixed = await backfillFranchiseAccess();
-            if (fixed > 0) logger.info(`Franchise access repaired for ${fixed} login(s)`);
-        } catch (err) {
-            logger.error(`Franchise access backfill failed: ${err.message}`);
-        }
-
         // Food and Taxi share one Razorpay account (uses .env keys, else the keys saved in Admin > Payment Gateways)
         try {
             const { startRazorpayCredentialSync } = await import('./src/modules/food/orders/helpers/razorpay.helper.js');
@@ -97,16 +87,6 @@ const startServer = async () => {
 
         if (config.redisEnabled) {
             await connectRedis();
-        }
-
-        // 5a. Watchdog: Recover stuck orders from previous run
-        try {
-            const { recoverStuckOrders } = await import('./src/modules/food/orders/services/order.service.js');
-            await recoverStuckOrders();
-            const { syncUnassignedRestaurantZones } = await import('./src/modules/food/restaurant/services/restaurant.service.js');
-            await syncUnassignedRestaurantZones();
-        } catch (err) {
-            logger.error(`Watchdog startup error: ${err.message}`);
         }
 
         // 5. Conditionally initialize BullMQ queues.
@@ -152,6 +132,33 @@ const startServer = async () => {
             console.log(`🌐 [URL] http://localhost:${config.port}`);
         });
 
+        // Heavy startup repairs run after the port is open (so deploys don't leave the API down) and only on one cluster instance
+        if (isPrimary) {
+            // Every franchise login must only reach the modules its franchise bought (repairs older accounts, idempotent)
+            try {
+                // The franchise ledger's unique index is what stops any credit from being paid twice: make sure it exists
+                const { default: FranchiseLedger } = await import('./src/modules/food/admin/models/franchiseLedger.model.js');
+                await FranchiseLedger.init();
+                const { backfillFranchiseAccess } = await import('./src/modules/food/admin/services/franchise.service.js');
+                const fixed = await backfillFranchiseAccess();
+                if (fixed > 0) logger.info(`Franchise access repaired for ${fixed} login(s)`);
+            } catch (err) {
+                logger.error(`Franchise access backfill failed: ${err.message}`);
+            }
+
+            // 5a. Watchdog: Recover stuck orders from previous run
+            try {
+                const { recoverStuckOrders } = await import('./src/modules/food/orders/services/order.service.js');
+                await recoverStuckOrders();
+                const { syncUnassignedRestaurantZones } = await import('./src/modules/food/restaurant/services/restaurant.service.js');
+                await syncUnassignedRestaurantZones();
+            } catch (err) {
+                logger.error(`Watchdog startup error: ${err.message}`);
+            }
+        }
+
+        // Recurring jobs: one instance only, otherwise every cluster worker repeats the same DB work
+        if (isPrimary) {
         const runExpire = async () => {
             try {
                 await expireExpiredOffers();
@@ -225,6 +232,8 @@ const startServer = async () => {
             }
         };
         taxiSettlementInterval = setInterval(runTaxiSettlement, 60 * 1000);
+
+        }
 
         process.on('SIGINT', () => gracefulShutdown('SIGINT'));
         process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

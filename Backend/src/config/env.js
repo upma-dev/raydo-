@@ -51,8 +51,8 @@ export const config = {
     smsDltTemplateId: (process.env.SMS_INDIA_HUB_DLT_TEMPLATE_ID || '1007282516644508833').trim(),
 
     // Rate limiting
-    rateLimitWindowMinutes: Number(process.env.RATE_LIMIT_WINDOW || 15),
-    rateLimitMaxRequests: Number(process.env.RATE_LIMIT_MAX || 100),
+    rateLimitWindowMinutes: Number(process.env.RATE_LIMIT_WINDOW || 1),
+    rateLimitMaxRequests: Number(process.env.RATE_LIMIT_MAX || 600),
     authRateLimitWindowMinutes: Number(process.env.AUTH_RATE_LIMIT_WINDOW || 15),
     authRateLimitMax: Number(process.env.AUTH_RATE_LIMIT_MAX || 30),
 
