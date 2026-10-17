@@ -30,6 +30,10 @@ module.exports = {
       instances: 'max',
       exec_mode: 'cluster',
       max_memory_restart: '500M',
+      // Wait for process.send('ready') in server.js before reloading the next instance
+      wait_ready: true,
+      listen_timeout: 60000,
+      kill_timeout: 12000,
     },
     worker('otp'),
     worker('notification'),

@@ -130,6 +130,8 @@ const startServer = async () => {
         server = httpServer.listen(config.port, config.host, () => {
             logger.info(`Server running in ${config.nodeEnv} mode on ${config.host}:${config.port}`);
             console.log(`🌐 [URL] http://localhost:${config.port}`);
+            // Tell PM2 (wait_ready) this instance can take traffic, so cluster reload stays zero-downtime
+            if (process.send) process.send('ready');
         });
 
         // Heavy startup repairs run after the port is open (so deploys don't leave the API down) and only on one cluster instance
