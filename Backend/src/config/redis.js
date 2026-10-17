@@ -3,6 +3,7 @@ import { config } from './env.js';
 import { logger } from '../utils/logger.js';
 
 let redisClient = null;
+let isClosingRedis = false;
 
 /**
  * Creates a new Redis client instance based on configuration.
@@ -21,7 +22,10 @@ export const createRedisClient = () => {
     client.on('error', (err) => logger.error(`Redis Client Error: ${err.message}`));
     client.on('connect', () => logger.info('Redis connecting...'));
     client.on('ready', () => logger.info('Redis client ready'));
-    client.on('end', () => logger.warn('Redis client disconnected'));
+    client.on('end', () => {
+        // A deliberate quit (deploy/reload) is not a warning
+        if (!isClosingRedis) logger.warn('Redis client disconnected');
+    });
 
     return client;
 };
@@ -68,6 +72,7 @@ export const getRedisClient = () => {
  */
 export const closeRedis = async () => {
     if (redisClient) {
+        isClosingRedis = true;
         await redisClient.quit();
         redisClient = null;
         logger.info('Redis connection closed');

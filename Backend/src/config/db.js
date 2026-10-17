@@ -12,8 +12,12 @@ try {
     }
 } catch (_) { }
 
+let isClosingDB = false;
+
 // Set up Mongoose connection event listeners once
 mongoose.connection.on('disconnected', () => {
+    // A deliberate close (deploy/reload) is not an error
+    if (isClosingDB) return;
     logger.warn('MongoDB connection lost. Mongoose will attempt to reconnect...');
 });
 
@@ -70,6 +74,7 @@ export const connectDB = async () => {
  * @returns {Promise<void>}
  */
 export const disconnectDB = async () => {
+    isClosingDB = true;
     await mongoose.connection.close();
     logger.info('MongoDB connection closed');
 };
