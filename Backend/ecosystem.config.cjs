@@ -9,6 +9,7 @@ const common = {
   merge_logs: true,
   log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
   env: baseEnv,
+  env_production: baseEnv,
 };
 
 const worker = (name) => ({
