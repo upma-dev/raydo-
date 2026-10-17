@@ -144,7 +144,6 @@ taxiFranchisePartnerSchema.pre('save', async function (next) {
 
 taxiFranchisePartnerSchema.index({ status: 1, createdAt: -1 });
 taxiFranchisePartnerSchema.index({ zoneId: 1, status: 1 });
-taxiFranchisePartnerSchema.index({ partnerId: 1 });
 
 export const TaxiFranchisePartner =
     mongoose.models.TaxiFranchisePartner ||
