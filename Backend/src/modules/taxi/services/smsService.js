@@ -1,5 +1,6 @@
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../utils/ApiError.js';
+import { renderOtpSmsText } from '../../../core/otp/smsTemplate.js';
 import { AdminBusinessSetting } from '../admin/models/AdminBusinessSetting.js';
 
 const SMS_INDIA_HUB_ENDPOINT = 'http://cloud.smsindiahub.in/api/mt/SendSMS';
@@ -201,7 +202,7 @@ export const sendOtpSms = async ({ phone, otp, purpose = 'otp' }) => {
   const senderId = (env.sms?.indiaHub?.senderId || process.env.SMS_INDIA_HUB_SENDER_ID || 'BGADEC').trim();
   const peId = (env.sms?.indiaHub?.peId || process.env.SMS_INDIA_HUB_PE_ID || '1001164203633432409').trim();
   const templateId = (env.sms?.indiaHub?.dltTemplateId || process.env.SMS_INDIA_HUB_DLT_TEMPLATE_ID || '1007282516644508833').trim();
-  const message = `Welcome to the Raydo powered by Appzeto.Your OTP for registration is ${otp}.BGADEC`;
+  const message = renderOtpSmsText(otp);
 
   console.log(`[SMS] Dispatching OTP to ${msisdn.slice(0, 4)}******${msisdn.slice(-2)} via SMS India Hub...`);   // the OTP itself is never logged
 

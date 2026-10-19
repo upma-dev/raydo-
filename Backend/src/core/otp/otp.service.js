@@ -5,7 +5,7 @@ import { isMasterOtp as isMasterOtpFor } from './masterOtp.js';
 import { config } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { ValidationError } from '../auth/errors.js';
-import { sendOtpSms } from '../../modules/taxi/services/smsService.js';
+import { renderOtpSmsText } from './smsTemplate.js';
 
 const generateOtpCode = () => {
     const code = crypto.randomInt(1000, 9999);
@@ -38,7 +38,7 @@ const sendSmsViaIndiaHub = async (phone, otp) => {
         const senderId = (config.smsSenderId || process.env.SMS_INDIA_HUB_SENDER_ID || 'BGADEC').trim();
         const peId = (config.smsPeId || process.env.SMS_INDIA_HUB_PE_ID || '1001164203633432409').trim();
         const templateId = (config.smsDltTemplateId || process.env.SMS_INDIA_HUB_DLT_TEMPLATE_ID || '1007282516644508833').trim();
-        const message = `Welcome to the Raydo powered by Appzeto.Your OTP for registration is ${otp}.BGADEC`;
+        const message = renderOtpSmsText(otp);
 
         logger.info(`[SMS] Dispatching live SMS OTP ${otp} to ${msisdn} via SMS India Hub...`);
 
