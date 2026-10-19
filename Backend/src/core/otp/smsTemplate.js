@@ -8,7 +8,10 @@ const DEFAULT_TEMPLATE =
 const BRAND_NAME = 'Raydo';
 
 export const renderOtpSmsText = (otp) => {
-  const template = String(process.env.SMS_DLT_TEMPLATE_TEXT || '').trim() || DEFAULT_TEMPLATE;
+  const configured = String(process.env.SMS_DLT_TEMPLATE_TEXT || '').trim();
+  // The template must keep its ##var## slots (the OTP goes in the last one). A template typed without them would send an
+  // SMS with no OTP in it, so fall back to the approved default instead.
+  const template = configured.includes('##var##') ? configured : DEFAULT_TEMPLATE;
   const values = [BRAND_NAME, String(otp)];
   const slots = template.match(/##var##/g)?.length || 0;
   // A template with a single ##var## carries only the OTP.
