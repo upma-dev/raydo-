@@ -128,8 +128,8 @@ export async function updateFormConfigController(req, res, next) {
  */
 export async function syncSubAdminController(req, res, next) {
     try {
-        const { password, permissions, zoneId, taxiZoneId } = req.body;
-        const result = await franchiseAdminService.syncFranchiseSubAdmin(req.params.id, { password, permissions, zoneId, taxiZoneId });
+        const { password, permissions, zoneId, taxiZoneId, regeneratePassword } = req.body;
+        const result = await franchiseAdminService.syncFranchiseSubAdmin(req.params.id, { password, permissions, zoneId, taxiZoneId, regeneratePassword: regeneratePassword === true });
         return sendResponse(res, 200, 'Franchise SubAdmin account created/synced successfully', result);
     } catch (err) {
         next(err);

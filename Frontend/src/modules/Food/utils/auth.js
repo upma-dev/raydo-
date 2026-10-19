@@ -78,12 +78,24 @@ export function hasModuleAccess(role, module) {
 }
 
 /**
+ * A franchise partner has its own login slot ("franchise_*"), separate from the platform admin ("admin_*"), so both can be
+ * signed in in the same browser without overwriting each other. The franchise portal reuses admin pages/APIs that ask for the
+ * "admin" session, so inside /food/franchise the "admin" slot is read from the franchise slot.
+ */
+export function resolveAuthModule(module) {
+  if (module === 'admin' && typeof window !== 'undefined' && window.location.pathname.startsWith('/food/franchise')) {
+    return 'franchise';
+  }
+  return module;
+}
+
+/**
  * Get module-specific access token
  * @param {string} module - Module name (admin, restaurant, delivery, user)
  * @returns {string|null} - Access token or null
  */
 export function getModuleToken(module) {
-  return localStorage.getItem(`${module}_accessToken`);
+  return localStorage.getItem(`${resolveAuthModule(module)}_accessToken`);
 }
 
 /**
@@ -92,7 +104,7 @@ export function getModuleToken(module) {
  * @returns {string|null} - Refresh token or null
  */
 export function getModuleRefreshToken(module) {
-  return localStorage.getItem(`${module}_refreshToken`);
+  return localStorage.getItem(`${resolveAuthModule(module)}_refreshToken`);
 }
 
 /**
@@ -122,7 +134,7 @@ export function getCurrentUserRole(module = null) {
  */
 export function getCurrentUser(module) {
   if (!module) return null;
-  const userStr = localStorage.getItem(`${module}_user`);
+  const userStr = localStorage.getItem(`${resolveAuthModule(module)}_user`);
   if (!userStr) return null;
   try {
     return JSON.parse(userStr);
@@ -146,6 +158,7 @@ export function isModuleAuthenticated(module) {
  * @param {string} module - Module name (admin, restaurant, delivery, user)
  */
 export function clearModuleAuth(module) {
+  module = resolveAuthModule(module);
   localStorage.removeItem(`${module}_accessToken`);
   localStorage.removeItem(`${module}_refreshToken`);
   localStorage.removeItem(`${module}_authenticated`);

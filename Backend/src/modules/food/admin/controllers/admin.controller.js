@@ -158,6 +158,9 @@ export async function getRestaurants(req, res, next) {
         const franchiseId = await resolveFranchiseQueryFilter(req);
         if (franchiseId) {
             query.franchiseId = franchiseId;
+            query.zoneUnclaimed = true;
+        } else {
+            delete query.zoneUnclaimed; // never trusted from the client
         }
         if (req.adminContext?.food_zone_ids && req.adminContext.food_zone_ids.length > 0) {
             query.zoneId = req.adminContext.food_zone_ids[0];

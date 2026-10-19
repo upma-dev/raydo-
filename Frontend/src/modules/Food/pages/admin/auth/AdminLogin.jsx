@@ -113,18 +113,20 @@ export default function AdminLogin() {
         throw new Error("Invalid response from server: missing refresh token")
       }
       const normalizedAdmin = normalizeFoodAdminProfile(adminUser)
-      setAuthData("admin", accessToken, normalizedAdmin, refreshToken)
-      setUnifiedAdminSession({ token: accessToken, user: normalizedAdmin, refreshToken })
       // Franchise Partner ya subadmin -> franchise dashboard
-      if (
+      const isFranchiseUser =
         normalizedAdmin?.admin_type === 'franchise' ||
         normalizedAdmin?.admin_type === 'subadmin' ||
         normalizedAdmin?.role === 'franchise' ||
         normalizedAdmin?.role === 'subadmin' ||
-        normalizedAdmin?.franchiseId
-      ) {
+        Boolean(normalizedAdmin?.franchiseId)
+      if (isFranchiseUser) {
+        // Own session slot, so a platform admin signed in in the same browser is not logged out / overwritten
+        setAuthData("franchise", accessToken, normalizedAdmin, refreshToken)
         navigate("/food/franchise/dashboard", { replace: true })
       } else {
+        setAuthData("admin", accessToken, normalizedAdmin, refreshToken)
+        setUnifiedAdminSession({ token: accessToken, user: normalizedAdmin, refreshToken })
         navigate("/admin/food", { replace: true })
       }
     } catch (err) {

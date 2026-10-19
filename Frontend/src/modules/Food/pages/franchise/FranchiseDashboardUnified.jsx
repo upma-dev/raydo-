@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { useNavigate, NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import {
   Car, Users, IndianRupee, LogOut, Clock, ChevronRight, CreditCard, Wallet, Bell, AlertTriangle,
   LayoutDashboard, Truck, FileText, Loader2, Building, Utensils, Lock, CheckCircle, Package, MessageSquare, TrendingUp, BusFront, Bike,
 } from 'lucide-react';
 import { clearModuleAuth, getCurrentUser } from "@food/utils/auth";
-import { franchiseAPI } from "@food/api";
+import { franchiseAPI, adminAPI } from "@food/api";
 import {
   TaxiDashboardPage, TaxiRidesPage, TaxiBusPage, EarningsPage, WalletPage, SupportPage, StatCard,
 } from './pages/FranchisePortalPages';
@@ -59,7 +59,7 @@ export default function FranchiseDashboardUnified() {
   const [allowedModules, setAllowedModules] = useState(null); // null = still loading
 
   const logout = () => {
-    clearModuleAuth('admin');
+    clearModuleAuth('franchise');
     navigate('/food/franchise/login', { replace: true });
   };
 
@@ -80,7 +80,7 @@ export default function FranchiseDashboardUnified() {
   }, []);
 
   useEffect(() => {
-    const user = getCurrentUser('admin');
+    const user = getCurrentUser('franchise');
     if (!user) { navigate('/food/franchise/login', { replace: true }); return; }
     setFranchiseUser(user);
     // The server's answer is the truth; the stored login is only a fallback while it loads
@@ -92,6 +92,41 @@ export default function FranchiseDashboardUnified() {
   const modules = allowedModules || ['food'];
   const hasFood = modules.includes('food');
   const hasTaxi = modules.includes('taxi');
+
+  // Bell: new restaurant join requests and riders waiting for this franchise's approval (scoped to its zone by the server)
+  const [bellOpen, setBellOpen] = useState(false);
+  const [pendingRestaurants, setPendingRestaurants] = useState([]);
+  const [pendingRiders, setPendingRiders] = useState({ total: 0 });
+  const bellRef = useRef(null);
+
+  const loadAlerts = useCallback(async () => {
+    if (!hasFood) return;
+    const [r, d] = await Promise.all([
+      adminAPI.getPendingRestaurants().catch(() => null),
+      franchiseAPI.getRiders({ status: 'pending', limit: 1 }).catch(() => null),
+    ]);
+    const rows = r?.data?.data;
+    setPendingRestaurants(Array.isArray(rows) ? rows.filter((x) => x.status === 'pending') : []);
+    const rd = d?.data?.data;
+    setPendingRiders({ total: Number(rd?.counts?.pending ?? rd?.total ?? 0) });
+  }, [hasFood]);
+
+  useEffect(() => {
+    if (!allowedModules) return undefined;
+    loadAlerts();
+    const t = setInterval(loadAlerts, 60000);
+    return () => clearInterval(t);
+  }, [allowedModules, loadAlerts]);
+
+  useEffect(() => {
+    if (!bellOpen) return undefined;
+    const close = (e) => { if (bellRef.current && !bellRef.current.contains(e.target)) setBellOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [bellOpen]);
+
+  const alertCount = pendingRestaurants.length + pendingRiders.total;
+  const goTo = (to) => { setBellOpen(false); navigate(`${basePath}/food/${to}`); };
 
   // A franchise can only open the module(s) it holds: anything else goes to its own module
   useEffect(() => {
@@ -250,7 +285,32 @@ export default function FranchiseDashboardUnified() {
         <header className="h-20 shrink-0 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-8 z-10 sticky top-0 shadow-sm">
           <h1 className="text-xl font-bold text-slate-800 tracking-tight">{activeModuleTab === 'taxi' ? '🚕 Taxi' : '🍽️ Food'} franchise</h1>
           <div className="flex items-center gap-4">
-            <button className="p-2 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100"><Bell size={20} /></button>
+            <div className="relative" ref={bellRef}>
+              <button type="button" onClick={() => { setBellOpen((o) => !o); if (!bellOpen) loadAlerts(); }} title="Notifications" className="relative p-2 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100">
+                <Bell size={20} />
+                {alertCount > 0 && <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white">{alertCount > 99 ? '99+' : alertCount}</span>}
+              </button>
+              {bellOpen && (
+                <div className="absolute right-0 top-12 w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                  <div className="px-4 py-3 bg-slate-900 text-white text-xs font-black uppercase tracking-wider">Requests in your zone</div>
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 text-sm">
+                    {pendingRestaurants.slice(0, 8).map((r) => (
+                      <button key={r._id} type="button" onClick={() => goTo('restaurants/joining')} className="w-full text-left px-4 py-3 hover:bg-slate-50">
+                        <div className="font-bold text-slate-800">New restaurant request</div>
+                        <div className="text-xs text-slate-500">{r.restaurantName || 'Restaurant'}{r.ownerName ? ` · ${r.ownerName}` : ''}</div>
+                      </button>
+                    ))}
+                    {pendingRiders.total > 0 && (
+                      <button type="button" onClick={() => goTo('riders')} className="w-full text-left px-4 py-3 hover:bg-slate-50">
+                        <div className="font-bold text-slate-800">Delivery riders waiting</div>
+                        <div className="text-xs text-slate-500">{pendingRiders.total} rider{pendingRiders.total > 1 ? 's' : ''} pending approval</div>
+                      </button>
+                    )}
+                    {alertCount === 0 && <div className="px-4 py-8 text-center text-xs text-slate-400 font-semibold">No new requests</div>}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
               <button type="button" onClick={() => navigate(`${basePath}/profile`)} className="flex items-center gap-3 text-left rounded-xl hover:bg-slate-50 p-1 -m-1" title="My profile">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-blue-500 text-white flex items-center justify-center font-bold text-sm">{partnerInitials}</div>

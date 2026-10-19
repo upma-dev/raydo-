@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { getModuleToken } from "@food/utils/auth"
 import { createPortal } from "react-dom"
 import { AnimatePresence, motion } from "framer-motion"
 import {
@@ -81,7 +82,7 @@ export default function Category() {
   const fileInputRef = useRef(null)
 
   useEffect(() => {
-    const adminToken = localStorage.getItem("admin_accessToken")
+    const adminToken = getModuleToken("admin")
     if (!adminToken) {
       toast.error("Please login to access categories")
       setLoading(false)

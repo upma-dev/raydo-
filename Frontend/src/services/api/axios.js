@@ -139,13 +139,22 @@ function isTokenForModule(token, module) {
   return true;
 }
 
+// Franchise partners have their own login slot ("franchise_*"); the platform admin keeps "admin_*". The franchise portal also
+// calls admin routes (contextModule "admin"), so inside /food/franchise those calls use the franchise slot too.
+function storageModuleFor(module) {
+  if (module === "franchise") return "franchise";
+  if (module === "admin" && typeof window !== "undefined" && window.location.pathname.startsWith("/food/franchise")) return "franchise";
+  return module;
+}
+
 function getAccessToken(config) {
   const module = getModuleFromConfig(config);
-  const targetModule = module === "franchise" ? "admin" : module;
-  const key = `${targetModule}_accessToken`;
+  const storageModule = storageModuleFor(module);
+  const targetModule = storageModule === "franchise" ? "admin" : storageModule;
+  const key = `${storageModule}_accessToken`;
   try {
     // 1. Try target module token first
-    const moduleToken = localStorage.getItem(key) || (module === "franchise" ? localStorage.getItem("admin_accessToken") : null);
+    const moduleToken = localStorage.getItem(key);
     if (moduleToken && isTokenForModule(moduleToken, targetModule)) return moduleToken;
 
     // 2. Fallback to generic token only if it matches this Food module shape.
@@ -160,14 +169,14 @@ function getAccessToken(config) {
 }
 
 function getRefreshToken(module) {
-  const targetModule = module === "franchise" ? "admin" : module;
+  const targetModule = storageModuleFor(module);
   try {
     // 1. Try module-specific refresh token
     const moduleRefreshToken = localStorage.getItem(`${targetModule}_refreshToken`);
     if (moduleRefreshToken) return moduleRefreshToken;
 
     // 2. Fallback to generic refresh token only for non-admin modules
-    if (targetModule !== "admin") {
+    if (targetModule !== "admin" && targetModule !== "franchise") {
       return localStorage.getItem("refreshToken") || null;
     }
     return null;
@@ -177,7 +186,7 @@ function getRefreshToken(module) {
 }
 
 function clearModuleAuth(module) {
-  const targetModule = module === "franchise" ? "admin" : module;
+  const targetModule = storageModuleFor(module);
   try {
     localStorage.removeItem(`${targetModule}_accessToken`);
     localStorage.removeItem(`${targetModule}_refreshToken`);
@@ -199,7 +208,7 @@ function onRefreshed(newToken, module) {
 }
 
 function onRefreshFailed(module) {
-  const targetModule = module === "franchise" ? "admin" : module;
+  const targetModule = storageModuleFor(module);
   clearModuleAuth(targetModule);
   // Fail any queued requests that were waiting for this refresh
   refreshSubscribers.forEach((cb) => cb(null, targetModule));
@@ -330,7 +339,7 @@ apiClient.interceptors.response.use(
       const newAccessToken = data?.data?.accessToken || data?.accessToken;
       if (newAccessToken) {
         try {
-          localStorage.setItem(`${module}_accessToken`, newAccessToken);
+          localStorage.setItem(`${storageModuleFor(module)}_accessToken`, newAccessToken);
           // Dispatch a custom event specifically for the module that refreshed
           window.dispatchEvent(new CustomEvent("authRefreshed", {
             detail: { module, token: newAccessToken }

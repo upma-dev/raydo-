@@ -127,7 +127,7 @@ export async function getApplicationById(id) {
 /**
  * Create or Sync SubAdmin Account for a Franchise Partner
  */
-export async function syncFranchiseSubAdmin(id, { password, permissions, zoneId, taxiZoneId, overrideFeeCheck = false }) {
+export async function syncFranchiseSubAdmin(id, { password, permissions, zoneId, taxiZoneId, overrideFeeCheck = false, regeneratePassword = false }) {
     const app = await FranchiseApplication.findById(id);
     if (!app) throw new Error('Application not found');
 
@@ -169,7 +169,8 @@ export async function syncFranchiseSubAdmin(id, { password, permissions, zoneId,
 
     // Random one-time password (shown to the admin once in the response). Never a shared default.
     const plainPassword = password || generatePassword();
-    let passwordIssued = Boolean(password);
+    // An existing login keeps its password unless one is typed in or the admin explicitly asks for a new random one.
+    let passwordIssued = Boolean(password) || regeneratePassword === true;
     const shouldBeActive = overrideFeeCheck || app.franchiseFeeStatus === 'paid' || app.franchiseFeeStatus === 'waived';
 
     if (subAdmin) {
@@ -191,8 +192,8 @@ export async function syncFranchiseSubAdmin(id, { password, permissions, zoneId,
         if (subAdminPermissions.length > 0) {
             subAdmin.permissions = subAdminPermissions;
         }
-        if (password) {
-            subAdmin.password = password; // pre-save hook will hash it
+        if (passwordIssued) {
+            subAdmin.password = plainPassword; // pre-save hook will hash it
         }
         subAdmin.active = shouldBeActive;
         subAdmin.isActive = shouldBeActive;

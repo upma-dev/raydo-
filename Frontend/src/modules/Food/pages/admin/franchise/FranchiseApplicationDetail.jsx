@@ -228,7 +228,7 @@ export default function FranchiseApplicationDetail() {
     }
   };
 
-  const approveAndIssue = async () => {
+  const approveAndIssue = async (regeneratePassword = false) => {
     if (!zonesReady()) return;
     setIssuing(true);
     try {
@@ -236,6 +236,7 @@ export default function FranchiseApplicationDetail() {
       await adminAPI.updateFranchiseCommission(id, termsBody());
       const res = await adminAPI.syncFranchiseSubAdmin(id, {
         password: password || undefined,
+        ...(regeneratePassword === true && !password ? { regeneratePassword: true } : {}),
         ...(hasFood ? { zoneId: foodZoneId } : {}),
         ...(hasTaxi ? { taxiZoneId } : {}),
       });
@@ -534,10 +535,16 @@ export default function FranchiseApplicationDetail() {
             )}
 
             <label className={labelCls}>Password (optional)</label>
-            <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Leave blank to auto-generate" className={`${inputCls} font-mono mb-3`} />
-            <button onClick={approveAndIssue} disabled={issuing} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-extrabold text-sm inline-flex items-center justify-center gap-2">
+            <input value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off"
+              placeholder={app.subAdminId ? "Leave blank to keep the current password" : "Leave blank to auto-generate"} className={`${inputCls} font-mono mb-3`} />
+            <button onClick={() => approveAndIssue(false)} disabled={issuing} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-extrabold text-sm inline-flex items-center justify-center gap-2">
               {issuing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />} {approved ? "Update login & access" : "Approve & issue login"}
             </button>
+            {app.subAdminId && (
+              <button onClick={() => approveAndIssue(true)} disabled={issuing} className="w-full mt-2 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 disabled:opacity-60 text-slate-700 font-bold text-xs inline-flex items-center justify-center gap-2">
+                Generate a new random password
+              </button>
+            )}
             {app.franchiseFeeStatus === "pending" && <p className="text-[11px] text-amber-700 font-semibold mt-2">The fee is still pending, so the login stays locked until the fee is paid or waived (Plan & fees tab).</p>}
 
             {creds && (

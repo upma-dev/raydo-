@@ -1,13 +1,76 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft, Building2, Store, Car, MapPinned, Landmark, Percent, KeyRound, Loader2, CheckCircle2, Copy, AlertTriangle, FileText, Upload, X } from "lucide-react";
 import { adminAPI, apiClient } from "@food/api";
+import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey";
 import { CommissionExample } from "./InfoGrid";
 import { Card, Field, Loading, ErrorState, inr2, pct, errMsg, inputCls, btn, isAmount, isPercent } from "./finance/ui";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_RE = /^\+?\d{10,15}$/;
+
+// Loads the Google Maps script with the Places library once, and resolves true when Autocomplete is usable.
+let placesPromise = null;
+const loadPlaces = () => {
+  if (window.google?.maps?.places?.Autocomplete) return Promise.resolve(true);
+  if (placesPromise) return placesPromise;
+  placesPromise = (async () => {
+    const key = await getGoogleMapsApiKey();
+    if (!key) return false;
+    if (window.google?.maps?.importLibrary) {
+      try { await window.google.maps.importLibrary("places"); return !!window.google.maps.places?.Autocomplete; } catch { return false; }
+    }
+    return new Promise((resolve) => {
+      const existing = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+      const done = () => resolve(!!window.google?.maps?.places?.Autocomplete);
+      if (existing && existing.src.includes("libraries=places")) {
+        existing.addEventListener("load", done);
+        setTimeout(done, 3000);
+        return;
+      }
+      const s = document.createElement("script");
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&v=weekly`;
+      s.async = true;
+      s.onload = () => setTimeout(done, 200);
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+    });
+  })().then((ok) => { if (!ok) placesPromise = null; return ok; });
+  return placesPromise;
+};
+
+const placeParts = (place) => {
+  const comps = Array.isArray(place?.address_components) ? place.address_components : [];
+  const get = (types) => comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name || "";
+  return {
+    state: get(["administrative_area_level_1"]),
+    city: get(["locality"]) || get(["administrative_area_level_2"]),
+    area: get(["sublocality_level_1", "sublocality", "neighborhood"]),
+    pincode: get(["postal_code"]).replace(/\D/g, "").slice(0, 6),
+    name: place?.name || "",
+  };
+};
+
+/** A text input that suggests places from Google Maps (India only). Typing without picking a suggestion still works. */
+function PlacesInput({ types, onPlace, ...props }) {
+  const ref = useRef(null);
+  const latest = useRef(onPlace);
+  latest.current = onPlace;
+  useEffect(() => {
+    let ac = null;
+    let cancelled = false;
+    loadPlaces().then((ok) => {
+      if (!ok || cancelled || !ref.current) return;
+      ac = new window.google.maps.places.Autocomplete(ref.current, {
+        types, componentRestrictions: { country: "in" }, fields: ["address_components", "name"],
+      });
+      ac.addListener("place_changed", () => latest.current(placeParts(ac.getPlace())));
+    });
+    return () => { cancelled = true; if (ac) window.google?.maps?.event?.clearInstanceListeners(ac); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <input ref={ref} autoComplete="off" {...props} />;
+}
 
 /**
  * Manual franchise creation by the super admin. Pricing comes from the chosen zone and can be overridden here
@@ -68,9 +131,10 @@ export default function FranchiseCreate() {
       if (!silent) toast.error("Location permission denied. Please allow it or enter the address manually");
     }, { enableHighAccuracy: true, timeout: 10000 });
   };
-  useEffect(() => { detectLocation(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Location is filled only when the admin presses "Use my current location", never on page load
 
-  // state + city (district) -> pincode and area, via the India Post directory. Only fills what is still empty.
+  // state + city (district) -> pincode, via the India Post directory. Only fills what is still empty.
+  // Area is not guessed here: a district has many post offices, so the first one would be an arbitrary area.
   const lookupPincode = async (city, state) => {
     if (!city?.trim()) return;
     try {
@@ -78,7 +142,7 @@ export default function FranchiseCreate() {
       const list = (await res.json())?.[0]?.PostOffice || [];
       const sameState = list.filter((p) => !state || String(p.State).toLowerCase() === String(state).trim().toLowerCase());
       const po = (sameState.length ? sameState : list)[0];
-      if (po) fillLocation({ pincode: po.Pincode, area: po.Name, state: po.State });
+      if (po) fillLocation({ pincode: po.Pincode, state: po.State });
     } catch { /* manual entry still works */ }
   };
 
@@ -90,7 +154,11 @@ export default function FranchiseCreate() {
       const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
       const po = (await res.json())?.[0]?.PostOffice?.[0];
       // A new pincode means a new place, so replace state/city; area only if empty
-      if (po) { fillLocation({ state: po.State, city: po.District }, true); fillLocation({ area: po.Name }); }
+      if (po) {
+        fillLocation({ state: po.State, city: po.District }, true);
+        // Area only when it is a real locality, not just the city/district name again
+        if (String(po.Name).trim().toLowerCase() !== String(po.District).trim().toLowerCase()) fillLocation({ area: po.Name });
+      }
     } catch { /* manual entry still works */ }
   };
 
@@ -267,9 +335,29 @@ export default function FranchiseCreate() {
                 <Field label="Company"><input className={inputCls} value={f.companyName} onChange={(e) => set({ companyName: e.target.value })} /></Field>
                 <Field label="Phone *" error={err("phone")}><input inputMode="tel" className={inputCls} value={f.phone} onChange={(e) => set({ phone: e.target.value })} /></Field>
                 <Field label="Email * (login email)" error={err("email")}><input type="email" className={inputCls} value={f.email} onChange={(e) => set({ email: e.target.value })} /></Field>
-                <Field label="State *" error={err("state")}><input className={inputCls} value={f.state} onChange={(e) => set({ state: e.target.value })} /></Field>
-                <Field label="City / district *" error={err("city")} hint="Pincode and area fill automatically from state + city"><input className={inputCls} value={f.city} onChange={(e) => set({ city: e.target.value })} onBlur={() => { if (!f.pincode) lookupPincode(f.city, f.state); }} /></Field>
-                <Field label="Area"><input className={inputCls} value={f.area} onChange={(e) => set({ area: e.target.value })} /></Field>
+                <Field label="State *" error={err("state")} hint="Start typing to get suggestions from the map">
+                  <PlacesInput types={["administrative_area_level_1"]} className={inputCls} value={f.state} onChange={(e) => set({ state: e.target.value })}
+                    onPlace={(p) => { const state = p.state || p.name; if (state) set({ state }); }} />
+                </Field>
+                <Field label="City / district *" error={err("city")} hint="Suggestions from the map; pincode fills automatically">
+                  <PlacesInput types={["(cities)"]} className={inputCls} value={f.city} onChange={(e) => set({ city: e.target.value })}
+                    onBlur={() => { if (!f.pincode) lookupPincode(f.city, f.state); }}
+                    onPlace={(p) => {
+                      const city = p.city || p.name;
+                      if (!city) return;
+                      set({ city, ...(p.state ? { state: p.state } : {}) });
+                      if (p.pincode) fillLocation({ pincode: p.pincode });
+                      else if (!f.pincode) lookupPincode(city, p.state || f.state);
+                    }} />
+                </Field>
+                <Field label="Area" hint="Suggestions from the map">
+                  <PlacesInput types={["geocode"]} className={inputCls} value={f.area} onChange={(e) => set({ area: e.target.value })}
+                    onPlace={(p) => {
+                      const area = p.area || p.name;
+                      if (area) set({ area });
+                      fillLocation({ state: p.state, city: p.city, pincode: p.pincode });
+                    }} />
+                </Field>
                 <Field label="Pincode" error={err("pincode")}><input inputMode="numeric" maxLength={6} className={inputCls} value={f.pincode} onChange={(e) => onPincode(e.target.value)} /></Field>
               </div>
               <button type="button" onClick={() => detectLocation(false)} disabled={locating} className={`${btn.ghost} mt-3`}>

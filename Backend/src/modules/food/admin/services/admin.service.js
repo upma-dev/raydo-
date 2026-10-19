@@ -307,7 +307,15 @@ export async function getRestaurants(query) {
         filter.zoneId = new mongoose.Types.ObjectId(query.zoneId);
     }
     if (query.franchiseId && mongoose.Types.ObjectId.isValid(query.franchiseId)) {
-        filter.franchiseId = new mongoose.Types.ObjectId(query.franchiseId);
+        const fid = new mongoose.Types.ObjectId(query.franchiseId);
+        const FranchiseApplication = mongoose.models.FranchiseApplication;
+        // A franchise login also sees the restaurants of its own zone that no franchise has claimed yet (same as the admin list)
+        const app = query.zoneUnclaimed && FranchiseApplication ? await FranchiseApplication.findById(fid).select('zoneId').lean() : null;
+        if (app?.zoneId) {
+            filter.$or = [{ franchiseId: fid }, { zoneId: app.zoneId, franchiseId: null }];
+        } else {
+            filter.franchiseId = fid;
+        }
     }
     const [restaurants, total] = await Promise.all([
         FoodRestaurant.find(filter)
@@ -2442,10 +2450,20 @@ export async function getPendingRestaurants(query = {}) {
         .populate('zoneId', 'name zoneName')
         .sort({ createdAt: -1 })
         .lean();
+    // Zones that a franchise has bought: its franchise handles the approval, so the platform admin is sent to the list
+    const FranchiseApplication = mongoose.models.FranchiseApplication;
+    const zoneIds = [...new Set(restaurants.map((r) => String(r.zoneId?._id || '')).filter(Boolean))];
+    const ownedZones = new Set(
+        FranchiseApplication && zoneIds.length
+            ? (await FranchiseApplication.find({ zoneId: { $in: zoneIds }, status: 'approved', archived: { $ne: true } }).select('zoneId').lean())
+                .map((a) => String(a.zoneId))
+            : []
+    );
     return restaurants.map((r, i) => ({
         ...r,
         sl: i + 1,
         zone: r.zoneId?.zoneName || r.zoneId?.name || null,
+        franchiseOwned: ownedZones.has(String(r.zoneId?._id || '')),
     }));
 }
 

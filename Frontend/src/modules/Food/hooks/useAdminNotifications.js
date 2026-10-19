@@ -3,6 +3,7 @@ import { adminAPI, supportAPI } from "@food/api";
 import { io } from "socket.io-client";
 import { API_BASE_URL, resolveSocketOrigin } from "@food/api/config";
 import { toast } from "sonner";
+import { getModuleToken } from "@food/utils/auth";
 
 const STORAGE_KEY = "admin_notifications_dismissed_v1";
 const REALTIME_KEY = "admin_realtime_notifications_v1";
@@ -182,7 +183,8 @@ const mapPendingRestaurants = (response) => {
       message: `${item?.restaurantName || "Restaurant"} submitted a restaurant approval request. Owner: ${item?.ownerName || "N/A"}. Contact: ${item?.ownerPhone || "N/A"}.`,
       type: "approval",
       category: "restaurant_approval",
-      path: "/admin/food/restaurants/joining-request",
+      // A zone owned by a franchise is approved by that franchise: the admin just opens the restaurant list
+      path: item?.franchiseOwned ? "/admin/food/restaurants" : "/admin/food/restaurants/joining-request",
       createdAt: item?.createdAt || item?.updatedAt,
       timeLabel: toDateLabel(item?.createdAt || item?.updatedAt),
       metaLabel: joinMeta(item?.restaurantName, item?.ownerName, item?.ownerPhone),
@@ -474,7 +476,7 @@ export default function useAdminNotifications(options = {}) {
     if (typeof window === "undefined") return undefined;
     try {
       const backendUrl = resolveSocketOrigin(API_BASE_URL);
-      const token = localStorage.getItem("admin_accessToken") || localStorage.getItem("accessToken");
+      const token = getModuleToken("admin") || localStorage.getItem("accessToken");
 
       const socket = io(backendUrl, {
         transports: ["websocket", "polling"],
@@ -505,7 +507,9 @@ export default function useAdminNotifications(options = {}) {
           message: `${name}${phone ? ` (${phone})` : ''} registered and requires review.`,
           type: "approval",
           category: data.type === 'restaurant' ? 'restaurant_approval' : 'delivery_approval',
-          path: data.type === 'restaurant' ? '/admin/food/restaurants/joining-request' : '/admin/food/delivery-partners/join-request',
+          path: data.type === 'restaurant'
+            ? (data.franchiseOwned ? '/admin/food/restaurants' : '/admin/food/restaurants/joining-request')
+            : '/admin/food/delivery-partners/join-request',
           createdAt: data.createdAt || new Date().toISOString(),
           timeLabel: "Just now",
           metaLabel: joinMeta(name, phone, data.type),

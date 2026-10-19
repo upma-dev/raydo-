@@ -226,7 +226,11 @@ export const adminAPI = {
     const token =
       refreshToken ||
       (typeof localStorage !== "undefined"
-        ? localStorage.getItem("admin_refreshToken")
+        ? localStorage.getItem(
+            typeof window !== "undefined" && window.location.pathname.startsWith("/food/franchise")
+              ? "franchise_refreshToken"
+              : "admin_refreshToken",
+          )
         : null);
     const fcmToken = typeof localStorage !== "undefined" ? localStorage.getItem("fcm_web_registered_token_admin") : null;
     return authService.logout(token, fcmToken, "web");

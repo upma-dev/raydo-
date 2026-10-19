@@ -538,6 +538,12 @@ export const registerRestaurant = async (payload, files) => {
         });
 
         try {
+            // The franchise that owns this restaurant's zone must hear about the join request too (superadmins always do).
+            const FranchiseApplication = mongoose.models.FranchiseApplication;
+            const zoneFranchise = restaurant.zoneId && FranchiseApplication
+                ? await FranchiseApplication.findOne({ zoneId: restaurant.zoneId, status: 'approved', archived: { $ne: true } }).select('_id').lean()
+                : null;
+
             emitToAdmins('new_registration_alert', {
                 id: String(restaurant._id),
                 type: 'restaurant',
@@ -545,6 +551,8 @@ export const registerRestaurant = async (payload, files) => {
                 title: 'New Food Restaurant Registered',
                 name: restaurant.restaurantName || restaurant.ownerName || 'Food Restaurant',
                 phone: restaurant.ownerPhone || restaurant.primaryContactNumber || '',
+                // The zone's franchise handles the approval: the admin app sends the click to the restaurant list instead
+                franchiseOwned: Boolean(zoneFranchise),
                 createdAt: new Date().toISOString()
             });
 
@@ -555,9 +563,10 @@ export const registerRestaurant = async (payload, files) => {
                 data: {
                     type: 'new_registration',
                     subType: 'restaurant',
-                    id: String(restaurant._id)
+                    id: String(restaurant._id),
+                    link: zoneFranchise ? '/admin/food/restaurants' : '/admin/food/restaurants/joining-request'
                 }
-            });
+            }, zoneFranchise ? { franchiseId: String(zoneFranchise._id) } : {});
         } catch (e) {
             console.error('Failed to notify admins of new restaurant registration:', e);
         }
