@@ -64,7 +64,7 @@ export const ProfileDetailsV2 = () => {
     const parseWalletBalance = (response) => {
       const data = response?.data
       const wallet = (data?.success && data?.data?.wallet) || data?.wallet || data?.data || data
-      const possibleBalance = wallet?.totalBalance || wallet?.balance || wallet?.pocketBalance || 0
+      const possibleBalance = wallet?.unifiedBalance ?? wallet?.totalBalance ?? wallet?.balance ?? wallet?.pocketBalance ?? 0
       return Number(possibleBalance) || 0
     }
 

@@ -474,3 +474,25 @@ describe('HTTP: delivery app -> ride app', () => {
         assert.match(res.body.message, /delivery Pocket/);
     });
 });
+
+describe('Repeated switching', () => {
+    it('keeps switching food <-> rides many times, with the ride app used in between', async () => {
+        const partner = await makePartner({ vehicleNumber: 'MP09RR7777' });
+        await deliveredOrder(partner._id, 500);
+        for (let round = 1; round <= 4; round += 1) {
+            const toTaxi = await switchRideMode(partner._id, { mode: 'taxi', latitude: 22.7, longitude: 75.8 });
+            assert.equal(toTaxi.mode, 'taxi', `round ${round} to taxi`);
+            const driverId = toTaxi.driverId;
+            // the ride app goes online and later offline, like a real shift
+            await Driver.updateOne({ _id: driverId }, { $set: { isOnline: true, socketId: 'sock' } });
+            assert.equal((await getRideModeStatus(partner._id)).activeMode, 'taxi');
+
+            const toFood = await switchRideMode(partner._id, { mode: 'food' });
+            assert.equal(toFood.mode, 'food', `round ${round} to food`);
+            assert.equal((await getRideModeStatus(partner._id)).activeMode, 'food');
+            await FoodDeliveryPartner.updateOne({ _id: partner._id }, { $set: { availabilityStatus: 'online' } });
+        }
+        const pocket = await getDeliveryPartnerWalletEnhanced(String(partner._id));
+        assert.equal(pocket.pocketBalance, 500); // nothing lost or doubled after 4 rounds
+    });
+});

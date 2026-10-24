@@ -3,10 +3,11 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Bike, Package, XCircle } from 'lucide-react';
+import { Package } from 'lucide-react';
+import RideModePill from '@/modules/DeliveryV2/components/RideModePill';
 import { deliveryAPI } from '@food/api';
 import { socketService } from '@/modules/Taxi/shared/api/socket';
-import { apiErrorOf, openRideApp, startRideSession, unwrap } from '@/modules/DeliveryV2/utils/rideModeSession';
+import { apiErrorOf, openRideApp, setRideModeCache, startRideSession, unwrap } from '@/modules/DeliveryV2/utils/rideModeSession';
 
 const RIDE_ACCENT = '#FFC107';
 
@@ -34,6 +35,8 @@ const RideModeSwitch = ({ isOnline, hasActiveOrder, riderLocation, onLeaveFood }
   const [state, setState] = useState(readCache);
   const [loaded, setLoaded] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
+  // Mode the toggle is moving to while the request runs, so the switch is visible straight away
+  const [pendingMode, setPendingMode] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -73,12 +76,13 @@ const RideModeSwitch = ({ isOnline, hasActiveOrder, riderLocation, onLeaveFood }
   const switchToRides = async () => {
     setConfirmOpen(false);
     setIsSwitching(true);
+    setPendingMode('taxi');
     try {
       const lat = Number(riderLocation?.lat ?? riderLocation?.latitude);
       const lng = Number(riderLocation?.lng ?? riderLocation?.longitude);
       const result = unwrap(await deliveryAPI.switchRideMode('taxi', Number.isFinite(lat) && Number.isFinite(lng) ? { latitude: lat, longitude: lng } : {}));
       startRideSession(result.taxiToken);
-      writeCache({ eligible: true, status: 'approved', activeMode: 'taxi' });
+      setRideModeCache('taxi');
       onLeaveFood?.();
       toast.success('Ride & Parcel mode on. Go online to get ride requests.');
       navigate('/taxi/driver/home');
@@ -87,20 +91,26 @@ const RideModeSwitch = ({ isOnline, hasActiveOrder, riderLocation, onLeaveFood }
       load();
     } finally {
       setIsSwitching(false);
+      setPendingMode(null);
     }
   };
 
   const switchToFood = async () => {
     setIsSwitching(true);
+    setPendingMode('food');
     try {
       await deliveryAPI.switchRideMode('food');
       socketService.disconnect();
+      // Show the new mode now; the refresh below only syncs the rest in the background
+      setRideModeCache('food');
+      setState((prev) => (prev ? { ...prev, activeMode: 'food' } : prev));
       toast.success('Back on Food delivery. Go online to get orders.');
-      await load();
+      load();
     } catch (error) {
       handleError(error);
     } finally {
       setIsSwitching(false);
+      setPendingMode(null);
     }
   };
 
@@ -118,58 +128,32 @@ const RideModeSwitch = ({ isOnline, hasActiveOrder, riderLocation, onLeaveFood }
 
   const status = state?.status || 'none';
   const approved = status === 'approved';
-  const inRideMode = approved && state?.activeMode === 'taxi';
+  const inRideMode = approved && (pendingMode ? pendingMode === 'taxi' : state?.activeMode === 'taxi');
   const needsAttention = status === 'rejected' || status === 'blocked';
 
-  const copy = {
-    none: { title: 'Rides & Parcels', sub: 'Switch on to take bike rides' },
-    pending: { title: 'Rides & Parcels', sub: 'Switch on to take bike rides' },
-    rejected: { title: 'Ride & Parcel: rejected', sub: 'Tap to see why and apply again' },
-    blocked: { title: 'Ride account blocked', sub: 'Contact support for help' },
-    approved: inRideMode
-      ? { title: 'Ride & Parcel mode', sub: 'Taking rides & parcels' }
-      : { title: 'Rides & Parcels', sub: 'Switch on to take bike rides' },
-  }[status] || { title: 'Rides & Parcels', sub: '' };
-
-  // Same toggle as Online / Offline, in blue. No application: the first switch registers the partner's bike for rides.
+  // No application: the first switch registers the partner's bike for rides.
   const onToggle = () => {
     if (!state) return;
     if (needsAttention) return navigate('/food/delivery/ride-mode');
     return inRideMode ? switchToFood() : onRideTap();
   };
 
+  const pillLabel = status === 'rejected' ? 'Ride & Parcel rejected'
+    : status === 'blocked' ? 'Ride account blocked'
+      : inRideMode ? 'Switch to Food' : 'Switch to Ride';
+
   return (
     <>
-      <div className="mx-4 mt-2 flex items-center gap-3 rounded-2xl bg-white/5 border border-white/10 px-3.5 py-2.5">
-        <button
-          type="button"
-          onClick={() => (approved || needsAttention ? navigate('/food/delivery/ride-mode') : onToggle())}
-          className="flex flex-1 min-w-0 items-center gap-3 text-left"
-        >
-          <span className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0">
-            {needsAttention ? <XCircle className="w-4 h-4 text-rose-400" />
-                : <Bike className="w-4 h-4" style={{ color: RIDE_ACCENT }} />}
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block text-white text-[11px] font-black uppercase tracking-wider truncate">{copy.title}</span>
-            <span className="block text-gray-400 text-[10px] font-bold truncate">{copy.sub}</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          disabled={isSwitching || !state}
+      {/* Same pill as the ride screens' "Switch to Food" */}
+      <div className="mt-2 flex justify-center">
+        <RideModePill
+          target={inRideMode ? 'food' : 'taxi'}
+          busy={isSwitching}
+          disabled={!state}
+          attention={needsAttention}
+          label={pillLabel}
           onClick={onToggle}
-          aria-label={inRideMode ? 'Switch to Food delivery' : 'Switch to Ride and Parcel'}
-          className={`relative w-[92px] h-8 rounded-full p-1 transition-all duration-500 flex items-center shrink-0 ${inRideMode ? 'shadow-lg shadow-blue-500/30' : ''} ${isSwitching ? 'opacity-70' : ''}`}
-          style={{ background: inRideMode ? '#2563EB' : 'rgba(37,99,235,0.35)' }}
-        >
-          <div className="flex items-center justify-between w-full px-2 text-[8.5px] font-black uppercase tracking-widest text-white">
-            <span>{inRideMode ? 'Ride' : ''}</span>
-            <span>{!inRideMode ? 'Food' : ''}</span>
-          </div>
-          <motion.div animate={{ x: inRideMode ? 59 : 0 }} className="absolute left-1 w-6 h-6 bg-white rounded-full shadow-sm" />
-        </button>
+        />
       </div>
 
       {/* Portal: the header has backdrop-blur, which would trap and clip fixed children */}

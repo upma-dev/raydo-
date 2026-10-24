@@ -55,7 +55,7 @@ export const ProfileV2 = () => {
     }
     fetchProfile()
     deliveryAPI.getWallet().then(res => {
-      const bal = res?.data?.data?.wallet?.pocketBalance || res?.data?.data?.wallet?.totalBalance || 0;
+      const bal = res?.data?.data?.wallet?.unifiedBalance || res?.data?.data?.wallet?.pocketBalance || res?.data?.data?.wallet?.totalBalance || 0;
       setWalletBalance(Number(bal));
     }).catch(() => {});
 

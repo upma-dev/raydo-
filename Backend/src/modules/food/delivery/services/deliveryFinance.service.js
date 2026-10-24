@@ -5,6 +5,7 @@ import { FoodDeliveryWithdrawal } from '../models/foodDeliveryWithdrawal.model.j
 import { FoodDeliveryCashDeposit } from '../models/foodDeliveryCashDeposit.model.js';
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { HybridWalletTransfer } from '../models/hybridWalletTransfer.model.js';
+import { Driver } from '../../../taxi/driver/models/Driver.js';
 import { withPartnerWalletLock } from './rideWalletLock.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
@@ -204,8 +205,14 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
         }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    // Same rupees as the ride wallet shows: Pocket + ride wallet (the reserve kept there). Earnings stay food-only below.
+    const rideBalance = partner.rideMode?.taxiDriverId
+        ? Number((await Driver.findById(partner.rideMode.taxiDriverId).select('wallet.balance').lean())?.wallet?.balance) || 0
+        : 0;
+
     return {
-        totalBalance: totalEarned + ledgerExtraEarnings + totalBonus + rideTransfers.mergedIn, // Gross lifetime earnings
+        totalBalance: totalEarned + ledgerExtraEarnings + totalBonus, // Gross lifetime food earnings (ride earnings are shown in the ride app)
+        unifiedBalance: round2(pocketBalance + rideBalance),
         rideEarningsMerged: rideTransfers.mergedIn,
         rideDuesRecovered: rideTransfers.duesRecovered,
         pocketBalance, // Available to withdraw (earnings minus COD cash still in hand)

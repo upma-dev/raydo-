@@ -1228,7 +1228,7 @@ const DriverHome = () => {
             }
         };
 
-        syncSummary();
+        // No fetch on mount: the driver hydrate above already loaded the same /drivers/me data
         intervalId = setInterval(syncSummary, isOnline ? 30000 : 120000);
 
         const handleVisibilityChange = () => {
@@ -2439,7 +2439,7 @@ const DriverHome = () => {
                     >
                         <IndianRupee size={12} className="text-emerald-400" strokeWidth={3} />
                         <span className="text-[12px] font-black tracking-tight">
-                            {Number(walletSummary.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            {Number(walletSummary.displayBalance ?? walletSummary.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </span>
                     </div>
                 </div>

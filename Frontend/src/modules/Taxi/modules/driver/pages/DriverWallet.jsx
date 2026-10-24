@@ -647,7 +647,7 @@ const DriverWallet = () => {
                             <div className="flex items-start justify-between gap-4">
                                 <div>
                                     <p className="text-xs font-black uppercase tracking-[0.18em] text-white/45">Current balance</p>
-                                    <h2 className="mt-2 text-4xl font-black tracking-tight">{money(wallet.balance)}</h2>
+                                    <h2 className="mt-2 text-4xl font-black tracking-tight">{money(wallet.displayBalance ?? wallet.balance)}</h2>
                                     <span className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-black ${rules.canReceiveOrders ? 'bg-emerald-400/15 text-emerald-200' : 'bg-amber-400/15 text-amber-200'}`}>
                                         {statusCopy}
                                     </span>
@@ -988,7 +988,7 @@ const DriverWallet = () => {
                                             className="mt-2 w-full bg-transparent text-center text-4xl font-black text-slate-950 outline-none"
                                             placeholder="0"
                                         />
-                                        <p className="mt-2 text-xs font-bold text-slate-500">Available balance: {money(wallet.balance)}</p>
+                                        <p className="mt-2 text-xs font-bold text-slate-500">Available balance: {money(wallet.displayBalance ?? wallet.balance)}</p>
                                     </div>
                                     <button
                                         type="button"

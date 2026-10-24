@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { ArrowLeftRight, UtensilsCrossed } from 'lucide-react';
 import { deliveryAPI } from '@food/api';
+import RideModePill from '@/modules/DeliveryV2/components/RideModePill';
 import { socketService } from '../../../shared/api/socket';
-import { apiErrorOf, isRideModePartner } from '@/modules/DeliveryV2/utils/rideModeSession';
+import { apiErrorOf, isRideModePartner, setRideModeCache } from '@/modules/DeliveryV2/utils/rideModeSession';
 
 /**
  * Shown on the ride home of a delivery partner in Ride & Parcel mode: switches the partner back to food delivery.
@@ -24,6 +24,7 @@ const RideModeReturnBar = ({ hasActiveRide = false }) => {
         try {
             const result = (await deliveryAPI.switchRideMode('food'))?.data?.data || {};
             socketService.disconnect();
+            setRideModeCache('food');
             const upcoming = result.upcomingScheduledRides || [];
             toast.success(
                 upcoming.length
@@ -42,22 +43,14 @@ const RideModeReturnBar = ({ hasActiveRide = false }) => {
     return (
         <>
             <div className="fixed top-[92px] left-0 right-0 z-40 mx-auto max-w-md flex justify-center pointer-events-none">
-                <button
-                    type="button"
-                    disabled={isSwitching}
+                <RideModePill
+                    target="food"
+                    busy={isSwitching}
+                    className="pointer-events-auto"
                     onClick={() => (hasActiveRide
                         ? toast.error('Finish your current ride before switching to Food delivery.')
                         : setConfirmOpen(true))}
-                    className="pointer-events-auto flex items-center gap-2 rounded-full bg-[#121212] pl-1.5 pr-3.5 py-1.5 text-white shadow-xl shadow-black/20 border border-white/10 active:scale-95 transition-all disabled:opacity-60"
-                >
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500">
-                        <UtensilsCrossed size={13} strokeWidth={2.5} />
-                    </span>
-                    <span className="text-[10px] font-black uppercase tracking-widest">
-                        {isSwitching ? 'Switching…' : 'Switch to Food'}
-                    </span>
-                    <ArrowLeftRight size={12} className="text-white/50" />
-                </button>
+                />
             </div>
 
             <AnimatePresence>

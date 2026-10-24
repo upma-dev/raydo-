@@ -194,7 +194,22 @@ const withDriverAuth = (config = {}) => {
   };
 };
 
-export const getCurrentDriver = () => api.get("/drivers/me", withDriverAuth());
+// The layout's approval check and the home screen both load /drivers/me as it opens: share one request (and its answer
+// for a moment) instead of making the driver wait for the same slow call twice.
+let currentDriverCall = null;
+export const getCurrentDriver = () => {
+  const token = getLocalDriverToken();
+  if (currentDriverCall && currentDriverCall.token === token && Date.now() - currentDriverCall.at < 2500) {
+    return currentDriverCall.promise;
+  }
+  const promise = api.get("/drivers/me", withDriverAuth());
+  const entry = { token, at: Date.now(), promise };
+  currentDriverCall = entry;
+  promise.catch(() => {
+    if (currentDriverCall === entry) currentDriverCall = null;
+  });
+  return promise;
+};
 export const getDriverPendingDispatch = (params = {}) =>
   api.get("/drivers/pending-dispatch", withDriverAuth({ params }));
 

@@ -69,8 +69,9 @@ export const PocketV2 = () => {
         const isFilled = !!(bankDetails?.accountNumber);
 
         setWalletState({
-          totalBalance: Number(wallet.pocketBalance) || 0,
-          rideEarningsMerged: Number(wallet.rideEarningsMerged) || 0,
+          // Same amount as the ride wallet (Pocket + ride wallet); earnings below stay food-only
+          totalBalance: Number(wallet.unifiedBalance ?? wallet.pocketBalance) || 0,
+          rideEarningsMerged: 0,
           cashInHand: Number(wallet.cashInHand) || 0,
           availableCashLimit: Number(wallet.availableCashLimit) || 0,
           totalCashLimit: Number(wallet.totalCashLimit) || 0,

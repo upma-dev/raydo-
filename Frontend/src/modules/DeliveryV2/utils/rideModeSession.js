@@ -34,6 +34,30 @@ export const startRideSession = (taxiToken) => {
   } catch { /* storage blocked: the session token is still set for this tab */ }
 };
 
+export const setRideModeCache = (activeMode) => {
+  try {
+    localStorage.setItem('rideModeCard', JSON.stringify({ eligible: true, status: 'approved', activeMode }));
+  } catch { /* storage blocked */ }
+};
+
+/**
+ * The ride session token was refused (expired / replaced). A partner in Ride & Parcel mode gets a fresh one from the
+ * delivery login instead of being thrown out. Returns true when the ride screens can be retried.
+ */
+export const recoverRideSession = async () => {
+  try {
+    const last = Number(sessionStorage.getItem('rideSessionRecoveredAt') || 0);
+    if (Date.now() - last < 30000) return false; // already tried a moment ago: do not loop
+    sessionStorage.setItem('rideSessionRecoveredAt', String(Date.now()));
+    const session = unwrap(await deliveryAPI.getRideSession());
+    if (session?.activeMode !== 'taxi' || !session?.taxiToken) return false;
+    startRideSession(session.taxiToken);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** Opens a ride screen with a fresh ride session (e.g. after the stored one expired). */
 export const openRideApp = async (navigate, path = '/taxi/driver/home') => {
   const session = unwrap(await deliveryAPI.getRideSession());

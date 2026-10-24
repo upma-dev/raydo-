@@ -2566,9 +2566,17 @@ export const getCurrentDriver = async (req, res) => {
   }
 
   await clearDriverActiveRideIfStale(driver);
-  const vehicleIconUrl = await resolveVehicleMapIcon(driver.vehicleTypeId);
-  const allowedServices = effectiveServicesForVehicle(await findDriverVehicleRecord(driver));
-  const todaySummary = await syncDriverTodaySummaryDocument(driver);
+  // Independent lookups run together: this call blocks the driver home from opening
+  const [vehicleIconUrl, vehicleRecord, todaySummary, serializedWallet] = await Promise.all([
+    resolveVehicleMapIcon(driver.vehicleTypeId),
+    findDriverVehicleRecord(driver),
+    syncDriverTodaySummaryDocument(driver),
+    serializeDriverWallet(driver),
+  ]);
+  const allowedServices = effectiveServicesForVehicle(vehicleRecord);
+  const wallet = driver.linkedDeliveryPartnerId
+    ? await (await import("../../../food/delivery/services/hybridRide.service.js")).withUnifiedWalletBalance(driver, serializedWallet)
+    : serializedWallet;
 
   res.json({
     success: true,
@@ -2599,7 +2607,7 @@ export const getCurrentDriver = async (req, res) => {
       approve: driver.approve,
       status: driver.status,
       rating: driver.rating,
-      wallet: await serializeDriverWallet(driver),
+      wallet,
       referralCode: driver.referralCode || "",
       deletionRequest: driver.deletionRequest || { status: "none" },
       isOnline: driver.isOnline,
@@ -3273,20 +3281,20 @@ export const getMyWallet = async (req, res) => {
     throw new ApiError(404, "Driver not found");
   }
 
-  const transactions = await WalletTransaction.find({ driverId: req.auth.sub })
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .lean();
-  const withdrawalRequests = await WithdrawalRequest.find({ driver_id: req.auth.sub })
-    .sort({ createdAt: -1 })
-    .limit(10)
-    .lean();
-  const walletSettings = await getWalletSettings();
+  const [transactions, withdrawalRequests, walletSettings, serializedWallet] = await Promise.all([
+    WalletTransaction.find({ driverId: req.auth.sub }).sort({ createdAt: -1 }).limit(50).lean(),
+    WithdrawalRequest.find({ driver_id: req.auth.sub }).sort({ createdAt: -1 }).limit(10).lean(),
+    getWalletSettings(),
+    serializeDriverWallet(driver),
+  ]);
+  const wallet = driver.linkedDeliveryPartnerId
+    ? await (await import("../../../food/delivery/services/hybridRide.service.js")).withUnifiedWalletBalance(driver, serializedWallet)
+    : serializedWallet;
 
   res.json({
     success: true,
     data: {
-      wallet: await serializeDriverWallet(driver),
+      wallet,
       transactions,
       withdrawalRequests,
       settings: walletSettings,

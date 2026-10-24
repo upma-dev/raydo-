@@ -9,7 +9,7 @@ import {
 } from '../services/registrationService';
 import { RENTAL_ENABLED } from '../../../shared/featureFlags';
 import DriverRideRequestListener from './DriverRideRequestListener';
-import { isRideModePartner } from '@/modules/DeliveryV2/utils/rideModeSession';
+import { isRideModePartner, recoverRideSession } from '@/modules/DeliveryV2/utils/rideModeSession';
 
 const unwrapDriver = (response) => response?.data?.data || response?.data || response;
 const getPortalPrefix = (pathname = '', role = '') => {
@@ -76,7 +76,10 @@ const softEntryRoutes = new Set([
 const redirectToDriverLogin = (navigate, pathname = '', role = '') => {
     // A delivery partner in Ride & Parcel mode has no driver-app login: the delivery app issues a fresh ride session
     if (isRideModePartner()) {
-        navigate('/food/delivery/feed', { replace: true });
+        recoverRideSession().then((recovered) => {
+            if (recovered) window.location.reload();
+            else navigate('/food/delivery/feed', { replace: true });
+        });
         return;
     }
     clearDriverAuthState();
@@ -180,7 +183,9 @@ const DriverLayout = () => {
         let active = true;
 
         const verifyDriver = async () => {
-            setIsChecking(true);
+            // A delivery partner in Ride & Parcel mode was approved when they switched: open the screen right away and
+            // let the check run behind it instead of showing a spinner for the whole /drivers/me round trip
+            if (!isRideModePartner()) setIsChecking(true);
 
             try {
                 const response = await getCurrentDriver();

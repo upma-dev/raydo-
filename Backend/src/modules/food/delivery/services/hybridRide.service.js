@@ -219,6 +219,22 @@ export const reconcileRideWallet = async (partnerId, { mode } = {}) => {
     });
 };
 
+/**
+ * The one amount both apps show for a linked partner: Pocket + ride wallet. Moving money between the two (wallet merge)
+ * never changes it, so the Pocket and the ride wallet always read the same rupees. Earnings and history stay per app.
+ * `displayBalance` is for display only; blocking / withdrawal rules keep using the real balances.
+ */
+export const withUnifiedWalletBalance = async (driver, wallet) => {
+    if (!driver?.linkedDeliveryPartnerId || !wallet) return wallet;
+    try {
+        const pocket = await getDeliveryPartnerWalletEnhanced(String(driver.linkedDeliveryPartnerId));
+        return { ...wallet, displayBalance: round2(Number(pocket.pocketBalance || 0) + Number(wallet.balance || 0)) };
+    } catch (err) {
+        logger.warn(`[RideMode] unified balance skipped for driver ${driver._id}: ${err?.message || err}`);
+        return wallet;
+    }
+};
+
 /** Wallet merge for a taxi driver id (used after a ride is settled). Does nothing for normal taxi drivers. */
 export const reconcileRideWalletForDriver = async (driverId) => {
     const driver = await Driver.findById(driverId).select('linkedDeliveryPartnerId').lean();
@@ -479,8 +495,8 @@ const ensureEnrolledForRides = async (partner) => {
     return driver;
 };
 
-const requireApprovedDriver = async (partner) => {
-    const driver = await loadLinkedDriver(partner);
+const requireApprovedDriver = async (partner, loadedDriver) => {
+    const driver = loadedDriver || await loadLinkedDriver(partner);
     const status = rideStatusOfDriver(driver);
     if (status === 'none') throw codedError('Apply for Ride & Parcel first.', 'RIDE_MODE_NOT_ENROLLED');
     if (status === 'pending') throw codedError('Your Ride & Parcel application is still under review.', 'RIDE_MODE_PENDING');
@@ -494,11 +510,13 @@ export const switchRideMode = async (partnerId, payload = {}) => {
     if (!['food', 'taxi'].includes(mode)) throw new ValidationError('mode must be food or taxi');
 
     const partner = await loadPartner(partnerId);
-    if (mode === 'taxi') await ensureEnrolledForRides(partner);
-    const driver = await requireApprovedDriver(partner);
+    // The enrolment already loads the driver: reuse it, and look for a running food order at the same time
+    const [enrolledDriver, activeOrder] = mode === 'taxi'
+        ? await Promise.all([ensureEnrolledForRides(partner), findActiveFoodOrder(partner._id)])
+        : [null, null];
+    const driver = await requireApprovedDriver(partner, enrolledDriver);
 
     if (mode === 'taxi') {
-        const activeOrder = await findActiveFoodOrder(partner._id);
         if (activeOrder) {
             throw codedError(
                 `Finish your current food order (#${activeOrder.order_id || activeOrder.orderId || activeOrder._id}) before switching to Ride & Parcel.`,
@@ -567,22 +585,24 @@ export const switchRideMode = async (partnerId, payload = {}) => {
         });
     }
     const wasOnline = Boolean(driver.isOnline);
-    await Driver.updateOne(
-        { _id: driver._id },
-        { $set: { isOnline: false, socketId: null, 'incentiveTracking.currentOnlineStartedAt': null } }
-    );
-
     partner.rideMode.activeMode = 'food';
     partner.rideMode.lastSwitchedAt = new Date();
-    await partner.save();
+    const [, , upcoming] = await Promise.all([
+        Driver.updateOne(
+            { _id: driver._id },
+            { $set: { isOnline: false, socketId: null, 'incentiveTracking.currentOnlineStartedAt': null } }
+        ),
+        partner.save(),
+        findUpcomingScheduledRides(driver._id),
+    ]);
 
+    // After the mode is saved (the wallet target depends on it)
     try {
         await reconcileRideWallet(partner._id);
     } catch (err) {
         logger.warn(`[RideMode] wallet merge after switch failed for ${partner._id}: ${err?.message || err}`);
     }
 
-    const upcoming = await findUpcomingScheduledRides(driver._id);
     return {
         mode: 'food',
         wasOnline,
