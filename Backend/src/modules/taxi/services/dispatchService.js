@@ -16,6 +16,16 @@ import { processRideCancellation } from './cancellationService.js';
 import { Notification } from '../admin/promotions/models/Notification.js';
 import { RideBid } from '../user/models/RideBid.js';
 
+// A driver who explicitly rejects a ride is left alone this long. A driver who just let the request
+// expire (ignored it) is asked again on the next dispatch attempt, i.e. after the accept window.
+const REJECT_COOLDOWN_MS = 3 * 60 * 1000;
+
+// notifyLateAvailableDriver scans every active dispatch (a geo query per ride). It is fired on each driver location tick
+// and on socket connect, so without a guard a single driver can trigger the full scan many times a second. We run it at
+// most once per driver per this window; pings in between are ignored (the scan would see the same state anyway).
+const NOTIFY_LATE_DRIVER_MIN_INTERVAL_MS = Number(process.env.NOTIFY_LATE_DRIVER_MIN_INTERVAL_MS || 4000);
+const lastNotifyLateAt = new Map(); // driverId -> last scan timestamp
+
 const activeDispatches = new Map();
 let ioInstance = null;
 const scheduledDispatchTimers = new Map();
@@ -152,6 +162,8 @@ const getDispatchState = (rideId) => {
     driverIds: Array.isArray(state.driverIds) ? state.driverIds : [],
     notifiedDriverIds: Array.isArray(state.notifiedDriverIds) ? state.notifiedDriverIds : [],
     rejectedDriverIds: Array.isArray(state.rejectedDriverIds) ? state.rejectedDriverIds : [],
+    notifiedAt: state.notifiedAt && typeof state.notifiedAt === 'object' ? state.notifiedAt : {},
+    rejectedAt: state.rejectedAt && typeof state.rejectedAt === 'object' ? state.rejectedAt : {},
   };
 };
 
@@ -257,6 +269,8 @@ const emitRideRequestToDrivers = async ({
       : 'A new booking is waiting for your response.',
     data: {
       type: 'ride_request',
+      // The service worker only rings and keeps the notification on screen when ring === "true".
+      ring: 'true',
       rideId: String(ride._id),
       serviceType: ride.serviceType || 'ride',
       userId: String(ride.userId?._id || ride.userId || ''),
@@ -268,15 +282,24 @@ const emitRideRequestToDrivers = async ({
   });
 };
 
-export const markDriverRejectedFromDispatch = (rideId, driverId) => {
+export const markDriverRejectedFromDispatch = (rideId, driverId, reason = 'rejected') => {
   if (!rideId || !driverId) {
+    return;
+  }
+
+  // The driver app also sends rejectRide when the accept timer simply runs out. That is an ignored
+  // request, not a rejection, so the driver stays eligible for the next attempt.
+  if (reason === 'timeout') {
     return;
   }
 
   const state = getDispatchState(rideId);
   const rejectedDriverIds = [...new Set([...state.rejectedDriverIds, String(driverId)])];
 
-  saveDispatchState(rideId, { rejectedDriverIds });
+  saveDispatchState(rideId, {
+    rejectedDriverIds,
+    rejectedAt: { ...state.rejectedAt, [String(driverId)]: Date.now() },
+  });
 };
 
 const closeRideAsUnmatched = async (rideId) => {
@@ -708,24 +731,35 @@ const dispatchAttempt = async (rideId, attemptIndex = 0) => {
       ? searchRadiusMeters
       : radius;
 
-    const rejectedDriverIds = new Set(dispatchState.rejectedDriverIds);
-    const notifiedDriverIds = new Set(dispatchState.notifiedDriverIds);
-    const availableDrivers = drivers.filter((driver) => {
-      const driverId = String(driver._id);
-      return !rejectedDriverIds.has(driverId) && !notifiedDriverIds.has(driverId);
-    });
+    const now = Date.now();
+    // Skip drivers who rejected recently and drivers whose previous request window is still open.
+    const availableDrivers = drivers
+      .filter((driver) => {
+        const driverId = String(driver._id);
+        const rejectedAt = dispatchState.rejectedAt[driverId];
+        const notifiedAt = dispatchState.notifiedAt[driverId];
+
+        if (dispatchState.rejectedDriverIds.includes(driverId) && !(rejectedAt && now - rejectedAt >= REJECT_COOLDOWN_MS)) {
+          return false;
+        }
+
+        return !(notifiedAt && now - notifiedAt < dispatchConfig.retryDelayMs - 1000);
+      })
+      // Drivers never asked (or asked longest ago) go first; the distance order is kept for ties.
+      .sort((left, right) => (dispatchState.notifiedAt[String(left._id)] || 0) - (dispatchState.notifiedAt[String(right._id)] || 0));
     const targetDrivers = dispatchConfig.dispatchType === 'broadcast'
       ? availableDrivers
       : availableDrivers.slice(0, 1);
-    const nextNotifiedDriverIds = [
-      ...dispatchState.notifiedDriverIds,
-      ...targetDrivers.map((driver) => String(driver._id)),
-    ];
+    const targetDriverIds = targetDrivers.map((driver) => String(driver._id));
+    const nextNotifiedDriverIds = [...new Set([...dispatchState.notifiedDriverIds, ...targetDriverIds])];
 
     saveDispatchState(rideId, {
       radiusIndex: attemptIndex,
-      driverIds: targetDrivers.map((driver) => String(driver._id)),
+      driverIds: targetDriverIds,
       notifiedDriverIds: nextNotifiedDriverIds,
+      // A driver asked again after the reject cooldown must be allowed to accept, so lift their reject mark.
+      rejectedDriverIds: dispatchState.rejectedDriverIds.filter((id) => !targetDriverIds.includes(id)),
+      notifiedAt: { ...dispatchState.notifiedAt, ...Object.fromEntries(targetDriverIds.map((id) => [id, now])) },
       timer: null,
     });
 
@@ -933,6 +967,21 @@ export const restoreScheduledDispatches = async () => {
 export const notifyLateAvailableDriver = async (driverId) => {
   if (!driverId || activeDispatches.size === 0) {
     return;
+  }
+
+  // Debounce per driver: collapse rapid repeat calls (fast GPS pings, reconnect bursts) into one scan per window.
+  const driverKey = String(driverId);
+  const now = Date.now();
+  if (now - (lastNotifyLateAt.get(driverKey) || 0) < NOTIFY_LATE_DRIVER_MIN_INTERVAL_MS) {
+    return;
+  }
+  lastNotifyLateAt.set(driverKey, now);
+  // Keep the map from growing without bound once a driver is no longer being dispatched to.
+  if (lastNotifyLateAt.size > 5000) {
+    const cutoff = now - 60000;
+    for (const [key, ts] of lastNotifyLateAt) {
+      if (ts < cutoff) lastNotifyLateAt.delete(key);
+    }
   }
 
   const driver = await Driver.findById(driverId)

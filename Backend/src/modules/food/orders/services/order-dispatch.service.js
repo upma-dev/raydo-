@@ -453,7 +453,21 @@ export async function resendDeliveryNotificationRestaurant(orderId, restaurantId
   const finalOrder = await FoodOrder.findById(order._id).select('dispatch.offeredTo').lean();
   const offered = finalOrder?.dispatch?.offeredTo || [];
   const notifiedCount = offered.length;
-  // Is anyone who got the offer actually connected right now? (false = their app is closed / offline: only a push can reach them)
-  const connectedCount = offered.filter((o) => liveSocketCount(o.partnerId) > 0).length;
+
+  const partnerIds = offered.map((o) => o.partnerId).filter(Boolean);
+  const onlineDocs = partnerIds.length > 0
+    ? await FoodDeliveryPartner.find({
+        _id: { $in: partnerIds },
+        availabilityStatus: 'online'
+      }).select('_id').lean()
+    : [];
+  const onlinePartnerIds = new Set(onlineDocs.map((d) => d._id.toString()));
+
+  // A partner is connected/reachable if they have an active socket room OR are actively on duty ('online')
+  const connectedCount = offered.filter((o) => {
+    const pId = (o.partnerId?._id || o.partnerId).toString();
+    return liveSocketCount(pId) > 0 || onlinePartnerIds.has(pId);
+  }).length;
+
   return { success: true, notifiedCount, connectedCount };
 }

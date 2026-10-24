@@ -224,16 +224,30 @@ export async function franchiseListDrivers(partnerId, { page = 1, limit = 20, st
     if (!partner) throw new ApiError(404, 'Franchise partner not found');
 
     const query = {
-        franchiseId: partner._id,
-        zoneId: partner.zoneId,
+        $or: [
+            { zoneId: partner.zoneId },
+            { franchiseId: partner._id },
+        ],
         deletedAt: null,
     };
-    if (status) query.status = status;
+    if (status) {
+        if (status === 'pending') {
+            query.$and = [
+                { $or: [{ approve: false }, { status: 'pending' }] },
+                { status: { $nin: ['blocked', 'rejected'] } },
+            ];
+        } else if (status === 'approved') {
+            query.status = 'approved';
+            query.approve = { $ne: false };
+        } else {
+            query.status = status;
+        }
+    }
 
     const skip = (Number(page) - 1) * Number(limit);
     const [drivers, total] = await Promise.all([
         Driver.find(query)
-            .select('name phone email vehicleType vehicleTypeId vehicleMake vehicleModel vehicleNumber vehicleColor status approve zoneId wallet createdAt')
+            .select('name phone email vehicleType vehicleTypeId vehicleMake vehicleModel vehicleNumber vehicleColor status approve zoneId wallet isOnline socketId documents createdAt')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(Number(limit))
@@ -259,7 +273,14 @@ export async function franchiseUpdateDriverStatus(partnerId, driverId, { status,
     const partner = await TaxiFranchisePartner.findById(partnerId).lean();
     if (!partner) throw new ApiError(404, 'Franchise partner not found');
 
-    const driver = await Driver.findOne({ _id: driverId, franchiseId: partner._id }).lean();
+    const driver = await Driver.findOne({
+        _id: driverId,
+        $or: [
+            { zoneId: partner.zoneId },
+            { franchiseId: partner._id },
+        ],
+        deletedAt: null,
+    }).lean();
     if (!driver) throw new ApiError(404, 'Driver not found in your zone');
 
     const update = {};
@@ -512,7 +533,10 @@ export async function creditFranchiseCommission({ zoneId, rideId, driverId, ride
     if (!zoneId || !rideId || !(Number(rideAmount) > 0)) return;
 
     const partner = await TaxiFranchisePartner.findOne({
-        zoneId: toObjectId(zoneId),
+        $or: [
+            { zoneId: toObjectId(zoneId) },
+            { zoneId: String(zoneId) },
+        ],
         status: 'active',
     }).lean();
 
@@ -579,10 +603,16 @@ export async function franchiseDashboardStats(partnerId) {
         todayRides,
         totalRides,
     ] = await Promise.all([
-        Driver.countDocuments({ franchiseId: partner._id, deletedAt: null }),
-        Driver.countDocuments({ franchiseId: partner._id, deletedAt: null, isOnline: true }),
-        Ride.countDocuments({ zoneId: partner.zoneId, createdAt: { $gte: today } }),
-        Ride.countDocuments({ zoneId: partner.zoneId, status: { $in: ['completed', 'dropped'] } }),
+        Driver.countDocuments({ $or: [{ zoneId: partner.zoneId }, { franchiseId: partner._id }], deletedAt: null }),
+        Driver.countDocuments({ $or: [{ zoneId: partner.zoneId }, { franchiseId: partner._id }], deletedAt: null, isOnline: true }),
+        Ride.countDocuments({
+            $or: [{ zoneId: partner.zoneId }, { 'pricingSnapshot.surge_zone_id': partner.zoneId }],
+            createdAt: { $gte: today },
+        }),
+        Ride.countDocuments({
+            $or: [{ zoneId: partner.zoneId }, { 'pricingSnapshot.surge_zone_id': partner.zoneId }],
+            status: { $in: ['completed', 'dropped'] },
+        }),
     ]);
 
     return {
@@ -636,4 +666,81 @@ function serializePartner(p, full = false) {
     }
 
     return base;
+}
+
+/**
+ * List rides strictly within this franchise partner's zone
+ */
+export async function franchiseListRides(partnerId, { page = 1, limit = 20, status, serviceType, search } = {}) {
+    const partner = await TaxiFranchisePartner.findById(partnerId).lean();
+    if (!partner) throw new ApiError(404, 'Franchise partner not found');
+
+    const query = {
+        $or: [
+            { zoneId: partner.zoneId },
+            { 'pricingSnapshot.surge_zone_id': partner.zoneId },
+        ],
+    };
+    if (status) query.status = status;
+    if (serviceType) query.serviceType = serviceType;
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const [rides, total] = await Promise.all([
+        Ride.find(query)
+            .populate('userId', 'name phone email')
+            .populate('driverId', 'name phone vehicleType vehicleNumber vehicleModel')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(Number(limit))
+            .lean(),
+        Ride.countDocuments(query),
+    ]);
+
+    const ledgerMap = new Map();
+    (partner.commissionLedger || []).forEach((entry) => {
+        ledgerMap.set(String(entry.rideId), entry);
+    });
+
+    const results = rides.map((r) => {
+        const ledgerEntry = ledgerMap.get(String(r._id));
+        const franchiseEarning = ledgerEntry
+            ? ledgerEntry.franchiseCommissionAmount
+            : (r.status === 'completed' || r.status === 'dropped')
+                ? Math.round(((Number(r.fare) || 0) * (partner.franchiseCommissionRate || 0)) / 100 * 100) / 100
+                : 0;
+
+        return {
+            _id: r._id,
+            rideId: r.rideId || String(r._id).slice(-8).toUpperCase(),
+            serviceType: r.serviceType || 'ride',
+            pickupAddress: r.pickupAddress || '',
+            dropAddress: r.dropAddress || '',
+            fare: Number(r.fare) || 0,
+            status: r.status,
+            liveStatus: r.liveStatus,
+            paymentMethod: r.paymentMethod,
+            paymentStatus: r.paymentStatus,
+            user: r.userId ? { name: r.userId.name, phone: r.userId.phone } : null,
+            driver: r.driverId ? {
+                name: r.driverId.name,
+                phone: r.driverId.phone,
+                vehicleType: r.driverId.vehicleType,
+                vehicleNumber: r.driverId.vehicleNumber,
+            } : null,
+            franchiseEarning,
+            commissionRate: partner.franchiseCommissionRate,
+            createdAt: r.createdAt,
+            completedAt: r.completedAt,
+        };
+    });
+
+    return {
+        results,
+        paginator: {
+            current_page: Number(page),
+            per_page: Number(limit),
+            total,
+            last_page: Math.max(1, Math.ceil(total / Number(limit))),
+        },
+    };
 }

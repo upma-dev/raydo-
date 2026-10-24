@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import FranchiseApplication from '../../admin/models/franchiseApplication.model.js';
 import FranchiseFormConfig from '../../admin/models/franchiseFormConfig.model.js';
 import FranchiseLedger from '../../admin/models/franchiseLedger.model.js';
+import { FoodZone } from '../../admin/models/zone.model.js';
 import { createRazorpayCheckoutOrder, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
 import { syncFranchiseSubAdmin } from '../../admin/services/franchise.service.js';
 import { availableBalance } from '../../admin/services/franchiseLedger.service.js';
@@ -47,6 +48,115 @@ export async function getPublicFormConfig() {
 /**
  * Submit a new franchise application
  */
+/**
+ * Detect if a franchise is already registered in this zone, district, or area.
+ * Rules:
+ *  - 1 zone / district / area can only have 1 active/approved franchise.
+ *  - Checks by zoneId (if provided) and by matching city/district/area against existing franchises or food zones.
+ */
+async function checkDuplicateZoneFranchise({ zoneId, state, city, area }) {
+    let existing = null;
+    let conflictType = '';
+    let conflictMessage = '';
+
+    // 1. Direct zoneId match against active/approved/pending franchises
+    if (zoneId && mongoose.Types.ObjectId.isValid(String(zoneId))) {
+        existing = await FranchiseApplication.findOne({
+            zoneId: new mongoose.Types.ObjectId(String(zoneId)),
+            archived: { $ne: true },
+            accountStatus: { $ne: 'terminated' },
+            status: { $in: ['approved', 'pending', 'under_review'] },
+        }).select('applicantName companyName city area state zoneId status').lean();
+
+        if (existing) {
+            conflictType = 'zone';
+            conflictMessage = `Food Zone is already registered/requested by ${existing.applicantName || existing.companyName || 'another partner'} (Status: ${existing.status})`;
+            return { hasConflict: true, existing, conflictType, conflictMessage };
+        }
+    }
+
+    // 2. City / District match (case-insensitive)
+    if (city && String(city).trim()) {
+        const cleanCity = String(city).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const cityQuery = {
+            city: new RegExp(`^${cleanCity}$`, 'i'),
+            archived: { $ne: true },
+            accountStatus: { $ne: 'terminated' },
+            status: { $in: ['approved', 'pending', 'under_review'] },
+        };
+        if (state && String(state).trim()) {
+            cityQuery.state = new RegExp(`^${String(state).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        }
+
+        existing = await FranchiseApplication.findOne(cityQuery)
+            .select('applicantName companyName city area state zoneId status')
+            .lean();
+
+        if (existing) {
+            conflictType = 'district_city';
+            conflictMessage = `District/City "${city}" is already registered/requested by ${existing.applicantName || existing.companyName || 'another partner'} (Status: ${existing.status})`;
+            return { hasConflict: true, existing, conflictType, conflictMessage };
+        }
+    }
+
+    // 3. Area match within same city/state
+    if (area && String(area).trim()) {
+        const cleanArea = String(area).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const areaQuery = {
+            area: new RegExp(`^${cleanArea}$`, 'i'),
+            archived: { $ne: true },
+            accountStatus: { $ne: 'terminated' },
+            status: { $in: ['approved', 'pending', 'under_review'] },
+        };
+        if (city && String(city).trim()) {
+            areaQuery.city = new RegExp(`^${String(city).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        }
+
+        existing = await FranchiseApplication.findOne(areaQuery)
+            .select('applicantName companyName city area state zoneId status')
+            .lean();
+
+        if (existing) {
+            conflictType = 'area';
+            conflictMessage = `Area "${area}" is already registered/requested by ${existing.applicantName || existing.companyName || 'another partner'} (Status: ${existing.status})`;
+            return { hasConflict: true, existing, conflictType, conflictMessage };
+        }
+    }
+
+    // 4. Check if city/area matches an existing FoodZone that already has an assigned franchise
+    if (city && String(city).trim()) {
+        const cleanCity = String(city).trim();
+        const matchedZone = await FoodZone.findOne({
+            $or: [
+                { name: new RegExp(`^${cleanCity}$`, 'i') },
+                { zoneName: new RegExp(`^${cleanCity}$`, 'i') },
+                { serviceLocation: new RegExp(`^${cleanCity}$`, 'i') },
+            ],
+            isActive: true,
+        }).select('_id name zoneName').lean();
+
+        if (matchedZone) {
+            existing = await FranchiseApplication.findOne({
+                zoneId: matchedZone._id,
+                archived: { $ne: true },
+                accountStatus: { $ne: 'terminated' },
+                status: { $in: ['approved', 'pending', 'under_review'] },
+            }).select('applicantName companyName city area state zoneId status').lean();
+
+            if (existing) {
+                conflictType = 'food_zone';
+                conflictMessage = `Food Zone "${matchedZone.name || matchedZone.zoneName}" is already registered to ${existing.applicantName || existing.companyName || 'another partner'} (Status: ${existing.status})`;
+                return { hasConflict: true, existing, conflictType, conflictMessage };
+            }
+        }
+    }
+
+    return { hasConflict: false, existing: null, conflictType: '', conflictMessage: '' };
+}
+
+/**
+ * Submit a new franchise application
+ */
 export async function submitFranchiseApplication(data) {
     const {
         applicantName, email, phone, companyName, businessType,
@@ -62,6 +172,9 @@ export async function submitFranchiseApplication(data) {
     const modules = normalizeModules(selectedModules);
     const fees = normalizeFees(config.moduleFranchiseFees);
     const commissions = normalizeCommissions(config.moduleCommissions);
+
+    // Check if another franchise is already registered in this zone/district/area
+    const conflictResult = await checkDuplicateZoneFranchise({ zoneId, state, city, area });
 
     // Status, fee and rates are always decided by the server, never by the form.
     const application = new FranchiseApplication({
@@ -85,9 +198,74 @@ export async function submitFranchiseApplication(data) {
         franchiseFee: getFranchiseFee(modules, fees),
         moduleFranchiseFees: fees,
         moduleCommissions: commissions,
+        hasZoneConflict: conflictResult.hasConflict,
+        conflictDetails: conflictResult.hasConflict ? {
+            existingFranchiseId: conflictResult.existing?._id || null,
+            existingFranchiseName: conflictResult.existing?.applicantName || conflictResult.existing?.companyName || 'Existing Franchise Partner',
+            conflictType: conflictResult.conflictType,
+            conflictMessage: conflictResult.conflictMessage,
+        } : undefined,
     });
 
     await application.save();
+
+    // Broadcast socket alert to admin room and broadcast channel
+    try {
+        const { getIO } = await import('../../../../config/socket.js');
+        const io = getIO();
+        if (io) {
+            const loc = [area, city, state].filter(Boolean).join(', ') || 'Territory';
+            if (conflictResult.hasConflict) {
+                const conflictAlert = {
+                    id: `conflict-franchise-${application._id}`,
+                    applicationId: application.applicationId,
+                    franchiseId: String(application._id),
+                    applicantName: application.applicantName,
+                    phone: application.phone,
+                    city: application.city,
+                    area: application.area,
+                    state: application.state,
+                    location: loc,
+                    existingFranchiseName: conflictResult.existing?.applicantName || conflictResult.existing?.companyName || 'Existing Franchise',
+                    conflictMessage: conflictResult.conflictMessage,
+                    title: '⚠️ Duplicate Zone Franchise Request',
+                    message: `DUPLICATE ZONE ALERT: ${application.applicantName} registered from ${loc}, but this zone/area is already registered to ${conflictResult.existing?.applicantName || 'another franchise'}! (1 zone = 1 franchise only). Review in Franchise List.`,
+                    path: '/admin/food/franchise-management/list',
+                    category: 'franchise_approval',
+                    type: 'approval',
+                    hasZoneConflict: true,
+                    createdAt: application.createdAt || new Date(),
+                };
+                io.to('admin_room').emit('duplicate_franchise_zone_alert', conflictAlert);
+                io.to('admin_room').emit('new_franchise_registration', conflictAlert);
+                io.to('admin:broadcast').emit('admin_notification', conflictAlert);
+            } else {
+                const normalAlert = {
+                    id: `franchise-app-${application._id}`,
+                    applicationId: application.applicationId,
+                    franchiseId: String(application._id),
+                    applicantName: application.applicantName,
+                    phone: application.phone,
+                    city: application.city,
+                    area: application.area,
+                    state: application.state,
+                    location: loc,
+                    title: '🏢 New Franchise Application',
+                    message: `${application.applicantName} (${application.phone || ''}) submitted a franchise joining application for ${loc}. Click to view in Franchise List.`,
+                    path: '/admin/food/franchise-management/list',
+                    category: 'franchise_approval',
+                    type: 'approval',
+                    hasZoneConflict: false,
+                    createdAt: application.createdAt || new Date(),
+                };
+                io.to('admin_room').emit('new_franchise_registration', normalAlert);
+                io.to('admin:broadcast').emit('admin_notification', normalAlert);
+            }
+        }
+    } catch (socketErr) {
+        console.warn('[Franchise Apply] Failed to broadcast socket alert:', socketErr?.message);
+    }
+
     return application;
 }
 

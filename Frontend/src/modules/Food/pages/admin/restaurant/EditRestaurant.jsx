@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useNavigate, useParams, useLocation } from "react-router-dom"
 import { adminAPI } from "@food/api"
 import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"
@@ -126,6 +126,7 @@ async function loadGooglePlaces() {
 export default function EditRestaurant() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [loading, setLoading] = useState(true)
   const [savingDetails, setSavingDetails] = useState(false)
@@ -388,7 +389,7 @@ export default function EditRestaurant() {
         <div className="flex items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate("/admin/food/restaurants")}
+              onClick={() => navigate(location.pathname.includes("/franchise") ? "/food/franchise/dashboard/food/restaurants/list" : "/admin/food/restaurants")}
               className="p-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50"
               title="Back"
             >

@@ -28,6 +28,13 @@ const franchiseApplicationSchema = new mongoose.Schema({
         lng: { type: Number },
     },
     zoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodZone', default: null },
+    hasZoneConflict: { type: Boolean, default: false, index: true },
+    conflictDetails: {
+        existingFranchiseId: { type: mongoose.Schema.Types.ObjectId, ref: 'FranchiseApplication', default: null },
+        existingFranchiseName: { type: String, default: '' },
+        conflictType: { type: String, default: '' },
+        conflictMessage: { type: String, default: '' },
+    },
     // The TAXI zone this franchise owns (only for franchises that hold the taxi module)
     taxiZoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'TaxiZone', default: null, index: true },
     subAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodAdmin', default: null },

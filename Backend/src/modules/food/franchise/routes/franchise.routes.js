@@ -101,6 +101,35 @@ router.patch('/issues/:source(user|restaurant)/:id', requireFranchisePartner, fi
 router.get('/profile', requireFranchisePartner, getPartnerProfileController);
 router.post('/requests', requireFranchisePartner, financeWriteRateLimiter, createPartnerRequestController);
 
+router.get('/my-zone', requireFranchisePartner, async (req, res, next) => {
+    try {
+        const FranchiseApplication = (await import('../../admin/models/franchiseApplication.model.js')).default;
+        const app = await FranchiseApplication.findById(req.user.franchiseId).select('zoneId taxiZoneId city area state').lean();
+        if (!app) return res.status(404).json({ success: false, message: 'Franchise not found' });
+        let zone = null;
+        const FoodZone = (await import('../../admin/models/foodZone.model.js')).default;
+        if (app.zoneId && FoodZone) {
+            const fz = await FoodZone.findById(app.zoneId).lean();
+            if (fz) {
+                zone = { _id: String(fz._id), id: String(fz._id), name: fz.name || fz.zoneName || fz.serviceLocation, zoneName: fz.name || fz.zoneName, coordinates: fz.coordinates, boundary: fz.boundary, city: app.city || '' };
+            }
+        }
+        if (!zone && app.city && FoodZone) {
+            const safeCity = String(app.city || "").trim();
+            const fz = await FoodZone.findOne({ $or: [{ name: new RegExp("^" + safeCity + "$", "i") }, { zoneName: new RegExp("^" + safeCity + "$", "i") }] }).lean();
+            if (fz) {
+                zone = { _id: String(fz._id), id: String(fz._id), name: fz.name || fz.zoneName || fz.serviceLocation, zoneName: fz.name || fz.zoneName, coordinates: fz.coordinates, boundary: fz.boundary, city: app.city || '' };
+            }
+        }
+        if (!zone) {
+            zone = { _id: String(app.zoneId || app.city || 'zone'), id: String(app.zoneId || app.city || 'zone'), name: app.city || app.area || 'Franchise Zone', zoneName: app.city || app.area || 'Franchise Zone', city: app.city || '' };
+        }
+        return res.status(200).json({ success: true, data: { zone } });
+    } catch (e) {
+        next(e);
+    }
+});
+
 // Money / account actions: franchise login required
 router.post('/support-message', requireFranchisePartner, submitPartnerSupportMessageController);
 router.post('/payout-request', requireFranchisePartner, submitPartnerPayoutRequestController);

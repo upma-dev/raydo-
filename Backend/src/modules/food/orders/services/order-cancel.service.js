@@ -268,7 +268,8 @@ export async function applyRefundBooks(orderId, { refundAmount, refundedTotal, d
     try {
       const { reverseFoodOrder } = await import('../../admin/services/franchiseLedger.service.js');
       await reverseFoodOrder(order._id, {
-        refundAmount, orderTotal: total, refundKey: `refund:${Math.round(round2(refundedTotal) * 100)}`, note: 'Order refunded',
+        // Last part of a split refund: reverse whatever is still left, so per-part rounding never strands a paisa
+        refundAmount: full ? total : refundAmount, orderTotal: total, refundKey: `refund:${Math.round(round2(refundedTotal) * 100)}`, note: 'Order refunded',
       });
     } catch (err) {
       logger.error(`[Refund] Franchise earning reversal failed for order ${order._id}: ${err?.message || err}`);

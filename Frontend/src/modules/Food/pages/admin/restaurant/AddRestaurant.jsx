@@ -2,12 +2,12 @@ import { useState, useRef, useEffect, useMemo } from "react"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
 import { isPointInZone, getZoneBounds, hasZonePolygon, zoneDisplayName } from "@food/utils/zoneGeometry"
 import { useNavigate, useLocation } from "react-router-dom"
-import { Building2, Info, Tag, Upload, Calendar, FileText, MapPin, CheckCircle2, X, Image as ImageIcon, Clock, Loader2 } from "lucide-react"
+import { Building2, Info, Tag, Upload, Calendar, FileText, MapPin, CheckCircle2, X, Image as ImageIcon, Clock, Loader2, ArrowLeft } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@food/components/ui/dialog"
 import { Input } from "@food/components/ui/input"
 import { Label } from "@food/components/ui/label"
 import { Button } from "@food/components/ui/button"
-import { adminAPI, uploadAPI, zoneAPI } from "@food/api"
+import { adminAPI, uploadAPI, zoneAPI, franchiseAPI } from "@food/api"
 import { toast } from "sonner"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => { console.warn(...args) }
@@ -158,6 +158,7 @@ const clearAllFilesFromDB = async () => {
 export default function AddRestaurant() {
   const navigate = useNavigate()
   const location = useLocation()
+  const isFranchise = location.pathname.includes('/franchise')
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showSuccessDialog, setShowSuccessDialog] = useState(false)
@@ -244,6 +245,12 @@ export default function AddRestaurant() {
     let cancelled = false
 
     const restoreFormData = async () => {
+      if (isFranchise) {
+        await clearPersistedFormData()
+        if (!cancelled) setIsHydrated(true)
+        return
+      }
+
       try {
         const storedRaw = localStorage.getItem(ADMIN_ADD_STORAGE_KEY)
         if (storedRaw) {
@@ -290,11 +297,12 @@ export default function AddRestaurant() {
 
     return () => {
       cancelled = true
+      void clearPersistedFormData()
     }
-  }, [])
+  }, [isFranchise])
 
   useEffect(() => {
-    if (!isHydrated) return
+    if (!isHydrated || isFranchise) return
     try {
       const serializableStep2 = {
         ...step2,
@@ -340,7 +348,7 @@ export default function AddRestaurant() {
     } catch (err) {
       debugError("Failed to persist admin add form data:", err)
     }
-  }, [isHydrated, step, step1, step2, step3])
+  }, [isHydrated, isFranchise, step, step1, step2, step3])
 
   useEffect(() => {
     if (!isHydrated) return
@@ -681,6 +689,71 @@ export default function AddRestaurant() {
     if (step !== 1) return
     let cancelled = false
     setZonesLoading(true)
+
+    if (isFranchise) {
+      const fetchFranchiseZone = async () => {
+        try {
+          const myZoneRes = await (franchiseAPI.getMyZone ? franchiseAPI.getMyZone() : Promise.reject()).catch(() => null)
+          let myZone = myZoneRes?.data?.data?.zone
+
+          if (!myZone?.id && !myZone?._id) {
+            const feeRes = await franchiseAPI.getDeliveryFees().catch(() => null)
+            myZone = feeRes?.data?.data?.zone || feeRes?.data?.zone
+          }
+
+          if (!myZone?.id && !myZone?._id) {
+            const profRes = await franchiseAPI.getProfile().catch(() => null)
+            myZone = profRes?.data?.data?.zone || profRes?.data?.zone
+          }
+
+          if (!myZone?.id && !myZone?._id) {
+            const dashRes = await franchiseAPI.getMyDashboard().catch(() => null)
+            const tInfo = dashRes?.data?.data?.territoryInfo || dashRes?.data?.territoryInfo
+            if (tInfo?.zoneId) {
+              myZone = { id: tInfo.zoneId, _id: tInfo.zoneId, name: tInfo.zoneName || tInfo.city || tInfo.area }
+            } else if (tInfo?.city || tInfo?.area) {
+              myZone = { id: tInfo.city, _id: tInfo.city, name: tInfo.city, city: tInfo.city }
+            }
+          }
+
+          if (myZone) {
+            const zoneId = String(myZone._id || myZone.id || "")
+            const zoneName = myZone.name || myZone.zoneName || myZone.city || "Franchise Zone"
+            const singleZone = {
+              _id: zoneId,
+              id: zoneId,
+              name: zoneName,
+              zoneName: zoneName,
+              serviceLocation: zoneName,
+              coordinates: myZone.coordinates || null,
+              boundary: myZone.boundary || null,
+            }
+
+            if (!cancelled) {
+              setZones([singleZone])
+              setStep1((prev) => ({
+                ...prev,
+                zoneId: zoneId,
+                location: {
+                  ...prev.location,
+                  city: prev.location.city || myZone.city || zoneName,
+                }
+              }))
+            }
+          }
+        } catch (e) {
+          debugError("Error resolving franchise zone:", e)
+        } finally {
+          if (!cancelled) setZonesLoading(false)
+        }
+      }
+
+      fetchFranchiseZone()
+      return () => {
+        cancelled = true
+      }
+    }
+
     zoneAPI
       .getPublicZones()
       .then((res) => {
@@ -697,7 +770,7 @@ export default function AddRestaurant() {
     return () => {
       cancelled = true
     }
-  }, [step])
+  }, [step, isFranchise])
 
   // Initialize Google Places Autocomplete for Step 1 location search.
   useEffect(() => {
@@ -1050,13 +1123,18 @@ export default function AddRestaurant() {
           <select
             value={step1.zoneId || ""}
             onChange={(e) => {
+              if (isFranchise) return
               setStep1({ ...step1, zoneId: e.target.value })
               setLocationSuggestions([])
             }}
-            className="mt-1 w-full h-9 rounded-md border border-input bg-white px-3 text-sm"
-            disabled={zonesLoading}
+            className={`mt-1 w-full h-9 rounded-md border border-input px-3 text-sm transition-all ${
+              isFranchise
+                ? "bg-slate-100 text-slate-800 font-bold border-indigo-200 cursor-not-allowed select-none"
+                : "bg-white"
+            }`}
+            disabled={zonesLoading || isFranchise}
           >
-            <option value="">{zonesLoading ? "Loading zones..." : "Select a zone"}</option>
+            {!isFranchise && <option value="">{zonesLoading ? "Loading zones..." : "Select a zone"}</option>}
             {zones.map((z) => {
               const id = String(z?._id || z?.id || "")
               const label = z?.name || z?.zoneName || z?.serviceLocation || id
@@ -1068,7 +1146,9 @@ export default function AddRestaurant() {
             })}
           </select>
           <p className="text-[11px] text-gray-500 mt-1">
-            Choose the zone first. The restaurant location must be inside this zone.
+            {isFranchise
+              ? "Your franchise zone is automatically assigned and locked. Restaurants must be located inside this zone."
+              : "Choose the zone first. The restaurant location must be inside this zone."}
           </p>
         </div>
         <div className="relative">
@@ -1526,6 +1606,72 @@ export default function AddRestaurant() {
     </div>
   )
 
+  const handleBackToList = async () => {
+    await clearPersistedFormData()
+    if (location.pathname.includes('/franchise')) {
+      navigate("/food/franchise/dashboard/food/restaurants/list")
+    } else {
+      navigate("/admin/food/restaurants")
+    }
+  }
+
+  const handleResetForm = async () => {
+    await clearPersistedFormData()
+    setStep(1)
+    setStep1({
+      restaurantName: "",
+      pureVegRestaurant: null,
+      pricingAttributes: [],
+      ownerName: "",
+      ownerEmail: "",
+      ownerPhone: "",
+      primaryContactNumber: "",
+      zoneId: isFranchise && zones[0] ? String(zones[0]._id || zones[0].id) : "",
+      location: {
+        addressLine1: "",
+        addressLine2: "",
+        area: "",
+        city: isFranchise && zones[0] ? zones[0].city || zones[0].name : "",
+        state: "",
+        pincode: "",
+        landmark: "",
+        formattedAddress: "",
+        latitude: "",
+        longitude: "",
+      },
+    })
+    setStep2({
+      menuImages: [],
+      profileImage: null,
+      cuisines: [],
+      estimatedDeliveryTime: "",
+      openingTime: "",
+      closingTime: "",
+      openDays: [],
+    })
+    setStep3({
+      panNumber: "",
+      nameOnPan: "",
+      panImage: null,
+      gstRegistered: false,
+      gstNumber: "",
+      gstLegalName: "",
+      gstAddress: "",
+      gstImage: null,
+      fssaiNumber: "",
+      fssaiExpiry: "",
+      fssaiImage: null,
+      accountNumber: "",
+      confirmAccountNumber: "",
+      ifscCode: "",
+      accountHolderName: "",
+      accountType: "",
+    })
+    setLocationSearchValue("")
+    setLocationSuggestions([])
+    toast.info("Form cleared")
+  }
+
   const renderStep = () => {
     if (step === 1) return renderStep1()
     if (step === 2) return renderStep2()
@@ -1534,12 +1680,31 @@ export default function AddRestaurant() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
-      <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white flex items-center justify-between">
+      <header className="px-4 py-4 sm:px-6 sm:py-5 bg-white flex items-center justify-between border-b border-gray-100">
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleBackToList}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 transition-colors flex items-center gap-1.5 text-xs font-semibold"
+            title="Back to Restaurants List"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+          <div className="h-4 w-px bg-gray-200" />
           <Building2 className="w-5 h-5 text-blue-600" />
           <div className="text-sm font-semibold text-black">Add New Restaurant</div>
         </div>
-        <div className="text-xs text-gray-600">Step {step} of 3</div>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={handleResetForm}
+            className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline transition-colors"
+          >
+            Reset Form
+          </button>
+          <div className="text-xs text-gray-600">Step {step} of 3</div>
+        </div>
       </header>
 
       <main ref={mainContentRef} className="flex-1 px-4 sm:px-6 py-4 space-y-4">
@@ -1554,11 +1719,18 @@ export default function AddRestaurant() {
         <div className="flex justify-between items-center">
           <Button
             variant="ghost"
-            disabled={step === 1 || isSubmitting}
-            onClick={() => setStep((s) => Math.max(1, s - 1))}
-            className="text-sm text-gray-700 bg-transparent"
+            disabled={isSubmitting}
+            onClick={async () => {
+              if (step === 1) {
+                await handleBackToList()
+              } else {
+                setStep((s) => Math.max(1, s - 1))
+              }
+            }}
+            className="text-sm text-gray-700 bg-transparent flex items-center gap-1.5"
           >
-            Back
+            <ArrowLeft className="w-4 h-4" />
+            {step === 1 ? "Cancel & Back" : "Back"}
           </Button>
           <Button
             onClick={handleNext}

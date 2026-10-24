@@ -82,21 +82,32 @@ export default function AdminNavbar({ onMenuClick }) {
   // to the tab that owns the page it opens.
   const onGlobalTab = isGlobalAdminPath(currentPath);
   const adminNotifications = useMemo(
-    () => allNotifications.filter((i) => isGlobalAdminPath(String(i.path || "")) === onGlobalTab),
+    () =>
+      allNotifications.filter((i) => {
+        if (
+          i.category === "franchise_approval" ||
+          i.hasZoneConflict ||
+          String(i.path || "").includes("franchise-management") ||
+          String(i.title || "").toLowerCase().includes("franchise")
+        ) {
+          return true;
+        }
+        return isGlobalAdminPath(String(i.path || "")) === onGlobalTab;
+      }),
     [allNotifications, onGlobalTab]
   );
   // CLEAR only removes what this tab shows, not the other tab's items
   const clearAll = useCallback(() => { adminNotifications.forEach((i) => dismissOne(i.id)); }, [adminNotifications, dismissOne]);
 
   const handoverCount = useMemo(() => adminNotifications.filter(i => i.category === "handover_approval" || i.isEmergencyOffline).length, [adminNotifications]);
-  const approvalCount = useMemo(() => adminNotifications.filter(i => ["restaurant_approval", "delivery_approval", "food_approval", "handover_approval"].includes(i.category) || i.isEmergencyOffline).length, [adminNotifications]);
+  const approvalCount = useMemo(() => adminNotifications.filter(i => ["restaurant_approval", "delivery_approval", "food_approval", "handover_approval", "franchise_approval"].includes(i.category) || i.isEmergencyOffline || i.hasZoneConflict).length, [adminNotifications]);
   const withdrawalCount = useMemo(() => adminNotifications.filter(i => ["withdrawals", "delivery_withdrawals"].includes(i.category)).length, [adminNotifications]);
   const supportCount = useMemo(() => adminNotifications.filter(i => ["support", "delivery_support"].includes(i.category)).length, [adminNotifications]);
   const complianceCount = useMemo(() => adminNotifications.filter(i => i.type === "compliance" || i.category === "fssai_expired").length, [adminNotifications]);
 
   const filteredNotifications = useMemo(() => {
     if (activeNotifTab === "handovers") return adminNotifications.filter(i => i.category === "handover_approval" || i.isEmergencyOffline);
-    if (activeNotifTab === "approvals") return adminNotifications.filter(i => ["restaurant_approval", "delivery_approval", "food_approval", "handover_approval"].includes(i.category) || i.isEmergencyOffline);
+    if (activeNotifTab === "approvals") return adminNotifications.filter(i => ["restaurant_approval", "delivery_approval", "food_approval", "handover_approval", "franchise_approval"].includes(i.category) || i.isEmergencyOffline || i.hasZoneConflict);
     if (activeNotifTab === "withdrawals") return adminNotifications.filter(i => ["withdrawals", "delivery_withdrawals"].includes(i.category));
     if (activeNotifTab === "support") return adminNotifications.filter(i => ["support", "delivery_support"].includes(i.category));
     if (activeNotifTab === "compliance") return adminNotifications.filter(i => i.type === "compliance" || i.category === "fssai_expired");
@@ -450,6 +461,7 @@ export default function AdminNavbar({ onMenuClick }) {
                     ) : (
                       filteredNotifications.slice(0, 10).map((item) => {
                         const isHandover = item?.category === "handover_approval";
+                        const isFranchise = item?.category === "franchise_approval" || item?.hasZoneConflict || String(item?.path || "").includes("franchise-management") || String(item?.title || "").toLowerCase().includes("franchise");
                         const isSupport = item?.category === "support" || item?.category === "delivery_support";
                         const isCompliance = item?.type === "compliance";
 
@@ -459,6 +471,11 @@ export default function AdminNavbar({ onMenuClick }) {
                         if (isHandover) {
                           badgeText = "HANDOVER";
                           badgeStyle = "bg-rose-50 text-rose-700 border border-rose-200 font-black shadow-xs";
+                        } else if (isFranchise) {
+                          badgeText = item?.hasZoneConflict ? "ZONE CONFLICT" : "FRANCHISE";
+                          badgeStyle = item?.hasZoneConflict
+                            ? "bg-rose-100 text-rose-800 border border-rose-300 font-black animate-pulse shadow-xs"
+                            : "bg-purple-50 text-purple-700 border border-purple-200 font-bold";
                         } else if (item?.category === "restaurant_approval") {
                           badgeText = "RESTAURANT";
                           badgeStyle = "bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold";
@@ -481,12 +498,18 @@ export default function AdminNavbar({ onMenuClick }) {
 
                         const handleItemClick = () => {
                           setNotificationsOpen(false);
-                          if (item.isEmergencyOffline) {
+                          if (item?.category === "restaurant_approval" && item?.path) {
+                            navigate(item.path);
+                          } else if (item.isEmergencyOffline) {
                             navigate("/admin/food/delivery-partners");
                           } else if (isHandover) {
                             navigate(`/admin/food/delivery-partners/gigs?handoverId=${item.orderMongoId || item.orderId}`);
-                          } else if (item?.path) {
+                          } else if (isFranchise) {
+                            navigate("/admin/food/franchise-management/list");
+                          } else if (item?.path && item.path !== "/admin/food") {
                             navigate(item.path);
+                          } else {
+                            navigate("/admin/food");
                           }
                         };
 
@@ -496,6 +519,10 @@ export default function AdminNavbar({ onMenuClick }) {
                             className={`relative w-full rounded-2xl border p-3.5 text-left transition-all group cursor-pointer ${
                               isHandover
                                 ? "border-rose-200 bg-rose-50/40 hover:bg-rose-50/80"
+                                : item?.hasZoneConflict
+                                ? "border-rose-300 bg-rose-50/60 hover:bg-rose-100/70 shadow-xs"
+                                : isFranchise
+                                ? "border-purple-200 bg-purple-50/30 hover:bg-purple-50/70"
                                 : "border-slate-100 bg-white hover:border-emerald-200 hover:bg-slate-50/80"
                             }`}
                             onClick={handleItemClick}
@@ -518,6 +545,26 @@ export default function AdminNavbar({ onMenuClick }) {
                                 {badgeText}
                               </span>
                             </div>
+
+                            {isFranchise && (
+                              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-purple-100">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setNotificationsOpen(false);
+                                    navigate("/admin/food/franchise-management/list");
+                                  }}
+                                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold shadow-xs transition-all text-center ${
+                                    item?.hasZoneConflict
+                                      ? "bg-rose-600 hover:bg-rose-700 text-white"
+                                      : "bg-purple-600 hover:bg-purple-700 text-white"
+                                  }`}
+                                >
+                                  {item?.hasZoneConflict ? "Review Zone Conflict in List" : "View Franchise List"}
+                                </button>
+                              </div>
+                            )}
 
                             {isHandover && (
                               <div className="flex items-center gap-2 mt-3 pt-2 border-t border-rose-100">

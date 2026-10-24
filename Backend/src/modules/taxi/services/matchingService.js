@@ -146,12 +146,10 @@ const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds, vehicl
     : [];
   const vehicleTypeClauses = [
     ...(normalizedVehicleTypeIds.length
-      ? [keyMatch.length
-          ? { vehicleTypeId: { $in: normalizedVehicleTypeIds }, $or: keyMatch }
-          : { vehicleTypeId: { $in: normalizedVehicleTypeIds } }]
+      ? [{ vehicleTypeId: { $in: normalizedVehicleTypeIds } }]
       : []),
     ...(keyMatch.length
-      ? [{ vehicleTypeId: null, $or: keyMatch }]
+      ? [{ $or: keyMatch }]
       : []),
   ];
   const vehicleTypeFilter =
@@ -181,11 +179,9 @@ const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds, vehicl
 
   const conditions = [
     { isOnline: true },
-    { socketId: { $ne: null } },
     { isOnRide: false },
     { 'wallet.isBlocked': { $ne: true } },
-    // The hourly selfie verification must be current to receive requests
-    { 'onlineSelfie.capturedAt': { $gte: new Date(Date.now() - SELFIE_VALIDITY_MS) } },
+    { status: 'approved' },
   ];
 
   if (isLongTrip) {
@@ -428,11 +424,12 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
   );
   drivers = drivers.filter((driver) => !blockedDriverIds.has(String(driver?._id || '')));
 
-  if (drivers.length === 0 && zone?._id) {
+  if (drivers.length === 0) {
+    const fallbackRadius = Math.max(effectiveMaxDistance, 35000);
     drivers = await findDriversForZone({
       zoneId: undefined,
       coordinates,
-      effectiveMaxDistance,
+      effectiveMaxDistance: fallbackRadius,
       limit,
       normalizedVehicleTypeIds,
       vehicleTypeKeys,

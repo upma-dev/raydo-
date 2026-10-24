@@ -32,6 +32,10 @@ const businessSettingsSchema = new mongoose.Schema(
             url: { type: String, default: '' },
             publicId: { type: String, default: '' }
         },
+        franchiseLogo: {
+            url: { type: String, default: '' },
+            publicId: { type: String, default: '' }
+        },
         adminLogo: {
             url: { type: String, default: '' },
             publicId: { type: String, default: '' }

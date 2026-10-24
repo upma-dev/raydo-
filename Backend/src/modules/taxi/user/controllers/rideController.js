@@ -7,6 +7,7 @@ import { Driver } from '../../driver/models/Driver.js';
 import { WalletTransaction } from '../../driver/models/WalletTransaction.js';
 import { applyDriverWalletAdjustment, serializeDriverWallet, settleCompletedRideWallet } from '../../driver/services/walletService.js';
 import { Notification } from '../../admin/promotions/models/Notification.js';
+import { Vehicle } from '../../admin/models/Vehicle.js';
 import { RIDE_LIVE_STATUS, RIDE_STATUS } from '../../constants/index.js';
 import {
   acceptRideBidAssignment,
@@ -1096,16 +1097,40 @@ export const listAvailableDrivers = async (req, res) => {
           { registerFor: { $in: ['delivery', 'both'] } },
         ];
       } else {
-        query.vehicleTypeId = vehicleTypeId;
+        const targetVehicle = await Vehicle.findById(vehicleTypeId).select('name icon_types vehicle_type supported_other_vehicle_types').lean();
+        const iconType = String(targetVehicle?.icon_types || targetVehicle?.vehicle_type || targetVehicle?.name || '').toLowerCase();
+        
+        const matchingIds = [new mongoose.Types.ObjectId(vehicleTypeId)];
+        if (Array.isArray(targetVehicle?.supported_other_vehicle_types) && targetVehicle.supported_other_vehicle_types.length) {
+          targetVehicle.supported_other_vehicle_types.forEach((id) => {
+            if (mongoose.Types.ObjectId.isValid(id)) matchingIds.push(new mongoose.Types.ObjectId(id));
+          });
+        }
+        
+        // Find sibling vehicles with matching icon_types (e.g. taxi vs Cab both have icon_types: 'car')
+        if (iconType) {
+          const siblings = await Vehicle.find({
+            $or: [{ icon_types: iconType }, { vehicle_type: iconType }, { name: new RegExp(`^${iconType}$`, 'i') }],
+          }).select('_id').lean();
+          siblings.forEach((s) => matchingIds.push(s._id));
+        }
+
+        const vehicleClauses = [{ vehicleTypeId: { $in: matchingIds } }];
+        if (iconType) {
+          vehicleClauses.push({ vehicleType: iconType });
+          vehicleClauses.push({ vehicleIconType: iconType });
+        }
+        query.$or = vehicleClauses;
       }
     }
 
+    const searchDist = Number.isFinite(distance) && distance > 0 ? Math.min(distance, 50000) : 35000;
     const near = {
       $geometry: {
         type: 'Point',
         coordinates: [longitude, latitude],
       },
-      $maxDistance: Number.isFinite(distance) && distance > 0 ? Math.min(distance, 25000) : 15000,
+      $maxDistance: searchDist,
     };
 
     query.location = { $near: near };
@@ -1117,6 +1142,7 @@ export const listAvailableDrivers = async (req, res) => {
         .select('name phone vehicleTypeId vehicleType vehicleIconType vehicleNumber vehicleColor vehicleMake vehicleModel rating location')
         .lean();
     } catch (_e) {
+      console.error('[listAvailableDrivers] Driver.find error:', _e);
       drivers = [];
     }
 

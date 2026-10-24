@@ -320,6 +320,12 @@ export const updateDeliveryAvailability = async (userId, payload) => {
 
     const todayKey = new Date().toISOString().slice(0, 10);
 
+    if (validStatus === 'online' && partner.rideMode?.activeMode === 'taxi') {
+        const err = new ValidationError('You are in Ride & Parcel mode. Switch to Food delivery to receive food orders.');
+        err.code = 'RIDE_MODE_ACTIVE';
+        throw err;
+    }
+
     if (validStatus === 'online' && !forceBypassForDev) {
         /*
         // Step 1: Enforce Active Gig Check (COMMENTED OUT - Direct online mode)
@@ -956,6 +962,11 @@ export const deleteDeliveryPartnerAccount = async (partnerId) => {
 
     const partner = await FoodDeliveryPartner.findById(partnerId);
     if (!partner) throw new ValidationError('Delivery partner not found');
+
+    if (partner.rideMode?.taxiDriverId) {
+        const { detachRideModeOnPartnerDelete } = await import('./hybridRide.service.js');
+        await detachRideModeOnPartnerDelete(partner._id);
+    }
 
     // Remove associated documents
     await FoodDeliveryWallet.findOneAndDelete({ deliveryPartnerId: partnerId });

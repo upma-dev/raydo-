@@ -521,6 +521,11 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
       .then((m) => m.creditFranchiseForRide(ride._id))
       .catch((e) => console.error('[Franchise] taxi credit hook failed:', e?.message || e));
 
+    // Delivery partner in Ride & Parcel mode: move the earning to (or recover the dues from) the delivery Pocket
+    import('../../../food/delivery/services/hybridRide.service.js')
+      .then((m) => m.reconcileRideWalletForDriver(ride.driverId))
+      .catch((e) => console.error('[RideMode] wallet merge hook failed:', e?.message || e));
+
     return {
       ...result,
       ride,

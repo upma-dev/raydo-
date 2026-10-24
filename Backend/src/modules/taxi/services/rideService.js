@@ -1074,22 +1074,18 @@ export const createRideRecord = async ({
       ? bidRideRange.userBidCeilingFare
       : safeFare;
   const pickupPoint = normalizePoint(pickupCoords, 'pickupCoords');
-  const surgeZone = normalizedTransportType !== 'delivery'
-    ? await Zone.findOne({
-      ...(resolvedServiceLocationId ? { service_location_id: resolvedServiceLocationId } : {}),
-      active: true,
-      geometry: {
-        $geoIntersects: {
-          $geometry: {
-            type: 'Point',
-            coordinates: pickupPoint,
-          },
+  const pickupZone = await Zone.findOne({
+    active: true,
+    geometry: {
+      $geoIntersects: {
+        $geometry: {
+          type: 'Point',
+          coordinates: pickupPoint,
         },
       },
-    })
-      .select('_id name ride_surge_enabled')
-      .lean()
-    : null;
+    },
+  }).select('_id name ride_surge_enabled').lean();
+  const surgeZone = (normalizedTransportType !== 'delivery' && pickupZone) ? pickupZone : null;
   const rideSurgeAmount = Boolean(surgeZone?.ride_surge_enabled)
     ? Math.max(0, Number(pricingRule?.ride_surge_amount || 0))
     : 0;
@@ -1144,6 +1140,7 @@ export const createRideRecord = async ({
     ? await resolveApplicableUserSubscription({
       userId,
       vehicleTypeId: primaryVehicleTypeId,
+      zoneId: pickupZone?._id || null,
     })
     : null;
   const isSubscriptionCovered = Boolean(applicableSubscription?._id);
@@ -1758,6 +1755,8 @@ export const acceptRideAssignment = async ({ rideId, driverId }) => {
       await ensureDriverWalletCanAcceptRide(driver, { session });
 
       ride.driverId = driver._id;
+      if (!ride.zoneId && driver.zoneId) ride.zoneId = driver.zoneId;
+      if (!driver.zoneId && ride.zoneId) driver.zoneId = ride.zoneId;
       ride.status = RIDE_STATUS.ACCEPTED;
       ride.liveStatus = RIDE_LIVE_STATUS.ACCEPTED;
       ride.acceptedAt = new Date();
@@ -1916,8 +1915,9 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
     // Franchise commission for the driver's zone (idempotent per ride; must never fail the ride)
     try {
       const rideDriver = await Driver.findById(driverId).select('zoneId').lean();
+      const resolvedZoneId = ride.zoneId || rideDriver?.zoneId;
       await creditFranchiseCommission({
-        zoneId: rideDriver?.zoneId,
+        zoneId: resolvedZoneId,
         rideId: ride._id,
         driverId,
         rideAmount: Number(ride.fare) || 0,
@@ -2272,6 +2272,8 @@ export const acceptRideBidAssignment = async ({ rideId, bidId, userId }) => {
       await ensureDriverWalletCanAcceptRide(driver, { session });
 
       ride.driverId = driver._id;
+      if (!ride.zoneId && driver.zoneId) ride.zoneId = driver.zoneId;
+      if (!driver.zoneId && ride.zoneId) driver.zoneId = ride.zoneId;
       ride.fare = Number(bid.bidFare || ride.fare || 0);
       ride.acceptedBidId = bid._id;
       ride.status = RIDE_STATUS.ACCEPTED;

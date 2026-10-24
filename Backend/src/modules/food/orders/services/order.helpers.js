@@ -284,8 +284,25 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
       restaurant?.primaryContactNumber ||
       "",
     restaurantLocation: {
-      latitude: restaurantLocation?.latitude,
-      longitude: restaurantLocation?.longitude,
+      coordinates: Array.isArray(restaurantLocation?.coordinates)
+        ? restaurantLocation.coordinates
+        : Array.isArray(restaurant?.location?.coordinates)
+          ? restaurant.location.coordinates
+          : [],
+      latitude:
+        restaurantLocation?.latitude ??
+        (Array.isArray(restaurantLocation?.coordinates)
+          ? restaurantLocation.coordinates[1]
+          : Array.isArray(restaurant?.location?.coordinates)
+            ? restaurant.location.coordinates[1]
+            : undefined),
+      longitude:
+        restaurantLocation?.longitude ??
+        (Array.isArray(restaurantLocation?.coordinates)
+          ? restaurantLocation.coordinates[0]
+          : Array.isArray(restaurant?.location?.coordinates)
+            ? restaurant.location.coordinates[0]
+            : undefined),
       address:
         restaurantLocation?.address ||
         restaurantLocation?.formattedAddress ||
@@ -294,6 +311,21 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
       area: restaurantLocation?.area || restaurant?.area || "",
       city: restaurantLocation?.city || restaurant?.city || "",
       state: restaurantLocation?.state || restaurant?.state || "",
+    },
+    customerLocation: {
+      coordinates: Array.isArray(order?.deliveryAddress?.location?.coordinates)
+        ? order.deliveryAddress.location.coordinates
+        : [],
+      latitude:
+        order?.deliveryAddress?.location?.latitude ??
+        (Array.isArray(order?.deliveryAddress?.location?.coordinates)
+          ? order.deliveryAddress.location.coordinates[1]
+          : undefined),
+      longitude:
+        order?.deliveryAddress?.location?.longitude ??
+        (Array.isArray(order?.deliveryAddress?.location?.coordinates)
+          ? order.deliveryAddress.location.coordinates[0]
+          : undefined),
     },
     deliveryAddress: order?.deliveryAddress,
     customerAddress: customerAddressParts.length ? customerAddressParts.join(', ') : "",

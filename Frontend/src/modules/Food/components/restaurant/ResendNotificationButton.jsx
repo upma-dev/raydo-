@@ -26,10 +26,10 @@ export default function ResendNotificationButton({ orderId, mongoId, onSuccess }
         const connected = response.data.data?.connectedCount;
         if (sent === 0) {
           toast.error("No delivery partner is available right now. Please try again in a minute.");
-        } else if (connected === 0) {
-          toast.warning(`Request sent to ${sent} delivery partner(s), but their app is not open or is offline, so they may not see it yet.`);
+        } else if (connected > 0) {
+          toast.success(`Request sent to ${sent} online delivery partner(s)`);
         } else {
-          toast.success(`Request sent to ${sent} delivery partner(s)`);
+          toast.success(`Request sent to ${sent} delivery partner(s) via notification`);
         }
         // Refresh orders if onSuccess callback is provided
         if (onSuccess) {

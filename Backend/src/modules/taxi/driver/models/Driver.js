@@ -67,6 +67,14 @@ const driverSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    // Set when a food delivery partner works rides / parcels from the delivery app (see hybridRide.service.js).
+    // Such a driver's wallet is merged into the partner's delivery Pocket.
+    linkedDeliveryPartnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FoodDeliveryPartner',
+      default: null,
+      index: true,
+    },
     franchiseId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'TaxiFranchisePartner',

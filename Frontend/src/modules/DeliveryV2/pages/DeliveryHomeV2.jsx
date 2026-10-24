@@ -20,6 +20,7 @@ import { OrderSummaryModal } from '@/modules/DeliveryV2/components/modals/OrderS
 import { SelfieVerificationModal } from '@/modules/DeliveryV2/components/modals/SelfieVerificationModal';
 import FoodOrderChatScreen from '@food/pages/user/orders/FoodOrderChatScreen';
 import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
+import RideModeSwitch from '@/modules/DeliveryV2/components/RideModeSwitch';
 
 // Sub Pages
 import PocketV2 from '@/modules/DeliveryV2/pages/PocketV2';
@@ -1110,10 +1111,21 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     };
   }, [isOnline, setRiderLocation, publishLiveRiderLocation]);
 
-  useEffect(() => { setIncomingOrder(newOrder); }, [newOrder]);
+  useEffect(() => {
+    if (newOrder) {
+      setIncomingOrder(newOrder);
+      setIsModalMinimized(false);
+    }
+  }, [newOrder]);
 
   useEffect(() => {
-    if (activeOrder && incomingOrder) {
+    // Only clear incoming order if rider is actually in an active accepted trip
+    const activeDispatchStatus = String(activeOrder?.dispatch?.status || activeOrder?.deliveryStatus || '').toLowerCase();
+    const activeOrderStatus = String(activeOrder?.orderStatus || activeOrder?.status || '').toLowerCase();
+    const isActuallyInTrip = ['accepted', 'reaching_pickup', 'reached_pickup', 'picked_up', 'reaching_drop', 'reached_drop'].includes(activeDispatchStatus) ||
+      ['reached_pickup', 'picked_up', 'reached_drop'].includes(activeOrderStatus);
+
+    if (activeOrder && isActuallyInTrip && incomingOrder) {
       setIncomingOrder(null);
     }
   }, [activeOrder, incomingOrder]);
@@ -1390,6 +1402,16 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
             </div>
           </div>
 
+          {/* Food | Ride & Parcel mode switch */}
+          {currentTab === 'feed' && !activeOrder && (
+            <RideModeSwitch
+              isOnline={isOnline}
+              hasActiveOrder={Boolean(activeOrder)}
+              riderLocation={riderLocation}
+              onLeaveFood={() => setOnline(false)}
+            />
+          )}
+
           {/* 📍 GPS OFF Sticky Alert Banner */}
           {!isOnline && gpsErrorMessage && (
             <div className="bg-rose-500 text-white px-4 py-1.5 text-[11px] font-bold flex items-center justify-between shadow-md">
@@ -1567,8 +1589,36 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
         {/* OVERLAYS (Persistent if active) */}
       </div>
 
+      {/* INCOMING ORDER REQUEST MODAL - High priority overlay above all tabs */}
+      <AnimatePresence>
+        {incomingOrder && !isModalMinimized && (
+          <NewOrderModal
+            key={`incoming-${incomingOrder?.orderId || incomingOrder?._id || incomingOrder?.orderMongoId || 'active'}`}
+            order={incomingOrder}
+            onAccept={async (o) => {
+              try {
+                await acceptOrder(o);
+              } catch (err) {
+                const oId = String(o?.orderId || o?._id || o?.id || '');
+                if (oId) ignoredOrderIdsRef.current.add(oId);
+              } finally {
+                setIncomingOrder(null);
+                clearNewOrder();
+              }
+            }}
+            onReject={(o) => {
+              const oId = String(o?.orderId || o?._id || o?.id || '');
+              if (oId) ignoredOrderIdsRef.current.add(oId);
+              setIncomingOrder(null);
+              clearNewOrder();
+            }}
+            onMinimize={() => setIsModalMinimized(true)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* OVERLAYS (Persistent if active) - Outside flex container to avoid clipping and z-index issues */}
-      {(currentTab === 'feed' || activeOrder) && (
+      {(currentTab === 'feed' || activeOrder) && activeOrder && (
         <AnimatePresence>
           {!isModalMinimized && (
             <motion.div
@@ -1577,32 +1627,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-0 z-[300] pointer-events-none flex items-end"
+              className="fixed inset-0 z-[300] pointer-events-none flex items-end justify-center"
             >
-              <div className="w-full pointer-events-auto relative">
-                {incomingOrder && (
-                  <NewOrderModal
-                    order={incomingOrder}
-                    onAccept={async (o) => {
-                      try {
-                        await acceptOrder(o);
-                      } catch (err) {
-                        const oId = String(o?.orderId || o?._id || o?.id || '');
-                        if (oId) ignoredOrderIdsRef.current.add(oId);
-                      } finally {
-                        setIncomingOrder(null);
-                        clearNewOrder();
-                      }
-                    }}
-                    onReject={(o) => {
-                      const oId = String(o?.orderId || o?._id || o?.id || '');
-                      if (oId) ignoredOrderIdsRef.current.add(oId);
-                      setIncomingOrder(null);
-                      clearNewOrder();
-                    }}
-                    onMinimize={() => setIsModalMinimized(true)}
-                  />
-                )}
+              <div className="w-full max-w-lg pointer-events-auto relative">
                 {(tripStatus === 'PICKING_UP' || tripStatus === 'REACHED_PICKUP') && (
                   <PickupActionModal
                     order={activeOrder}

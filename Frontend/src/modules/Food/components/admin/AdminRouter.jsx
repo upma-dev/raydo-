@@ -182,6 +182,8 @@ export default function AdminRouter() {
           }
         >
           {/* Default Admin Redirect */}
+          <Route index element={<Navigate to="food" replace />} />
+          <Route path="" element={<Navigate to="food" replace />} />
           <Route path="/" element={<Navigate to="food" replace />} />
 
           {/* FOOD ADMIN - All food related routes nested here */}

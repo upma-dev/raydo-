@@ -46,7 +46,11 @@ export const connectDB = async () => {
 
         const conn = await mongoose.connect(config.mongodbUri, {
             serverSelectionTimeoutMS: Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || 10000),
-            connectTimeoutMS: Number(process.env.MONGODB_CONNECT_TIMEOUT_MS || 15000)
+            connectTimeoutMS: Number(process.env.MONGODB_CONNECT_TIMEOUT_MS || 15000),
+            // Cap connections per process. Default is 100; with a PM2 cluster of N workers that becomes N*100 and can
+            // blow past the Atlas tier's connection limit. Keep it explicit and tunable per deployment.
+            maxPoolSize: Number(process.env.MONGODB_MAX_POOL_SIZE || 20),
+            minPoolSize: Number(process.env.MONGODB_MIN_POOL_SIZE || 2),
         });
         logger.info(`MongoDB connected: ${conn.connection.host}`);
     } catch (error) {
@@ -58,7 +62,9 @@ export const connectDB = async () => {
                 try {
                     await mongoose.connect(config.mongodbUri, {
                         serverSelectionTimeoutMS: 10000,
-                        connectTimeoutMS: 15000
+                        connectTimeoutMS: 15000,
+                        maxPoolSize: Number(process.env.MONGODB_MAX_POOL_SIZE || 20),
+                        minPoolSize: Number(process.env.MONGODB_MIN_POOL_SIZE || 2),
                     });
                     logger.info('MongoDB connected on retry!');
                 } catch (retryErr) {

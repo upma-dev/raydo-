@@ -5,6 +5,8 @@ import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
 import { registerDeliveryPartnerController, updateDeliveryPartnerProfileController, updateDeliveryPartnerBankDetailsController, listSupportTicketsController, createSupportTicketController, getSupportTicketByIdController, updateDeliveryPartnerDetailsController, updateDeliveryPartnerProfilePhotoBase64Controller, updateAvailabilityController, getWalletController, createWithdrawalRequestController, createCashDepositOrderController, verifyCashDepositPaymentController, getEarningsController, getTripHistoryController, getPocketDetailsController, getEmergencyHelpController, getCashLimitController, getDeliveryReferralStatsController, getActiveEarningAddonsController, deleteDeliveryPartnerAccountController, getDeliveryPartnerReviewsController, requestEmergencyOfflineController, getEmergencyOfflineStatusController } from '../controllers/delivery.controller.js';
 
+import { applyForRideModeController, getRideModeStatusController, issueRideSessionController, listRideModeVehicleTypesController, switchRideModeController } from '../controllers/rideMode.controller.js';
+
 const router = express.Router();
 
 const uploadFields = upload.fields([
@@ -63,6 +65,14 @@ router.post('/orders/:orderId/collect/cash', authMiddleware, requireRoles('DELIV
 // ----- Earnings / Settings -----
 router.get('/earning-addons/active', authMiddleware, requireRoles('DELIVERY_PARTNER'), getActiveEarningAddonsController);
 router.post('/reverify', authMiddleware, requireRoles('DELIVERY_PARTNER'), (req, res) => res.json({ success: true, message: 'Submitted' })); // Stub
+
+// Ride & Parcel mode (taxi rides / parcels from the delivery app)
+const rideModeUpload = upload.fields([{ name: 'rcPhoto', maxCount: 1 }]);
+router.get('/ride-mode', authMiddleware, requireRoles('DELIVERY_PARTNER'), getRideModeStatusController);
+router.get('/ride-mode/vehicle-types', authMiddleware, requireRoles('DELIVERY_PARTNER'), listRideModeVehicleTypesController);
+router.post('/ride-mode/apply', authMiddleware, requireRoles('DELIVERY_PARTNER'), rideModeUpload, applyForRideModeController);
+router.post('/ride-mode/switch', authMiddleware, requireRoles('DELIVERY_PARTNER'), switchRideModeController);
+router.post('/ride-mode/session', authMiddleware, requireRoles('DELIVERY_PARTNER'), issueRideSessionController);
 
 // Pocket / requests page – wallet, earnings, and admin-set delivery settings
 router.get('/wallet', authMiddleware, requireRoles('DELIVERY_PARTNER'), getWalletController);

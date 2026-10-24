@@ -9,6 +9,7 @@ import {
 } from '../services/registrationService';
 import { RENTAL_ENABLED } from '../../../shared/featureFlags';
 import DriverRideRequestListener from './DriverRideRequestListener';
+import { isRideModePartner } from '@/modules/DeliveryV2/utils/rideModeSession';
 
 const unwrapDriver = (response) => response?.data?.data || response?.data || response;
 const getPortalPrefix = (pathname = '', role = '') => {
@@ -73,6 +74,11 @@ const softEntryRoutes = new Set([
 ]);
 
 const redirectToDriverLogin = (navigate, pathname = '', role = '') => {
+    // A delivery partner in Ride & Parcel mode has no driver-app login: the delivery app issues a fresh ride session
+    if (isRideModePartner()) {
+        navigate('/food/delivery/feed', { replace: true });
+        return;
+    }
     clearDriverAuthState();
     navigate(`${getPortalPrefix(pathname, role)}/login`, { replace: true });
 };

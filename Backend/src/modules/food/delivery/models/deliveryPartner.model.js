@@ -167,6 +167,16 @@ const deliveryPartnerSchema = new mongoose.Schema(
             default: null,
             index: true,
         },
+        // Ride & Parcel mode: the same partner can also take taxi rides / parcels through a linked TaxiDriver record.
+        // Only one mode is active at a time, so food dispatch and taxi dispatch can never assign the partner together.
+        rideMode: {
+            taxiDriverId: { type: mongoose.Schema.Types.ObjectId, ref: 'TaxiDriver', default: null, index: true },
+            activeMode: { type: String, enum: ['food', 'taxi'], default: 'food' },
+            appliedAt: { type: Date, default: null },
+            lastSwitchedAt: { type: Date, default: null },
+            // Short lock so a wallet merge and a Pocket withdrawal never read the same balance at once
+            walletLockUntil: { type: Date, default: null },
+        },
     },
     {
         collection: 'food_delivery_partners',

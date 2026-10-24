@@ -76,6 +76,7 @@ const SmartFallbackRedirect = () => {
   const location = useLocation()
   const pathname = location.pathname.toLowerCase()
 
+  // 1. Shorthand aliases (/driver, /owner, /delivery, /restaurant, /franchise)
   if (pathname.startsWith('/driver')) {
     const newPath = location.pathname.replace(/^\/driver/i, '/taxi/driver')
     return <Navigate to={`${newPath}${location.search}`} replace />
@@ -96,10 +97,40 @@ const SmartFallbackRedirect = () => {
     const newPath = location.pathname.replace(/^\/franchise/i, '/food/franchise')
     return <Navigate to={`${newPath}${location.search}`} replace />
   }
+
+  // 2. Taxi sub-apps: Driver, Owner, Admin, Franchise, User
+  if (pathname.startsWith('/taxi/driver')) {
+    return <Navigate to={`/taxi/driver/home${location.search}`} replace />
+  }
+  if (pathname.startsWith('/taxi/owner')) {
+    return <Navigate to={`/taxi/owner/dashboard${location.search}`} replace />
+  }
+  if (pathname.startsWith('/taxi/admin')) {
+    return <Navigate to={`/taxi/admin/dashboard${location.search}`} replace />
+  }
+  if (pathname.startsWith('/taxi/franchise')) {
+    return <Navigate to={`/taxi/franchise-portal${location.search}`} replace />
+  }
   if (pathname.startsWith('/taxi')) {
     return <Navigate to={`/taxi/user${location.search}`} replace />
   }
+
+  // 3. Admin portal
   if (pathname.startsWith('/admin')) {
+    return <Navigate to={`/admin/food${location.search}`} replace />
+  }
+
+  // 4. Food sub-apps: Delivery, Restaurant, Franchise, User
+  if (pathname.startsWith('/food/delivery')) {
+    return <Navigate to={`/food/delivery/feed${location.search}`} replace />
+  }
+  if (pathname.startsWith('/food/restaurant')) {
+    return <Navigate to={`/food/restaurant${location.search}`} replace />
+  }
+  if (pathname.startsWith('/food/franchise')) {
+    return <Navigate to={`/food/franchise/dashboard${location.search}`} replace />
+  }
+  if (pathname.startsWith('/food/admin')) {
     return <Navigate to={`/admin/food${location.search}`} replace />
   }
   if (pathname.startsWith('/food')) {
@@ -222,12 +253,18 @@ const AppRoutes = () => {
           </Suspense>
         }
       />
+      <Route path="/user" element={<Navigate to="/food/user" replace />} />
       <Route path="/user/*" element={<RedirectToFood />} />
+      <Route path="/restaurant" element={<Navigate to="/food/restaurant" replace />} />
       <Route path="/restaurant/*" element={<RedirectToFood />} />
       <Route path="/restaurants/*" element={<RedirectToFoodUser />} />
+      <Route path="/delivery" element={<Navigate to="/food/delivery/feed" replace />} />
       <Route path="/delivery/*" element={<RedirectToFood />} />
+      <Route path="/franchise" element={<Navigate to="/food/franchise/dashboard" replace />} />
       <Route path="/franchise/*" element={<RedirectToFoodFranchise />} />
+      <Route path="/driver" element={<Navigate to="/taxi/driver/home" replace />} />
       <Route path="/driver/*" element={<RedirectToTaxiDriver />} />
+      <Route path="/owner" element={<Navigate to="/taxi/owner/dashboard" replace />} />
       <Route path="/owner/*" element={<RedirectToTaxiOwner />} />
       <Route path="/usermain/*" element={<RedirectToFood />} />
       <Route path="/profile/*" element={<RedirectToFoodUser />} />

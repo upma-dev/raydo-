@@ -24,6 +24,7 @@ import {
     franchiseUpdateSetPriceController,
     franchiseGetVehicleTypesController,
     franchiseGetEarningsController,
+    franchiseListRidesController,
     franchiseRequestPayoutController,
     franchiseUpdateBankDetailsController,
 } from '../controllers/taxiFranchiseController.js';
@@ -99,6 +100,9 @@ taxiFranchiseRouter.get('/taxi-franchise/vehicle-types', franchiseGetVehicleType
 
 // Earnings
 taxiFranchiseRouter.get('/taxi-franchise/earnings', franchiseGetEarningsController);
+
+// Rides (zone-restricted)
+taxiFranchiseRouter.get('/taxi-franchise/rides', franchiseListRidesController);
 
 // Payouts
 taxiFranchiseRouter.post('/taxi-franchise/payout/request', franchiseRequestPayoutController);

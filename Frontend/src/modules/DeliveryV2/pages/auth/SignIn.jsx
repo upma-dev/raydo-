@@ -115,9 +115,14 @@ export default function DeliverySignIn() {
             <h1 className="font-black text-3xl tracking-tighter leading-none mb-1 italic">
               {companyName.toUpperCase()} <span className="opacity-60">PARTNER</span>
             </h1>
-                <div className="bg-[#F38F24] px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest inline-block mt-1">
-                  Delivery Partner
+                <div className="flex items-center justify-center gap-1.5 mt-2">
+                  {['Food', 'Rides', 'Parcels'].map((label) => (
+                    <span key={label} className="bg-[#F38F24] px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                      {label}
+                    </span>
+                  ))}
                 </div>
+                <p className="mt-2 text-[11px] font-semibold text-white/70">One login for deliveries, rides and parcels</p>
           </div>
         </motion.div>
       </div>

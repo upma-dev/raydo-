@@ -56,6 +56,7 @@ import { HAS_VALID_GOOGLE_MAPS_KEY, useAppGoogleMapsLoader } from '../../admin/u
 import { cancelDriverScheduledRide, getCurrentDriver, getDriverDocumentTemplates, getDriverNotifications, getDriverScheduledRides, getLocalDriverToken } from '../services/registrationService';
 import { addLocalDriverNotification, getUnreadDriverNotificationCount, getVisibleDriverNotifications } from '../utils/notificationState';
 import { getScheduledRideCountdown } from '../utils/scheduledRideTime';
+import RideModeReturnBar from '../components/RideModeReturnBar';
 import {
     playRideRequestAlertSound,
     stopRideRequestAlertSound,
@@ -553,16 +554,17 @@ const normalizeRouteBookingPreferences = (routeBooking = null) => {
 const isDriverVehicleApprovalPending = (driver = {}) =>
     driver?.approve === false || String(driver?.status || '').toLowerCase() === 'pending';
 
-// The online selfie is valid for one hour; after that the driver verifies again (the server enforces the same rule)
-const SELFIE_VALIDITY_MS = 60 * 60 * 1000;
+// The online selfie is valid for the work shift (12 hours / same day)
+const SELFIE_VALIDITY_MS = 12 * 60 * 60 * 1000;
 
 const hasFreshSelfie = (onlineSelfie = null) => {
     const capturedAt = onlineSelfie?.capturedAt ? new Date(onlineSelfie.capturedAt).getTime() : 0;
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const isSameDay = onlineSelfie?.forDate === todayKey;
+    const isWithinHours = Number.isFinite(capturedAt) && capturedAt > 0 && Date.now() - capturedAt < SELFIE_VALIDITY_MS;
     return (
         Boolean(String(onlineSelfie?.imageUrl || '').trim()) &&
-        Number.isFinite(capturedAt) &&
-        capturedAt > 0 &&
-        Date.now() - capturedAt < SELFIE_VALIDITY_MS
+        (isSameDay || isWithinHours)
     );
 };
 
@@ -773,7 +775,9 @@ const DriverHome = () => {
                 const coords = await getCurrentCoords({ purpose: 'auto' });
                 setDriverCoords(coords);
                 driverCoordsRef.current = coords;
+                api.patch('/drivers/location', { coordinates: coords, lat: coords[1], lng: coords[0] }).catch(() => {});
                 if (isOnline) {
+                    socketService.emit('locationUpdate', { coordinates: coords, lat: coords[1], lng: coords[0] });
                     socketService.emit('driver_location_update', {
                         coordinates: coords,
                         latitude: coords[1],
@@ -1004,6 +1008,11 @@ const DriverHome = () => {
                 },
                 coordinates,
             });
+            api.patch('/drivers/location', { coordinates, lat: coordinates[1], lng: coordinates[0] }).catch(() => {});
+            if (socketService.isConnected()) {
+                socketService.emit('locationUpdate', { coordinates, lat: coordinates[1], lng: coordinates[0] });
+                socketService.emit('driver_location_update', { coordinates, latitude: coordinates[1], longitude: coordinates[0] });
+            }
             map?.panTo(toLatLng(coordinates));
             if (!quiet) {
                 setStatusMessage('Current location updated.');
@@ -1289,17 +1298,27 @@ const DriverHome = () => {
             console.info('[driver-home] goOnline requested');
             setStatusMessage('Going online...');
             
-            // OPTIMIZATION: Use last known coords to speed up the transition
-            // instead of waiting for a fresh GPS lock (which can take 2-6 seconds)
             let coordinates = Array.isArray(routeBookingPreferences.coordinates) && routeBookingPreferences.enabled
                 ? routeBookingPreferences.coordinates
-                : driverCoordsRef.current;
+                : null;
             
             if (!coordinates) {
-                // If we really don't have any coords yet, we MUST wait for them once
+                try {
+                    // Try getting fresh real GPS first (quick 2s timeout) so driver isn't stuck on old city coords
+                    coordinates = await Promise.race([
+                        getCurrentCoords({ purpose: 'online' }),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
+                    ]);
+                    driverCoordsRef.current = coordinates;
+                    setDriverCoords(coordinates);
+                } catch {
+                    coordinates = driverCoordsRef.current;
+                }
+            }
+            
+            if (!coordinates) {
                 coordinates = await updateDriverLocation({ quiet: true });
             } else if (!routeBookingPreferences.enabled) {
-                // Refresh location in background for better accuracy without blocking the UI
                 updateDriverLocation({ quiet: true }).catch(() => {});
             }
 
@@ -2056,9 +2075,13 @@ const DriverHome = () => {
         socketService.emit('acceptRide', { rideId: currentRequest.rideId });
     };
 
-    const handleDecline = () => {
+    // `reason: 'timeout'` means the accept timer ran out (ignored); anything else is a real reject.
+    const handleDecline = (declineInfo) => {
         if (currentRequest?.rideId) {
-            socketService.emit('rejectRide', { rideId: currentRequest.rideId });
+            socketService.emit('rejectRide', {
+                rideId: currentRequest.rideId,
+                reason: declineInfo?.reason === 'timeout' ? 'timeout' : 'rejected',
+            });
         }
         stopRideRequestAlertSound();
         setShowRequest(false);
@@ -2347,6 +2370,9 @@ const DriverHome = () => {
                     </>
                 )}
             </AnimatePresence>
+
+            {/* Delivery partner in Ride & Parcel mode: switch back to food delivery */}
+            <RideModeReturnBar />
 
             {/* --- TOP FLOATING UI --- */}
             <div className="fixed top-0 left-0 right-0 z-40 mx-auto max-w-md flex items-center justify-between p-3 pt-10 pointer-events-none">

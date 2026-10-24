@@ -142,7 +142,12 @@ export default function DiningReservations() {
         }
 
         fetchAll()
-        const intervalId = setInterval(fetchAll, 3000)
+        // New reservations already arrive via the signals below; keep this only as a slow background backstop
+        // and pause it when the tab is hidden (was every 3s).
+        const intervalId = setInterval(() => {
+            if (document.visibilityState !== "visible") return
+            fetchAll()
+        }, 15000)
 
         const handleNewBookingSignal = (event) => {
             fetchAll()

@@ -2453,18 +2453,21 @@ export async function getPendingRestaurants(query = {}) {
     // Zones that a franchise has bought: its franchise handles the approval, so the platform admin is sent to the list
     const FranchiseApplication = mongoose.models.FranchiseApplication;
     const zoneIds = [...new Set(restaurants.map((r) => String(r.zoneId?._id || '')).filter(Boolean))];
-    const ownedZones = new Set(
-        FranchiseApplication && zoneIds.length
-            ? (await FranchiseApplication.find({ zoneId: { $in: zoneIds }, status: 'approved', archived: { $ne: true } }).select('zoneId').lean())
-                .map((a) => String(a.zoneId))
-            : []
-    );
-    return restaurants.map((r, i) => ({
-        ...r,
-        sl: i + 1,
-        zone: r.zoneId?.zoneName || r.zoneId?.name || null,
-        franchiseOwned: ownedZones.has(String(r.zoneId?._id || '')),
-    }));
+    const ownedApps = FranchiseApplication && zoneIds.length
+        ? await FranchiseApplication.find({ zoneId: { $in: zoneIds }, status: 'approved', archived: { $ne: true } }).select('zoneId').lean()
+        : [];
+    const franchiseByZone = new Map(ownedApps.map((a) => [String(a.zoneId), String(a._id)]));
+    return restaurants.map((r, i) => {
+        const zoneKey = String(r.zoneId?._id || '');
+        return {
+            ...r,
+            sl: i + 1,
+            zone: r.zoneId?.zoneName || r.zoneId?.name || null,
+            franchiseOwned: franchiseByZone.has(zoneKey),
+            // lets the admin notification open this franchise's "Restaurants & orders" tab directly
+            franchiseApplicationId: r.franchiseId ? String(r.franchiseId) : (franchiseByZone.get(zoneKey) || null),
+        };
+    });
 }
 
 export async function updateRestaurantById(id, body = {}) {
@@ -2803,6 +2806,22 @@ export async function getCategories(query) {
 export async function createCategory(body) {
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name) throw new ValidationError('Category name is required');
+
+    // Prevent duplicate category name in the same scope (franchise / platform)
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const dupFilter = {
+        name: { $regex: new RegExp('^' + escapedName + '$', 'i') }
+    };
+    if (body.franchiseId && mongoose.Types.ObjectId.isValid(String(body.franchiseId))) {
+        dupFilter.franchiseId = new mongoose.Types.ObjectId(String(body.franchiseId));
+    } else {
+        dupFilter.franchiseId = { $in: [null, undefined] };
+    }
+    const existing = await FoodCategory.findOne(dupFilter).lean();
+    if (existing) {
+        throw new ValidationError('Category "' + name + '" already exists');
+    }
+
     const doc = new FoodCategory({
         name,
         image: typeof body.image === 'string' ? body.image.trim() : '',
@@ -2912,7 +2931,27 @@ export async function updateCategory(id, body) {
         }
     }
 
-    if (body.name !== undefined) doc.name = String(body.name || '').trim();
+    if (body.name !== undefined) {
+        const nextName = String(body.name || '').trim();
+        if (!nextName) throw new ValidationError('Category name cannot be empty');
+        if (nextName.toLowerCase() !== String(doc.name || '').toLowerCase()) {
+            const escapedName = nextName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const dupFilter = {
+                _id: { $ne: doc._id },
+                name: { $regex: new RegExp('^' + escapedName + '$', 'i') }
+            };
+            if (doc.franchiseId) {
+                dupFilter.franchiseId = doc.franchiseId;
+            } else {
+                dupFilter.franchiseId = { $in: [null, undefined] };
+            }
+            const existing = await FoodCategory.findOne(dupFilter).lean();
+            if (existing) {
+                throw new ValidationError('Category "' + nextName + '" already exists');
+            }
+        }
+        doc.name = nextName;
+    }
     if (body.image !== undefined) doc.image = String(body.image || '').trim();
     if (body.type !== undefined) doc.type = String(body.type || '').trim();
     if (body.foodTypeScope !== undefined) doc.foodTypeScope = nextFoodTypeScope;

@@ -60,7 +60,7 @@ export default function RideCancellationModal({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: '100%', opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="w-full sm:max-w-lg bg-white dark:bg-zinc-900 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden border border-slate-100 dark:border-zinc-800"
+          className="w-full sm:max-w-lg bg-white dark:bg-zinc-900 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[85dvh] overflow-hidden border border-slate-100 dark:border-zinc-800"
         >
           {/* Header */}
           <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-zinc-900/50">
@@ -149,7 +149,7 @@ export default function RideCancellationModal({
           </div>
 
           {/* Footer Actions */}
-          <div className="p-4 border-t border-slate-100 dark:border-zinc-800 shrink-0 bg-slate-50/50 dark:bg-zinc-900/50 flex gap-3">
+          <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px)+1.5rem)] sm:pb-4 border-t border-slate-100 dark:border-zinc-800 shrink-0 bg-slate-50/50 dark:bg-zinc-900/50 flex gap-3">
             <button
               type="button"
               onClick={onClose}

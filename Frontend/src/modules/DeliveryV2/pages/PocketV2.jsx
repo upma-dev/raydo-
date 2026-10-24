@@ -70,6 +70,7 @@ export const PocketV2 = () => {
 
         setWalletState({
           totalBalance: Number(wallet.pocketBalance) || 0,
+          rideEarningsMerged: Number(wallet.rideEarningsMerged) || 0,
           cashInHand: Number(wallet.cashInHand) || 0,
           availableCashLimit: Number(wallet.availableCashLimit) || 0,
           totalCashLimit: Number(wallet.totalCashLimit) || 0,
@@ -305,7 +306,9 @@ export const PocketV2 = () => {
                    </div>
                    <div>
                       <span className="text-sm font-bold text-gray-800 block">Pocket balance</span>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">Withdrawal Hub</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">
+                         {walletState.rideEarningsMerged > 0 ? `Food + ₹${walletState.rideEarningsMerged.toFixed(0)} from rides` : 'Withdrawal Hub'}
+                      </p>
                    </div>
                 </div>
                 <div className="flex items-center gap-2">

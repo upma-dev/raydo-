@@ -597,7 +597,12 @@ function TableBookings() {
     };
 
     fetchBookings();
-    const interval = setInterval(fetchBookings, 3000);
+    // Table bookings already refresh instantly via the dining signals below, so this poll is only a background
+    // safety net: skip it when the tab is hidden and run it far less often (was every 3s = 2 API calls/3s).
+    const interval = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      fetchBookings();
+    }, 20000);
     const handleSignal = () => fetchBookings();
     window.addEventListener("diningBookingCreated", handleSignal);
     window.addEventListener("newDiningBooking", handleSignal);
@@ -781,7 +786,10 @@ function AllOrders({ onSelectOrder, onCancel, refreshToken = 0 }) {
     };
 
     fetchOrders();
-    intervalId = setInterval(fetchOrders, 10000);
+    intervalId = setInterval(() => {
+      if (document.visibilityState !== "visible") return;   // don't poll orders while the tab is in the background
+      fetchOrders();
+    }, 10000);
     countdownIntervalId = setInterval(() => {
       if (isMounted) {
         setCurrentTime(new Date());
@@ -1407,7 +1415,10 @@ export default function OrdersMain() {
 
     // Check once on mount, and then every 5 seconds for instant cancellation sync
     checkOrdersToPopup();
-    const intervalId = setInterval(checkOrdersToPopup, 5000);
+    const intervalId = setInterval(() => {
+      if (document.visibilityState !== "visible") return;   // pause the popup-sync poll in background tabs
+      checkOrdersToPopup();
+    }, 5000);
 
     return () => clearInterval(intervalId);
   }, []);

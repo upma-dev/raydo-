@@ -23,12 +23,12 @@ export default function DeliveryWelcome() {
       const userData = localStorage.getItem("delivery_user")
       if (userData) {
         const user = JSON.parse(userData)
-        return user.name || "Delivery Partner"
+        return user.name || "Partner"
       }
     } catch (error) {
       debugError("Error getting user name:", error)
     }
-    return "Delivery Partner"
+    return "Partner"
   }
 
   const userName = getUserName()

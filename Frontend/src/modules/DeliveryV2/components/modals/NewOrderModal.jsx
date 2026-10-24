@@ -27,7 +27,11 @@ export const NewOrderModal = ({ order, onAccept, onReject, onMinimize }) => {
 
     // 1. Restaurant coordinates
     const rest = order.restaurantLocation || order.restaurantId?.location || {};
-    const coords = Array.isArray(rest.coordinates) ? rest.coordinates : [];
+    const coords = Array.isArray(rest.coordinates)
+      ? rest.coordinates
+      : Array.isArray(order.restaurantLocation?.coordinates)
+        ? order.restaurantLocation.coordinates
+        : [];
     const resLat = parseFloat(order.restaurant_lat || order.restaurantLat || rest.latitude || rest.lat || (coords.length >= 2 ? coords[1] : NaN));
     const resLng = parseFloat(order.restaurant_lng || order.restaurantLng || rest.longitude || rest.lng || (coords.length >= 2 ? coords[0] : NaN));
 
@@ -180,14 +184,14 @@ export const NewOrderModal = ({ order, onAccept, onReject, onMinimize }) => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="absolute inset-0 z-[150] bg-black/60 backdrop-blur-sm flex items-end justify-center"
+      className="fixed inset-0 z-[500] bg-black/60 backdrop-blur-sm flex items-end justify-center pointer-events-auto"
     >
       <motion.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="w-full max-w-lg bg-white rounded-t-[3.5rem] shadow-[0_-25px_80px_rgba(0,0,0,0.5)] flex flex-col max-h-[85vh] relative overflow-hidden"
+        className="w-full max-w-lg bg-white rounded-t-[3.5rem] shadow-[0_-25px_80px_rgba(0,0,0,0.5)] flex flex-col max-h-[85vh] relative overflow-hidden pointer-events-auto"
       >
         {/* Handle / Minimize */}
         <div className="w-full flex justify-center py-3 bg-white relative z-20">

@@ -621,6 +621,15 @@ function showForegroundNotification(payload = {}) {
 
   playPushSound(payload);
 
+  try {
+    if (typeof window !== "undefined") {
+      const orderType = String(payload?.data?.type || payload?.type || "").toLowerCase();
+      if (orderType === "new_order" || orderType === "order_ready" || orderType === "order_assigned") {
+        window.dispatchEvent(new CustomEvent("delivery_order_incoming", { detail: payload?.data || payload }));
+      }
+    }
+  } catch (_) {}
+
   // Force system notification even when the tab is in focus
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
     try {

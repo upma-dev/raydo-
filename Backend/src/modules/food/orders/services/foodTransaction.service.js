@@ -448,23 +448,59 @@ export async function creditRiderForCancelledOrder(orderId) {
     }
 }
 
-/** Restaurant cancelled an order it had already accepted: take the admin-set penalty from its wallet (once per order). */
+/**
+ * The admin-set cancel penalty is a transfer, not money that vanishes: it goes to whoever runs the zone.
+ *  - franchise order -> the franchise wallet (it bears the local operational cost of the cancel)
+ *  - otherwise       -> the platform (admin) wallet as revenue
+ * Idempotent per order, and independent of the restaurant debit so a retry still lands the credit if it failed once.
+ */
+async function creditCancelPenaltyTo(orderId, penalty) {
+    const order = await mongoose.model('FoodOrder').findById(orderId).select('franchiseId order_id').lean();
+    if (order?.franchiseId) {
+        const { creditFranchiseCancelPenalty } = await import('../../admin/services/franchiseLedger.service.js');
+        await creditFranchiseCancelPenalty(order.franchiseId, orderId, penalty, { orderLabel: order.order_id });
+        return;
+    }
+    try {
+        await recordTransaction({
+            entityType: 'admin', entityId: 'platform', type: 'credit', amount: penalty,
+            description: `Restaurant cancel penalty kept by the platform (order ${order?.order_id || orderId})`,
+            category: 'cancel_penalty', orderId: String(orderId),
+            dedupeKey: `cancel_penalty_income:${orderId}`,
+        });
+    } catch (err) {
+        if (!(err instanceof DuplicateTransactionError)) throw err;   // already credited: nothing more to do
+    }
+}
+
+/**
+ * Restaurant cancelled an order it had already accepted: take the admin-set penalty from its wallet (once per order) and
+ * hand it to the zone's franchise (or the platform if there is none).
+ */
 export async function chargeRestaurantCancelPenalty(orderId, restaurantId, amount) {
     const penalty = Math.round((Number(amount) || 0) * 100) / 100;
     if (penalty <= 0 || !restaurantId) return null;
+
+    // 1. Debit the restaurant (once per order)
     const existing = await Transaction.findOne({ orderId, entityType: 'restaurant', category: 'cancel_penalty' }).lean();
-    if (existing) return null;
-    try {
-        return await recordTransaction({
-            entityType: 'restaurant', entityId: String(restaurantId), type: 'debit', amount: penalty,
-            description: `Penalty: order ${orderId} cancelled by the restaurant after accepting it`,
-            category: 'cancel_penalty', orderId: String(orderId), allowNegative: true,
-            dedupeKey: `cancel_penalty:${orderId}:${restaurantId}`,
-        });
-    } catch (err) {
-        if (err instanceof DuplicateTransactionError) return null;
-        throw err;
+    if (!existing) {
+        try {
+            await recordTransaction({
+                entityType: 'restaurant', entityId: String(restaurantId), type: 'debit', amount: penalty,
+                description: `Penalty: order ${orderId} cancelled by the restaurant after accepting it`,
+                category: 'cancel_penalty', orderId: String(orderId), allowNegative: true,
+                dedupeKey: `cancel_penalty:${orderId}:${restaurantId}`,
+            });
+        } catch (err) {
+            if (!(err instanceof DuplicateTransactionError)) throw err;
+        }
     }
+
+    // 2. Give the penalty to the franchise that runs the zone, or to the platform. Never let a credit failure undo the debit.
+    await creditCancelPenaltyTo(orderId, penalty).catch((err) =>
+        logger.error(`[FoodTransaction] Cancel penalty credit failed for order ${orderId}: ${err?.message || err}`));
+
+    return { penalty };
 }
 
 /**

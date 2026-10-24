@@ -48,6 +48,22 @@ function RestaurantGlobalNotificationListenerInner() {
   return null
 }
 
+function FoodFallbackRedirect() {
+  const location = useLocation()
+  const pathname = location.pathname.toLowerCase()
+
+  if (pathname.startsWith('/food/delivery')) {
+    return <Navigate to={`/food/delivery/feed${location.search}`} replace />
+  }
+  if (pathname.startsWith('/food/restaurant')) {
+    return <Navigate to={`/food/restaurant${location.search}`} replace />
+  }
+  if (pathname.startsWith('/food/franchise')) {
+    return <Navigate to={`/food/franchise/dashboard${location.search}`} replace />
+  }
+  return <Navigate to={`/food/user${location.search}`} replace />
+}
+
 function RestaurantGlobalNotificationListener() {
   const location = useLocation()
   const isRestaurantRoute =
@@ -124,7 +140,7 @@ export default function App() {
 
           {/* Legacy Redirects & Fallbacks - use absolute path to avoid /user appended in a loop */}
           <Route path="/" element={<Navigate to="/food/user" replace />} />
-          <Route path="*" element={<Navigate to="/food/user" replace />} />
+          <Route path="*" element={<FoodFallbackRedirect />} />
         </Routes>
       </Suspense>
     </>

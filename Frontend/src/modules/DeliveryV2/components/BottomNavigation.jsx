@@ -28,7 +28,13 @@ export default function BottomNavigation() {
   const [imageError, setImageError] = useState(false)
 
   const isActive = (path) => {
-    if (path === "/delivery") return location.pathname === "/delivery"
+    if (path === "/food/delivery/feed" || path === "/delivery") {
+      return (
+        location.pathname === "/food/delivery" ||
+        location.pathname === "/food/delivery/feed" ||
+        location.pathname === "/delivery"
+      )
+    }
     return location.pathname.startsWith(path)
   }
 
@@ -89,34 +95,34 @@ export default function BottomNavigation() {
 
         {/* Feed */}
         <button
-          onClick={() => navigate("/delivery")}
+          onClick={() => navigate("/food/delivery/feed")}
           className="flex flex-col items-center gap-1 p-2"
         >
-          {TabIcon(isActive("/delivery"), HomeOutline, HomeSolid)}
-          {TabLabel(isActive("/delivery"), "Feed")}
+          {TabIcon(isActive("/food/delivery/feed"), HomeOutline, HomeSolid)}
+          {TabLabel(isActive("/food/delivery/feed"), "Feed")}
         </button>
 
         {/* Pocket */}
         <button
-          onClick={() => navigate("/delivery/requests")}
+          onClick={() => navigate("/food/delivery/pocket")}
           className="flex flex-col items-center gap-1 p-2"
         >
-          {TabIcon(isActive("/delivery/requests"), WalletOutline, WalletSolid)}
-          {TabLabel(isActive("/delivery/requests"), "Pocket")}
+          {TabIcon(isActive("/food/delivery/pocket"), WalletOutline, WalletSolid)}
+          {TabLabel(isActive("/food/delivery/pocket"), "Pocket")}
         </button>
 
         {/* Trip History */}
         <button
-          onClick={() => navigate("/delivery/trip-history")}
+          onClick={() => navigate("/food/delivery/history")}
           className="flex flex-col items-center gap-1 p-2"
         >
-          {TabIcon(isActive("/delivery/trip-history"), ClockOutline, ClockSolid)}
-          {TabLabel(isActive("/delivery/trip-history "), "Trip History")}
+          {TabIcon(isActive("/food/delivery/history"), ClockOutline, ClockSolid)}
+          {TabLabel(isActive("/food/delivery/history"), "Trip History")}
         </button>
 
         {/* Profile */}
         <button
-          onClick={() => navigate("/delivery/profile")}
+          onClick={() => navigate("/food/delivery/profile")}
           className="flex flex-col items-center gap-1 p-2"
         >
           {profileImage && !imageError ? (
@@ -124,7 +130,7 @@ export default function BottomNavigation() {
               src={profileImage}
               alt="Profile"
               className={`w-7 h-7 rounded-full border-2 object-cover ${
-                isActive("/delivery/profile") ? "border-black" : "border-gray-300"
+                isActive("/food/delivery/profile") ? "border-black" : "border-gray-300"
               }`}
               onError={() => {
                 setImageError(true)
@@ -132,15 +138,14 @@ export default function BottomNavigation() {
             />
           ) : (
             <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center bg-gray-200 ${
-              isActive("/delivery/profile") ? "border-black" : "border-gray-300"
+              isActive("/food/delivery/profile") ? "border-black" : "border-gray-300"
             }`}>
               <User className="w-4 h-4 text-gray-500" />
             </div>
           )}
-          {TabLabel(isActive("/delivery/profile"), "Profile")}
+          {TabLabel(isActive("/food/delivery/profile"), "Profile")}
         </button>
       </div>
     </div>
   )
 }
-

@@ -208,6 +208,19 @@ export default function FranchiseList() {
         </div>
       </div>
 
+      {/* Zone Conflict Alert Banner */}
+      {applications.some(a => a.hasZoneConflict) && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
+          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-black text-rose-800">⚠️ Zone Exclusivity Conflict Detected</h3>
+            <p className="text-xs font-semibold text-rose-700 mt-0.5">
+              One or more applications requested an area/zone where a franchise is already registered! Remember: <strong>Only 1 franchise can exist per zone/district.</strong>
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Applications Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         {loading ? (
@@ -239,7 +252,9 @@ export default function FranchiseList() {
                   <tr
                     key={app._id}
                     onClick={() => navigate(`/admin/food/franchise-management/${app._id}`)}
-                    className="hover:bg-slate-50/80 cursor-pointer transition-colors"
+                    className={`hover:bg-slate-50/80 cursor-pointer transition-colors ${
+                      app.hasZoneConflict ? 'bg-rose-50/20' : ''
+                    }`}
                   >
                     <td className="py-4 px-6">
                       <div className="font-bold text-slate-900 text-sm">{app.applicantName}</div>
@@ -276,6 +291,17 @@ export default function FranchiseList() {
                         <span className="inline-block mt-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           Zone: {app.zoneId.name || app.zoneId.zoneName || 'Assigned'}
                         </span>
+                      )}
+                      {app.hasZoneConflict && (
+                        <div className="mt-1.5 flex flex-col gap-0.5 p-1.5 rounded-lg bg-rose-50 border border-rose-200">
+                          <div className="flex items-center gap-1 text-[10px] font-black text-rose-700">
+                            <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                            <span>DUPLICATE ZONE ALERT</span>
+                          </div>
+                          <span className="text-[10px] font-semibold text-rose-600 leading-tight">
+                            {app.conflictDetails?.conflictMessage || (app.conflictDetails?.existingFranchiseName ? `Zone already belongs to: ${app.conflictDetails.existingFranchiseName}` : 'Already registered in this zone')}
+                          </span>
+                        </div>
                       )}
                     </td>
 

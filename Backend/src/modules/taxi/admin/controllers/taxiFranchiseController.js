@@ -166,3 +166,11 @@ export async function franchiseUpdateBankDetailsController(req, res, next) {
         return sendResponse(res, 200, 'Bank details updated', data);
     } catch (err) { next(err); }
 }
+
+export async function franchiseListRidesController(req, res, next) {
+    try {
+        const partnerId = req.franchisePartner._id;
+        const data = await franchiseService.franchiseListRides(partnerId, req.query);
+        return sendResponse(res, 200, 'Zone rides fetched', data);
+    } catch (err) { next(err); }
+}

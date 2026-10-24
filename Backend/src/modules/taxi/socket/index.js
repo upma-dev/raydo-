@@ -29,6 +29,14 @@ import { registerRideSocketHandlers } from './handlers/rideSocketHandler.js';
 import { authorizeRideRoomAccess } from './middleware/rideRoomAuth.js';
 import { attachSocketAuth } from './middleware/socketAuth.js';
 import { clearDriverRoute } from './services/driverRouteService.js';
+import { FoodDeliveryPartner } from '../../food/delivery/models/deliveryPartner.model.js';
+
+const linkedDriverInRideMode = async (driverId) => {
+  const driver = await Driver.findById(driverId).select('linkedDeliveryPartnerId').lean();
+  if (!driver?.linkedDeliveryPartnerId) return true;
+  const partner = await FoodDeliveryPartner.findById(driver.linkedDeliveryPartnerId).select('rideMode.activeMode').lean();
+  return !partner || partner.rideMode?.activeMode === 'taxi';
+};
 
 const onAsync = (socket, handler) => async (payload = {}) => {
   try {
@@ -61,7 +69,13 @@ const resolveTaxiSocketIdentity = (socket) => {
 };
 
 // How long a driver without a live socket stays "online" (covers page changes, app resume and network blips)
-const DRIVER_OFFLINE_GRACE_MS = 30 * 1000;
+const DRIVER_OFFLINE_GRACE_MS = 5 * 60 * 1000;
+
+// Driver apps ping their GPS every 1-2s. Persisting + re-running the dispatch scan on every single ping is what
+// saturates MongoDB under load. We only process one location tick per driver per this window; the ones in between are
+// dropped (the next allowed tick carries the freshest coordinates anyway). Matching tolerates a few seconds of staleness.
+const DRIVER_LOCATION_MIN_INTERVAL_MS = Number(process.env.DRIVER_LOCATION_MIN_INTERVAL_MS || 3000);
+const lastDriverLocationTickAt = new Map(); // driverId -> last processed timestamp
 
 const registerTaxiSocketConnectionHandlers = (io) => {
   io.on('connection', async (socket) => {
@@ -158,6 +172,17 @@ const registerTaxiSocketConnectionHandlers = (io) => {
       if (identity.role !== 'driver') {
         return;
       }
+
+      // Throttle per driver: skip pings that arrive inside the min interval so one fast-moving driver cannot flood
+      // Mongo with a write + zone lookup + dispatch scan on every GPS tick.
+      const driverKey = String(identity.sub);
+      const now = Date.now();
+      const lastTick = lastDriverLocationTickAt.get(driverKey) || 0;
+      if (now - lastTick < DRIVER_LOCATION_MIN_INTERVAL_MS) {
+        return;
+      }
+      lastDriverLocationTickAt.set(driverKey, now);
+
       const coordsInput = payload.coordinates || payload.location || (
         Number.isFinite(Number(payload.latitude ?? payload.lat)) && Number.isFinite(Number(payload.longitude ?? payload.lng))
           ? [Number(payload.longitude ?? payload.lng), Number(payload.latitude ?? payload.lat)]
@@ -168,12 +193,15 @@ const registerTaxiSocketConnectionHandlers = (io) => {
       const normalizedCoords = normalizePoint(coordsInput, 'coordinates');
       const zone = await findZoneByPickup(normalizedCoords);
 
+      // A delivery partner's linked ride profile only counts as online while the partner is in Ride & Parcel mode
+      const mayGoOnline = await linkedDriverInRideMode(identity.sub);
       await Driver.findByIdAndUpdate(identity.sub, {
         socketId: socket.id,
-        isOnline: true,
+        ...(mayGoOnline ? { isOnline: true } : {}),
         location: toPoint(normalizedCoords, 'coordinates'),
         zoneId: zone?._id || null,
       });
+      if (!mayGoOnline) return;
       notifyLateAvailableDriver(identity.sub).catch((error) => {
         console.error('Failed to notify late-available driver on location update', error);
       });
@@ -271,12 +299,12 @@ const registerTaxiSocketConnectionHandlers = (io) => {
       }),
     );
 
-    socket.on('rejectRide', ({ rideId }) => {
+    socket.on('rejectRide', ({ rideId, reason } = {}) => {
       if (identity.role !== 'driver' || !rideId) {
         return;
       }
 
-      markDriverRejectedFromDispatch(rideId, identity.sub);
+      markDriverRejectedFromDispatch(rideId, identity.sub, reason);
       socket.to(getRideRoom(rideId)).emit('driverRejectedRide', {
         rideId,
         driverId: identity.sub,
@@ -289,6 +317,7 @@ const registerTaxiSocketConnectionHandlers = (io) => {
       }
 
       clearDriverRoute(identity.sub);
+      lastDriverLocationTickAt.delete(String(identity.sub));
 
       // Only release the driver if THIS socket is still his current one. A page change / app resume opens the new socket
       // before the old one's disconnect arrives; that old disconnect must not take the driver offline.

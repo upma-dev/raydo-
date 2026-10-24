@@ -59,6 +59,10 @@ export default function FranchiseApplyPage() {
       };
       const res = await franchiseAPI.submitApplication(payload);
       const applicationId = res?.data?.data?.applicationId;
+      const warning = res?.data?.data?.warning;
+      if (warning) {
+        alert(warning);
+      }
       setCreated({ applicationId, phone: step1Data.phone });
       setCurrentStep(4);
       window.scrollTo?.({ top: 0, behavior: 'smooth' });

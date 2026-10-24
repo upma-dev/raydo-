@@ -4,6 +4,8 @@ import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
 import { FoodDeliveryWithdrawal } from '../models/foodDeliveryWithdrawal.model.js';
 import { FoodDeliveryCashDeposit } from '../models/foodDeliveryCashDeposit.model.js';
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
+import { HybridWalletTransfer } from '../models/hybridWalletTransfer.model.js';
+import { withPartnerWalletLock } from './rideWalletLock.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
 import { getRiderCashPosition } from './riderCash.service.js';
@@ -27,6 +29,16 @@ const riderLedgerExtraEarnings = async (partnerId) => {
     const deliveredIds = await FoodOrder.find({ _id: { $in: rows.map((r) => r._id) }, orderStatus: 'delivered' }).distinct('_id');
     const delivered = new Set(deliveredIds.map(String));
     return round2(rows.filter((r) => !delivered.has(String(r._id))).reduce((sum, r) => sum + Math.max(0, r.net), 0));
+};
+
+/** Totals of the money moved between this partner's taxi wallet and the Pocket (Ride & Parcel mode). */
+export const rideWalletTransferTotals = async (partnerId) => {
+    const rows = await HybridWalletTransfer.aggregate([
+        { $match: { deliveryPartnerId: new mongoose.Types.ObjectId(String(partnerId)) } },
+        { $group: { _id: '$direction', total: { $sum: '$amount' } } },
+    ]);
+    const byDirection = Object.fromEntries(rows.map((r) => [r._id, round2(r.total)]));
+    return { mergedIn: byDirection.taxi_to_food || 0, duesRecovered: byDirection.food_to_taxi || 0 };
 };
 
 /**
@@ -115,7 +127,9 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     // Pocket Balance = (Earnings + Bonus) - Total Withdrawn (approved) - Pending Withdrawals
     // Wait, usually pocket balance subtracts pending too so user knows how much is "left" to request.
     const ledgerExtraEarnings = await riderLedgerExtraEarnings(partnerId);
-    const rawGrossPocket = round2((totalEarned + ledgerExtraEarnings + totalBonus) - (totalWithdrawn + pendingWithdrawals));
+    // Ride & Parcel mode: taxi earnings swept into the Pocket, minus cash-ride commission dues paid from it
+    const rideTransfers = await rideWalletTransferTotals(partnerId);
+    const rawGrossPocket = round2((totalEarned + ledgerExtraEarnings + totalBonus + rideTransfers.mergedIn) - (totalWithdrawn + pendingWithdrawals + rideTransfers.duesRecovered));
     const grossPocketBalance = Math.max(0, rawGrossPocket);
 
     // COD cash the rider is still holding belongs to the platform. It is netted against earnings, so a rider cannot
@@ -125,12 +139,15 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     const rawPocketBalance = round2(rawGrossPocket - cashInHand);
 
     // Fetch transactions for UI (Orders, Bonuses, Withdrawals)
-    const [ordersTx] = await Promise.all([
+    const [ordersTx, rideTransferRows] = await Promise.all([
         FoodOrder.find({ 'dispatch.deliveryPartnerId': partnerId, orderStatus: 'delivered' })
             .sort({ createdAt: -1 })
             .select('orderId riderEarning riderBasePay riderDeliveryFeeShare riderSurgePay riderIncentivePay riderTotalPayout pricing payment orderStatus createdAt')
             .limit(20)
             .lean(),
+        rideTransfers.mergedIn || rideTransfers.duesRecovered
+            ? HybridWalletTransfer.find({ deliveryPartnerId: partnerId }).sort({ createdAt: -1 }).limit(20).lean()
+            : [],
     ]);
 
     const transactions = [
@@ -176,11 +193,21 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
             paymentMethod: d.paymentMethod || 'cash',
             razorpayPaymentId: d.razorpayPaymentId || '',
             razorpayOrderId: d.razorpayOrderId || ''
+        })),
+        ...(rideTransferRows || []).map(t => ({
+            id: t._id,
+            type: t.direction === 'taxi_to_food' ? 'ride_earning' : 'ride_dues',
+            amount: t.amount,
+            status: 'Completed',
+            date: t.createdAt,
+            description: t.direction === 'taxi_to_food' ? 'Ride & parcel earnings added to Pocket' : 'Moved to ride wallet (ride dues / minimum balance)'
         }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return {
-        totalBalance: totalEarned + ledgerExtraEarnings + totalBonus, // Gross lifetime earnings
+        totalBalance: totalEarned + ledgerExtraEarnings + totalBonus + rideTransfers.mergedIn, // Gross lifetime earnings
+        rideEarningsMerged: rideTransfers.mergedIn,
+        rideDuesRecovered: rideTransfers.duesRecovered,
         pocketBalance, // Available to withdraw (earnings minus COD cash still in hand)
         rawPocketBalance,
         grossPocketBalance, // Earnings not yet withdrawn, before the COD cash in hand is netted off
@@ -201,6 +228,17 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
  * Submits a new withdrawal request for a delivery partner.
  */
 export const requestDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
+    const linked = await FoodDeliveryPartner.findById(deliveryPartnerId).select('rideMode.taxiDriverId').lean();
+    if (!linked?.rideMode?.taxiDriverId) return createDeliveryWithdrawal(deliveryPartnerId, payload);
+
+    // Ride & Parcel partner: bring ride earnings into the Pocket first, then decide under the same lock the wallet
+    // merge uses, so dues recovery and this withdrawal can never both spend the same rupees
+    const { reconcileRideWallet } = await import('./hybridRide.service.js');
+    await reconcileRideWallet(deliveryPartnerId).catch(() => null);
+    return withPartnerWalletLock(deliveryPartnerId, () => createDeliveryWithdrawal(deliveryPartnerId, payload));
+};
+
+const createDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
     const { amount, bankDetails, paymentMethod = 'bank_transfer' } = payload;
 
     if (!amount || amount < 1) throw new ValidationError('Invalid amount');

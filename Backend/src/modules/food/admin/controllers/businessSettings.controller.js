@@ -67,7 +67,7 @@ export async function updateBusinessSettings(req, res, next) {
 
         // Handle file uploads
         if (req.files) {
-            const logoFields = ['logo', 'userLogo', 'deliveryLogo', 'driverLogo', 'restaurantLogo', 'adminLogo', 'favicon'];
+            const logoFields = ['logo', 'userLogo', 'deliveryLogo', 'driverLogo', 'restaurantLogo', 'adminLogo', 'franchiseLogo', 'favicon'];
             const uploadPromises = [];
 
             for (const field of logoFields) {

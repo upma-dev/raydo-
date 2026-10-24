@@ -575,6 +575,7 @@ export default function OrdersPage({ statusKey = "all" }) {
     if (statusKey !== "all") return undefined
 
     const pollId = setInterval(() => {
+      if (document.visibilityState !== "visible") return   // socket covers updates; pause the 5s poll in background tabs
       fetchOrders({ silent: true, withRingCheck: true })
     }, 5000)
 

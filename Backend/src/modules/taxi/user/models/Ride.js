@@ -43,6 +43,12 @@ const rideSchema = new mongoose.Schema(
       ref: 'TaxiVehicle',
       default: null,
     },
+    zoneId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'TaxiZone',
+      default: null,
+      index: true,
+    },
     dispatchVehicleTypeIds: {
       type: [
         {
@@ -794,6 +800,7 @@ const rideSchema = new mongoose.Schema(
 );
 
 rideSchema.index({ userId: 1, createdAt: -1 });
+rideSchema.index({ zoneId: 1, createdAt: -1 });
 rideSchema.index({ driverId: 1, createdAt: -1 });
 
 // Phase 2C Immutability Hardening

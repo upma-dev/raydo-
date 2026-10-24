@@ -60,6 +60,10 @@ const franchiseApi = {
     if (!res.ok) throw new Error(data.message || 'Request failed');
     return data.data;
   },
+  getRides: async (token, params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return franchiseApi._get(`/taxi-franchise/rides${q ? `?${q}` : ''}`, token);
+  },
 };
 
 const STORAGE_KEY = 'taxi_franchise_auth';
@@ -178,6 +182,10 @@ function FranchisePartnerDashboard() {
   const [zonePrices, setZonePrices] = useState([]);
   const [zoneSettings, setZoneSettings] = useState(null);
   const [earnings, setEarnings] = useState(null);
+  const [rides, setRides] = useState([]);
+  const [loadingRides, setLoadingRides] = useState(false);
+  const [rideStatusFilter, setRideStatusFilter] = useState('');
+  const [driverFilterTab, setDriverFilterTab] = useState('all');
 
   const [showAddDriver, setShowAddDriver] = useState(false);
   const [showBankModal, setShowBankModal] = useState(false);
@@ -242,6 +250,19 @@ function FranchisePartnerDashboard() {
     catch (err) { console.warn(err.message); }
   }, [token]);
 
+  const fetchRides = useCallback(async () => {
+    if (!token) return;
+    setLoadingRides(true);
+    try {
+      const data = await franchiseApi.getRides(token, { limit: 100, ...(rideStatusFilter ? { status: rideStatusFilter } : {}) });
+      setRides(data?.results || []);
+    } catch (err) {
+      console.warn(err.message);
+    } finally {
+      setLoadingRides(false);
+    }
+  }, [token, rideStatusFilter]);
+
   useEffect(() => {
     if (token) { fetchDashboard(); fetchDrivers(); fetchVehicleTypes(); }
   }, [token, fetchDashboard, fetchDrivers, fetchVehicleTypes]);
@@ -250,7 +271,8 @@ function FranchisePartnerDashboard() {
     if (token && activeTab === 'prices') fetchZonePrices();
     if (token && activeTab === 'settings') fetchZoneSettings();
     if (token && activeTab === 'earnings') fetchEarnings();
-  }, [activeTab, token, fetchZonePrices, fetchZoneSettings, fetchEarnings]);
+    if (token && activeTab === 'rides') fetchRides();
+  }, [activeTab, token, fetchZonePrices, fetchZoneSettings, fetchEarnings, fetchRides]);
 
   const handleAddDriver = async (e) => {
     e.preventDefault();
@@ -269,6 +291,20 @@ function FranchisePartnerDashboard() {
     try {
       await franchiseApi._patch(`/taxi-franchise/drivers/${driverId}/status`, token, { approve: !currentApprove, status: !currentApprove ? 'approved' : 'pending' });
       toast.success('Driver status updated'); fetchDrivers();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleApproveDriver = async (driverId) => {
+    try {
+      await franchiseApi._patch(`/taxi-franchise/drivers/${driverId}/status`, token, { approve: true, status: 'approved' });
+      toast.success('Driver approved successfully'); fetchDrivers(); fetchDashboard();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleRejectDriver = async (driverId) => {
+    try {
+      await franchiseApi._patch(`/taxi-franchise/drivers/${driverId}/status`, token, { approve: false, status: 'rejected' });
+      toast.success('Driver request rejected'); fetchDrivers(); fetchDashboard();
     } catch (err) { toast.error(err.message); }
   };
 
@@ -301,7 +337,15 @@ function FranchisePartnerDashboard() {
   if (!auth) return <LoginScreen onLogin={handleLogin} />;
 
   const stats = dashStats?.stats || {};
-  const filteredDrivers = drivers.filter(d => !searchDriver || d.name?.toLowerCase().includes(searchDriver.toLowerCase()) || d.phone?.includes(searchDriver));
+  const filteredDrivers = drivers.filter(d => {
+    const matchesSearch = !searchDriver || d.name?.toLowerCase().includes(searchDriver.toLowerCase()) || d.phone?.includes(searchDriver);
+    if (!matchesSearch) return false;
+    if (driverFilterTab === 'pending') return !d.approve || d.status === 'pending';
+    if (driverFilterTab === 'approved') return d.approve && d.status === 'approved';
+    if (driverFilterTab === 'suspended') return d.status === 'blocked' || d.status === 'suspended' || (!d.approve && d.status !== 'pending');
+    return true;
+  });
+  const pendingDriversCount = drivers.filter(d => !d.approve || d.status === 'pending').length;
 
   const TABS = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, section: 'Overview' },
@@ -362,9 +406,40 @@ function FranchisePartnerDashboard() {
               <Plus size={18} /> Register Driver
             </button>
           </div>
-          <div className="mb-6 relative max-w-md">
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input value={searchDriver} onChange={e => setSearchDriver(e.target.value)} placeholder="Search by name or phone..." className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-medium shadow-sm" />
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {[
+                { id: 'all', label: 'All Drivers', count: drivers.length },
+                { id: 'pending', label: 'Pending Requests', count: pendingDriversCount, highlight: pendingDriversCount > 0 },
+                { id: 'approved', label: 'Active', count: drivers.filter(d => d.approve && d.status === 'approved').length },
+                { id: 'suspended', label: 'Suspended', count: drivers.filter(d => d.status === 'blocked' || (!d.approve && d.status !== 'pending')).length },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setDriverFilterTab(tab.id)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                    driverFilterTab === tab.id
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${
+                    driverFilterTab === tab.id
+                      ? 'bg-white/20 text-white'
+                      : tab.highlight
+                        ? 'bg-amber-100 text-amber-800 font-extrabold animate-pulse'
+                        : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="relative max-w-xs w-full">
+              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={searchDriver} onChange={e => setSearchDriver(e.target.value)} placeholder="Search name or phone..." className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:outline-none focus:border-blue-500 font-medium shadow-sm" />
+            </div>
           </div>
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <table className="w-full text-left">
@@ -395,12 +470,26 @@ function FranchisePartnerDashboard() {
                        <div className="text-xs font-medium text-slate-500 mt-0.5">{d.vehicleModel || '—'}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <Badge active={d.approve}>{d.approve ? 'Active' : 'Suspended'}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge active={d.approve}>{!d.approve || d.status === 'pending' ? 'Pending Approval' : 'Active'}</Badge>
+                        <span className={`h-2 w-2 rounded-full ${d.isOnline ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-slate-300'}`} title={d.isOnline ? 'Driver is Online' : 'Driver is Offline'} />
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                       <button onClick={() => handleToggleDriver(d._id, d.approve)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${d.approve ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
+                      {!d.approve || d.status === 'pending' ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => handleApproveDriver(d._id)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition">
+                            <CheckCircle size={14} /> Approve
+                          </button>
+                          <button onClick={() => handleRejectDriver(d._id)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition">
+                            <XCircle size={14} /> Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={() => handleToggleDriver(d._id, d.approve)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${d.approve ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
                           {d.approve ? 'Suspend' : 'Activate'}
-                       </button>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -582,6 +671,113 @@ function FranchisePartnerDashboard() {
           </div>
         </div>
       );
+      case 'rides': return (
+        <div className="animate-in fade-in duration-300">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+                <span>Trip Management</span><ChevronRight size={12} /><span className="text-slate-700">Zone Rides</span>
+              </div>
+              <h1 className="text-2xl font-bold text-slate-900">Zone Taxi Rides</h1>
+              <p className="mt-1 text-sm text-slate-500">Live, active and completed transport rides within {partner?.zoneName} Zone.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <select
+                value={rideStatusFilter}
+                onChange={e => setRideStatusFilter(e.target.value)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 shadow-sm focus:outline-none focus:border-blue-500"
+              >
+                <option value="">All Statuses</option>
+                <option value="searching">Searching</option>
+                <option value="accepted">Accepted</option>
+                <option value="arrived">Arrived</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <button onClick={fetchRides} className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition shadow-sm">
+                <RefreshCw size={16} className={loadingRides ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Ride Info</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Rider / Customer</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Driver / Captain</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Pickup & Drop</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Fare & Earnings</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Status</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {loadingRides ? (
+                    <tr><td colSpan="7" className="px-6 py-16 text-center text-sm text-slate-500"><Loader2 size={24} className="animate-spin mx-auto text-blue-600 mb-2" />Loading zone rides...</td></tr>
+                  ) : rides.length === 0 ? (
+                    <tr><td colSpan="7" className="px-6 py-16 text-center text-sm text-slate-500 font-medium">No rides found in your zone.</td></tr>
+                  ) : rides.map(r => (
+                    <tr key={r._id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-slate-900 text-sm">#{r.rideId}</div>
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-100">
+                          {r.serviceType}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-slate-900 text-sm">{r.user?.name || 'Customer'}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">{r.user?.phone || '—'}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {r.driver ? (
+                          <div>
+                            <div className="font-bold text-slate-900 text-sm">{r.driver.name}</div>
+                            <div className="text-xs text-slate-500 mt-0.5">{r.driver.phone} • {r.driver.vehicleNumber || r.driver.vehicleType}</div>
+                          </div>
+                        ) : (
+                          <span className="text-xs font-semibold text-slate-400 italic">Unassigned</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 max-w-xs">
+                        <div className="text-xs text-slate-800 font-medium truncate" title={r.pickupAddress}>
+                          <span className="font-bold text-emerald-600">From:</span> {r.pickupAddress || 'Pickup'}
+                        </div>
+                        <div className="text-xs text-slate-500 font-medium truncate mt-1" title={r.dropAddress}>
+                          <span className="font-bold text-red-500">To:</span> {r.dropAddress || 'Drop'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-slate-900 text-sm">₹{Number(r.fare || 0).toFixed(2)}</div>
+                        <div className="text-xs font-bold text-emerald-600 mt-0.5">
+                          Franchise: +₹{Number(r.franchiseEarning || 0).toFixed(2)}
+                        </div>
+                        <div className="text-[10px] text-slate-400 capitalize">{r.paymentMethod || 'Cash'}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ${
+                          r.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                          r.status === 'cancelled' ? 'bg-red-50 text-red-700 border border-red-200' :
+                          ['in_progress', 'arrived', 'accepted'].includes(r.status) ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                          'bg-amber-50 text-amber-700 border border-amber-200'
+                        }`}>
+                          {r.status?.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-xs font-medium text-slate-500">
+                        {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
       default: return null;
     }
   };
@@ -704,9 +900,9 @@ function FranchisePartnerDashboard() {
                   TAXI TRIP MANAGEMENT
                 </span>
               </div>
-              <button className="group relative flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm transition-all duration-200 text-neutral-500 cursor-not-allowed">
+              <button onClick={() => setActiveTab('rides')} className={`group relative flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm transition-all duration-200 ${activeTab === 'rides' ? 'bg-neutral-800/80 text-white shadow-[0_4px_12px_rgba(0,0,0,0.1)] ring-1 ring-white/10' : 'text-neutral-300 hover:bg-white/5 hover:text-white'}`}>
                 <div className="flex items-center gap-3 font-medium">
-                  <Car className="w-4 h-4 opacity-50" />
+                  <Car className={`w-4 h-4 ${activeTab === 'rides' ? 'text-white' : 'opacity-80'}`} />
                   <span className="text-[13px] tracking-wide">Zone Taxi Rides</span>
                 </div>
               </button>

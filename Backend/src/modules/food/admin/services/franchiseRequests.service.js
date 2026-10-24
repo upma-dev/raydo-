@@ -75,7 +75,7 @@ export async function getPartnerProfile(franchiseId) {
             payoutCycle: app.payoutCycle, minPayoutThreshold: app.minPayoutThreshold,
             documents: (app.documents || []).map((d) => ({ key: d.key, label: d.label, url: d.url })),
         },
-        zone: territory ? { id: territory._id, name: territory.name, city: territory.city || '' } : null,
+        zone: territory ? { id: String(territory._id), _id: String(territory._id), name: territory.name, city: territory.city || '' } : (app.zoneId ? { id: String(app.zoneId), _id: String(app.zoneId), name: app.city || app.area || 'Franchise Zone', city: app.city || '' } : null),
         restaurantCount: restaurants,
         zoneOptions: options.filter(fits).map((t) => ({ id: t._id, name: t.name, city: t.city || '' })),
         requests: requests.map((r) => requestDto(r, names)),

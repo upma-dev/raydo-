@@ -184,7 +184,9 @@ const mapPendingRestaurants = (response) => {
       type: "approval",
       category: "restaurant_approval",
       // A zone owned by a franchise is approved by that franchise: the admin just opens the restaurant list
-      path: item?.franchiseOwned ? "/admin/food/restaurants" : "/admin/food/restaurants/joining-request",
+      path: item?.franchiseApplicationId
+        ? `/admin/food/franchise-management/${item.franchiseApplicationId}?tab=overview`
+        : item?.franchiseOwned ? "/admin/food/restaurants" : "/admin/food/restaurants/joining-request",
       createdAt: item?.createdAt || item?.updatedAt,
       timeLabel: toDateLabel(item?.createdAt || item?.updatedAt),
       metaLabel: joinMeta(item?.restaurantName, item?.ownerName, item?.ownerPhone),
@@ -269,6 +271,36 @@ const mapDeliverySupport = (response) => {
       timeLabel: toDateLabel(item?.createdAt || item?.updatedAt),
       metaLabel: joinMeta(item?.deliveryPartner?.name, item?.deliveryPartner?.phone, item?.priority, item?.status),
     }));
+};
+
+const mapFranchiseApplications = (response) => {
+  const rows = extractRows(response);
+  return rows
+    .filter((item) => {
+      const st = String(item?.status || "pending").toLowerCase();
+      return st === "pending" || st === "under_review";
+    })
+    .map((item) => {
+      const hasConflict = Boolean(item?.hasZoneConflict);
+      const conflictMsg = item?.conflictDetails?.conflictMessage || (item?.conflictDetails?.existingFranchiseName ? `Zone already registered to ${item.conflictDetails.existingFranchiseName}` : "");
+      const location = [item?.area, item?.city, item?.state].filter(Boolean).join(", ") || "Territory";
+
+      return {
+        id: `approval-franchise-${String(item?._id || item?.id || "")}`,
+        franchiseId: String(item?._id || item?.id || ""),
+        title: hasConflict ? "⚠️ Duplicate Zone Franchise Request" : "🏢 Franchise Joining Request",
+        message: hasConflict
+          ? `CONFLICT: ${item?.applicantName || "Applicant"} applied for ${location}, but this zone/area is already registered! (${conflictMsg || "Only 1 franchise allowed per zone"}). Click to view in Franchise List.`
+          : `${item?.applicantName || "Franchise Partner"} submitted a joining request for ${location}. Contact: ${item?.phone || "N/A"}. Click to view in Franchise List.`,
+        type: "approval",
+        category: "franchise_approval",
+        hasZoneConflict: hasConflict,
+        path: "/admin/food/franchise-management/list",
+        createdAt: item?.createdAt || item?.updatedAt,
+        timeLabel: toDateLabel(item?.createdAt || item?.updatedAt),
+        metaLabel: joinMeta(item?.applicantName, item?.phone, item?.city || item?.state, hasConflict ? "⚠️ ZONE CONFLICT" : "Franchise"),
+      };
+    });
 };
 
 const mapFranchiseSupportInquiries = (response) => {
@@ -434,6 +466,7 @@ export default function useAdminNotifications(options = {}) {
         ...mapFoodApprovals(foodApprovalRes),
         ...mapUserRestaurantSupport(supportRes),
         ...mapDeliverySupport(deliverySupportRes),
+        ...mapFranchiseApplications(franchiseRes),
         ...mapFranchiseSupportInquiries(franchiseRes),
         ...mapWithdrawalRequests(withdrawalRes),
         ...mapDeliveryWithdrawals(deliveryWithdrawalRes),
@@ -490,29 +523,35 @@ export default function useAdminNotifications(options = {}) {
       });
 
       const handleRegistrationAlert = (data = {}) => {
-        const title = data.title || `New ${data.type || 'Account'} Registered`;
-        const name = data.name || data.fullName || 'New Account';
+        const isFranchise = data.type === 'franchise' || data.category === 'franchise_approval';
+        const title = data.title || (isFranchise ? 'New Franchise Registered' : `New ${data.type || 'Account'} Registered`);
+        const name = data.name || data.fullName || data.applicantName || 'New Account';
         const phone = data.phone || data.mobile || '';
 
         toast.info(`🆕 ${title}: ${name}${phone ? ` (${phone})` : ''}`);
 
         const rawId = String(data.id || data._id || Date.now());
-        const targetId = data.type === 'restaurant'
-          ? `approval-restaurant-${rawId}`
-          : `approval-delivery-${rawId}`;
+        const targetId = isFranchise
+          ? `approval-franchise-${rawId}`
+          : (data.type === 'restaurant'
+            ? `approval-restaurant-${rawId}`
+            : `approval-delivery-${rawId}`);
 
         const item = {
           id: targetId,
+          franchiseId: isFranchise ? rawId : undefined,
           title: `🆕 ${title}`,
           message: `${name}${phone ? ` (${phone})` : ''} registered and requires review.`,
           type: "approval",
-          category: data.type === 'restaurant' ? 'restaurant_approval' : 'delivery_approval',
-          path: data.type === 'restaurant'
-            ? (data.franchiseOwned ? '/admin/food/restaurants' : '/admin/food/restaurants/joining-request')
-            : '/admin/food/delivery-partners/join-request',
+          category: isFranchise ? 'franchise_approval' : (data.type === 'restaurant' ? 'restaurant_approval' : 'delivery_approval'),
+          path: isFranchise
+            ? '/admin/food/franchise-management/list'
+            : (data.type === 'restaurant'
+              ? (data.franchiseOwned ? '/admin/food/restaurants' : '/admin/food/restaurants/joining-request')
+              : '/admin/food/delivery-partners/join-request'),
           createdAt: data.createdAt || new Date().toISOString(),
           timeLabel: "Just now",
-          metaLabel: joinMeta(name, phone, data.type),
+          metaLabel: joinMeta(name, phone, data.type || (isFranchise ? 'Franchise' : '')),
         };
 
         // Un-dismiss if previously dismissed
@@ -524,8 +563,46 @@ export default function useAdminNotifications(options = {}) {
         dispatchAdminNotificationsUpdated();
       };
 
+      const handleFranchiseRegistration = (payload = {}) => {
+        const hasConflict = Boolean(payload?.hasZoneConflict);
+        const title = payload?.title || (hasConflict ? "⚠️ Duplicate Zone Franchise Request" : "🏢 New Franchise Application");
+        const body = payload?.message || `${payload?.applicantName || 'Franchise Partner'} submitted an application.`;
+
+        if (hasConflict) {
+          toast.error(title, { description: body, duration: 8000 });
+        } else {
+          toast.info(title, { description: body });
+        }
+
+        const rawId = String(payload?.id || payload?._id || payload?.franchiseId || Date.now());
+        const targetId = `approval-franchise-${rawId}`;
+
+        const item = {
+          id: targetId,
+          franchiseId: rawId,
+          title,
+          message: body,
+          type: "approval",
+          category: "franchise_approval",
+          hasZoneConflict: hasConflict,
+          path: "/admin/food/franchise-management/list",
+          createdAt: payload?.createdAt || new Date().toISOString(),
+          timeLabel: "Just now",
+          metaLabel: joinMeta(payload?.applicantName, payload?.phone, payload?.location, hasConflict ? "⚠️ ZONE CONFLICT" : "Franchise"),
+        };
+
+        saveDismissedIds(getDismissedIds().filter((id) => id !== targetId));
+        saveStoredRealtimeNotifs([item, ...getStoredRealtimeNotifs()]);
+
+        setItems((prev) => uniqueById([item, ...(Array.isArray(prev) ? prev : [])]));
+        dispatchAdminNotificationsUpdated();
+        loadNotifications();
+      };
+
       socket.on("new_registration_alert", handleRegistrationAlert);
       socket.on("new_driver_registration", handleRegistrationAlert);
+      socket.on("new_franchise_registration", handleFranchiseRegistration);
+      socket.on("duplicate_franchise_zone_alert", handleFranchiseRegistration);
 
       socket.on("admin_handover_request", (payload) => {
         toast.error("🚨 Order Handover Request Received!", {
@@ -572,22 +649,32 @@ export default function useAdminNotifications(options = {}) {
         const title = payload?.title || payload?.notification?.title || "Admin Notification";
         const body = payload?.message || payload?.body || payload?.notification?.body || payload?.data?.message || "";
 
-        if (body) {
+        const isFranchise = payload?.category === "franchise_approval" || 
+          payload?.category === "franchise" || 
+          String(payload?.title || "").toLowerCase().includes("franchise") || 
+          String(payload?.message || "").toLowerCase().includes("franchise") ||
+          Boolean(payload?.hasZoneConflict);
+
+        if (payload?.hasZoneConflict) {
+          toast.error(title, { description: body, duration: 8000 });
+        } else if (body) {
           toast.info(`${title}: ${body}`);
         } else {
           toast.info(title);
         }
 
         const rawId = String(payload?.id || payload?._id || payload?.notificationId || Date.now());
-        const targetId = `admin-notif-${rawId}`;
+        const targetId = isFranchise ? `approval-franchise-${rawId}` : `admin-notif-${rawId}`;
 
         const realTimeItem = {
           id: targetId,
+          franchiseId: isFranchise ? rawId : undefined,
           title,
           message: body,
-          type: payload?.type || "info",
-          category: payload?.category || "general",
-          path: payload?.path || payload?.targetUrl || payload?.link || "/admin/food",
+          type: isFranchise ? "approval" : (payload?.type || "info"),
+          category: isFranchise ? "franchise_approval" : (payload?.category || "general"),
+          hasZoneConflict: Boolean(payload?.hasZoneConflict),
+          path: isFranchise ? "/admin/food/franchise-management/list" : (payload?.path || payload?.targetUrl || payload?.link || "/admin/food"),
           createdAt: payload?.createdAt || new Date().toISOString(),
           timeLabel: "Just now",
           metaLabel: joinMeta(title, body),

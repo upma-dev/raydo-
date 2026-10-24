@@ -399,15 +399,39 @@ export default function GlobalSettings() {
             <Field label="Footer text"><input className={input} value={brand.footerText || ""} onChange={b("footerText")} /></Field>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
-            <div>
-              <ImageField label="Logo" value={brand.logo} onChange={(url) => setBrand({ ...brand, logo: url })} folder="business/logos" />
-              <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
-                <input type="checkbox" checked={applyLogoEverywhere} onChange={(e) => setApplyLogoEverywhere(e.target.checked)} />
-                Use this logo in every app (customer, restaurant, delivery, driver, admin)
-              </label>
+          <div className="pt-5 border-t border-slate-100 space-y-4">
+            <div className="flex items-center gap-2">
+              <Palette className="w-4 h-4 text-blue-600" />
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Brand & Portal Logos</h2>
             </div>
-            <ImageField label="Favicon" value={brand.favicon} onChange={(url) => setBrand({ ...brand, favicon: url })} folder="business/favicons" />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <ImageField label="Main App Logo" value={brand.logo} onChange={(url) => setBrand({ ...brand, logo: url })} folder="business/logos" />
+                <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
+                  <input type="checkbox" checked={applyLogoEverywhere} onChange={(e) => setApplyLogoEverywhere(e.target.checked)} />
+                  Apply main logo to all apps
+                </label>
+              </div>
+
+              <div>
+                <ImageField
+                  label="Franchise Partner Logo"
+                  value={brand.franchiseLogo}
+                  onChange={(url) => setBrand({ ...brand, franchiseLogo: url })}
+                  folder="business/logos"
+                />
+                <p className="mt-2 text-[11px] text-slate-400">
+                  Shown in Franchise Partner portal sidebar & header
+                </p>
+              </div>
+
+              <div>
+                <ImageField label="Favicon" value={brand.favicon} onChange={(url) => setBrand({ ...brand, favicon: url })} folder="business/favicons" />
+                <p className="mt-2 text-[11px] text-slate-400">
+                  Browser tab icon
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}

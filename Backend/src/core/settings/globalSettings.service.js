@@ -70,6 +70,7 @@ export async function getGlobalSettings() {
             region: food.region || 'India',
             footerText: general.footer_1 || '',
             logo: food.logo?.url || general.logo || '',
+            franchiseLogo: food.franchiseLogo?.url || '',
             favicon: food.favicon?.url || general.favicon || '',
         },
         appearance: {
@@ -127,7 +128,13 @@ export async function updateGlobalSettings(body = {}) {
         food.logo = { url, publicId: '' };
         if (applyEverywhere) {
             ['userLogo', 'deliveryLogo', 'driverLogo', 'restaurantLogo', 'adminLogo'].forEach((f) => { food[f] = { url, publicId: '' }; });
+            if (!brand.franchiseLogo) {
+                food.franchiseLogo = { url, publicId: '' };
+            }
         }
+    }
+    if (brand.franchiseLogo !== undefined) {
+        food.franchiseLogo = { url: str(brand.franchiseLogo), publicId: '' };
     }
     if (brand.favicon !== undefined) food.favicon = { url: str(brand.favicon), publicId: '' };
 

@@ -5,6 +5,7 @@ import {
   LayoutDashboard, Truck, FileText, Loader2, Building, Utensils, Lock, CheckCircle, Package, MessageSquare, TrendingUp, BusFront, Bike,
 } from 'lucide-react';
 import { clearModuleAuth, getCurrentUser } from "@food/utils/auth";
+import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings";
 import { franchiseAPI, adminAPI } from "@food/api";
 import {
   TaxiDashboardPage, TaxiRidesPage, TaxiBusPage, EarningsPage, WalletPage, SupportPage, StatCard,
@@ -21,6 +22,7 @@ const OrdersPage = lazy(() => import('./pages/FranchiseOrdersList'));
 const AddonsList = lazy(() => import('./pages/FranchiseAddonsList'));
 const FoodApproval = lazy(() => import('./pages/FranchiseFoodApproval'));
 const AddRestaurant = lazy(() => import('@food/pages/admin/restaurant/AddRestaurant'));
+const EditRestaurant = lazy(() => import('@food/pages/admin/restaurant/EditRestaurant'));
 const JoiningRequest = lazy(() => import('@food/pages/admin/restaurant/JoiningRequest'));
 const RestaurantComplaints = lazy(() => import('@food/pages/admin/restaurant/RestaurantComplaints'));
 const RestaurantReviews = lazy(() => import('@food/pages/admin/restaurant/RestaurantReviews'));
@@ -57,6 +59,19 @@ export default function FranchiseDashboardUnified() {
   const [dash, setDash] = useState(null);
   const [dashError, setDashError] = useState('');
   const [allowedModules, setAllowedModules] = useState(null); // null = still loading
+  const [logoUrl, setLogoUrl] = useState(() => {
+    const cached = getCachedSettings();
+    return cached?.franchiseLogo?.url || cached?.logo?.url || null;
+  });
+
+  useEffect(() => {
+    loadBusinessSettings().then((settings) => {
+      if (settings) {
+        const url = settings?.franchiseLogo?.url || settings?.logo?.url || null;
+        if (url) setLogoUrl(url);
+      }
+    });
+  }, []);
 
   const logout = () => {
     clearModuleAuth('franchise');
@@ -246,14 +261,25 @@ export default function FranchiseDashboardUnified() {
     <div className="flex h-screen bg-[#f6f7fb] font-sans text-slate-900 overflow-hidden">
       <aside className="w-72 flex-shrink-0 bg-neutral-950 flex flex-col z-20 shadow-2xl text-white">
         <div className="flex h-20 shrink-0 items-center px-6 border-b border-white/5">
-          <div className="h-9 w-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-            {activeModuleTab === 'taxi' ? <Car className="w-5 h-5 text-white" /> : <Utensils className="w-5 h-5 text-white" />}
-          </div>
-          <div className="ml-3 flex flex-col">
-            <span className="text-[17px] font-black tracking-tight text-white leading-none">Raydo Partner</span>
+          {logoUrl ? (
+            <div className="h-10 w-10 rounded-xl bg-white/10 p-1 flex items-center justify-center shrink-0 border border-white/10 overflow-hidden shadow-sm">
+              <img
+                src={logoUrl}
+                alt="Franchise Partner Logo"
+                className="max-h-full max-w-full object-contain"
+                onError={() => setLogoUrl(null)}
+              />
+            </div>
+          ) : (
+            <div className="h-9 w-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+              {activeModuleTab === 'taxi' ? <Car className="w-5 h-5 text-white" /> : <Utensils className="w-5 h-5 text-white" />}
+            </div>
+          )}
+          <div className="ml-3 flex flex-col min-w-0">
+            <span className="text-[17px] font-black tracking-tight text-white leading-none truncate">Raydo Partner</span>
             <div className="mt-1 flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">FRANCHISE PORTAL</span>
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 truncate">FRANCHISE PORTAL</span>
             </div>
           </div>
         </div>
@@ -361,6 +387,7 @@ export default function FranchiseDashboardUnified() {
                 <Route path="food/categories/list" element={Food(<Category />)} />
                 <Route path="food/restaurants/list" element={Food(<RestaurantsList />)} />
                 <Route path="food/restaurants/add" element={Food(<AddRestaurant />)} />
+                <Route path="food/restaurants/edit/:id" element={Food(<EditRestaurant />)} />
                 <Route path="food/restaurants/joining" element={Food(<JoiningRequest />)} />
                 <Route path="food/restaurants/reviews" element={Food(<RestaurantReviews />)} />
                 <Route path="food/restaurants/complaints" element={Food(<RestaurantComplaints />)} />

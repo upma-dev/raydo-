@@ -99,7 +99,7 @@ const IncomingRideRequest = ({
 
       if (!hasExpired && remainingSeconds <= 0) {
         hasExpired = true;
-        onDecline();
+        onDecline({ reason: 'timeout' });
       }
     };
 

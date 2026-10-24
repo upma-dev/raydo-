@@ -111,6 +111,8 @@ export async function submitApplicationController(req, res, next) {
         return sendResponse(res, 201, 'Application submitted successfully', {
             applicationId: application.applicationId,
             status: application.status,
+            hasZoneConflict: Boolean(application.hasZoneConflict),
+            warning: application.hasZoneConflict ? 'Note: A franchise is already registered in this zone/area. Application submitted for secondary review.' : undefined,
         });
     } catch (err) {
         next(err);

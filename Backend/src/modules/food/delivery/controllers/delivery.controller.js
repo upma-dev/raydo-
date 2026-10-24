@@ -159,9 +159,10 @@ export const getWalletController = async (req, res, next) => {
                 } else if (requestedTypeRaw === 'deposit') {
                     allowedTypes = new Set(['deposit']);
                 } else if (['payment', 'earning', 'order'].includes(requestedTypeRaw)) {
-                    allowedTypes = new Set(['payment']);
+                    allowedTypes = new Set(['payment', 'ride_earning']);
                 } else {
-                    allowedTypes = new Set(['withdrawal', 'deposit']);
+                    // Deductions; ride_dues is Pocket money moved to the ride wallet (Ride & Parcel mode)
+                    allowedTypes = new Set(['withdrawal', 'deposit', 'ride_dues']);
                 }
 
                 wallet.transactions = (wallet.transactions || [])

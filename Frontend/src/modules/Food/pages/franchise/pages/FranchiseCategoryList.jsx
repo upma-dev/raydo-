@@ -64,6 +64,8 @@ export default function FranchiseCategoryList() {
   const [selectedImageFile, setSelectedImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -194,19 +196,44 @@ export default function FranchiseCategoryList() {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (submitting || uploadingImage) return
+
+    const trimmedName = String(formData.name || "").trim()
+    if (!trimmedName) {
+      toast.error("Please enter a category name")
+      return
+    }
+
+    // Client-side duplicate check
+    const editingId = editingCategory ? String(editingCategory._id || editingCategory.id) : null
+    const isDuplicate = categories.some((cat) => {
+      const catId = String(cat._id || cat.id)
+      if (editingId && catId === editingId) return false
+      return String(cat.name || "").trim().toLowerCase() === trimmedName.toLowerCase()
+    })
+
+    if (isDuplicate) {
+      toast.error(`Category "${trimmedName}" already exists!`)
+      return
+    }
 
     try {
-      setUploadingImage(true)
+      setSubmitting(true)
       let imageUrl = String(formData.image || "").trim()
 
       if (selectedImageFile) {
-        const uploadRes = await uploadAPI.uploadMedia(selectedImageFile, { folder: "raydo/franchise/categories" })
-        const payload = uploadRes?.data?.data || uploadRes?.data
-        imageUrl = payload?.url || imageUrl
+        setUploadingImage(true)
+        try {
+          const uploadRes = await uploadAPI.uploadMedia(selectedImageFile, { folder: "raydo/franchise/categories" })
+          const payload = uploadRes?.data?.data || uploadRes?.data
+          imageUrl = payload?.url || imageUrl
+        } finally {
+          setUploadingImage(false)
+        }
       }
 
       const payload = {
-        name: String(formData.name || "").trim(),
+        name: trimmedName,
         type: String(formData.type || "").trim(),
         status: Boolean(formData.status),
         image: imageUrl || undefined,
@@ -215,7 +242,7 @@ export default function FranchiseCategoryList() {
       }
 
       if (editingCategory) {
-        await franchisePartnerAPI.createCategory(payload) // handles upsert
+        await franchisePartnerAPI.updateCategory(editingId, payload)
         toast.success("Category updated successfully")
       } else {
         await franchisePartnerAPI.createCategory(payload)
@@ -227,7 +254,27 @@ export default function FranchiseCategoryList() {
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to save category")
     } finally {
+      setSubmitting(false)
       setUploadingImage(false)
+    }
+  }
+
+  const handleDelete = async (category) => {
+    const catId = String(category._id || category.id)
+    const catName = category.name || "this category"
+    if (!window.confirm(`Are you sure you want to delete "${catName}"?`)) {
+      return
+    }
+
+    try {
+      setDeletingId(catId)
+      await franchisePartnerAPI.deleteCategory(catId)
+      toast.success(`Category "${catName}" deleted successfully`)
+      fetchCategories()
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to delete category")
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -353,7 +400,7 @@ export default function FranchiseCategoryList() {
                   const zoneText = zoneLabel(category?.zoneId || zones[0])
 
                   return (
-                    <tr key={category.id} className="align-top hover:bg-slate-50/80">
+                    <tr key={category._id || category.id} className="align-top hover:bg-slate-50/80">
                       <td className="px-5 py-5">
                         <div className="flex items-start gap-3">
                           <div className="h-11 w-11 overflow-hidden rounded-2xl bg-slate-100">
@@ -388,13 +435,27 @@ export default function FranchiseCategoryList() {
                         </span>
                       </td>
                       <td className="px-5 py-5 text-right">
-                        <button
-                          onClick={() => handleEdit(category)}
-                          className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-50"
-                          title="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleEdit(category)}
+                            className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-50"
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(category)}
+                            disabled={deletingId === String(category._id || category.id)}
+                            className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                            title="Delete"
+                          >
+                            {deletingId === String(category._id || category.id) ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -533,9 +594,13 @@ export default function FranchiseCategoryList() {
                         </button>
                         <button
                           type="submit"
-                          className="flex-1 rounded-xl bg-indigo-600 px-4 py-3 text-white hover:bg-indigo-700 font-bold"
+                          disabled={submitting || uploadingImage}
+                          className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-white hover:bg-indigo-700 font-bold disabled:opacity-50"
                         >
-                          {editingCategory ? "Update Category" : "Create Category"}
+                          {(submitting || uploadingImage) && <Loader2 className="h-4 w-4 animate-spin" />}
+                          {submitting
+                            ? (editingCategory ? "Updating..." : "Creating...")
+                            : (editingCategory ? "Update Category" : "Create Category")}
                         </button>
                       </div>
                     </form>

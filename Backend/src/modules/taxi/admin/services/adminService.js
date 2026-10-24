@@ -4016,7 +4016,7 @@ export const listDrivers = async ({ page = 1, limit = 50, status, search, approv
   // Drivers marked online without a live socket for a while are really offline. A driver on a ride, or one whose socket
   // dropped a moment ago (the socket layer gives a short grace), is left alone.
   await Driver.updateMany(
-    { isOnline: true, socketId: null, isOnRide: { $ne: true }, updatedAt: { $lt: new Date(Date.now() - 60 * 1000) } },
+    { isOnline: true, socketId: null, isOnRide: { $ne: true }, updatedAt: { $lt: new Date(Date.now() - 5 * 60 * 1000) } },
     { $set: { isOnline: false } },
   ).catch(() => {});
 

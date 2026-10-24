@@ -2427,6 +2427,11 @@ export const goOnline = async (req, res) => {
     throw new ApiError(400, "A selfie is required before going online (selfie verification is needed every hour)");
   }
 
+  if (existingDriver.linkedDeliveryPartnerId) {
+    const { assertLinkedDriverMayGoOnline } = await import("../../../food/delivery/services/hybridRide.service.js");
+    await assertLinkedDriverMayGoOnline(existingDriver);
+  }
+
   await ensureDriverWalletCanAcceptRide(existingDriver);
   await clearDriverActiveRideIfStale(existingDriver);
   const trackingBeforeOnline = mergeOnlineSessionIntoTracking(
@@ -4758,6 +4763,10 @@ export const createDriverWithdrawalRequest = async (req, res) => {
 
   if (!driver) {
     throw new ApiError(404, "Driver not found");
+  }
+
+  if (driver.linkedDeliveryPartnerId) {
+    throw new ApiError(400, "Your ride earnings are added to your delivery Pocket. Withdraw from Pocket in the delivery app.");
   }
 
   const wallet = await serializeDriverWallet(driver);

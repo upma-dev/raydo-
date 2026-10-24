@@ -1844,6 +1844,20 @@ const getDeliveryMeOnce = () => {
 };
 
 /** Delivery API - OTP login + registration via new backend. */
+// Ride & Parcel mode keeps a ride-app session next to the delivery login; it must not outlive the delivery login
+const RIDE_MODE_SESSION_KEYS = ["token", "driverToken", "driverInfo", "role", "driverRole", "chatRole"];
+const clearRideModeSession = () => {
+  try {
+    localStorage.removeItem("rideModeCard");
+    if (localStorage.getItem("rideModePartner") !== "1") return;
+    localStorage.removeItem("rideModePartner");
+    RIDE_MODE_SESSION_KEYS.forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+  } catch (_) { }
+};
+
 export const deliveryAPI = {
   deleteAccount: () => apiClient.delete('/food/delivery/profile/account', { contextModule: 'delivery' }),
   getWallet: () => apiClient.get('/food/delivery/wallet', { contextModule: 'delivery' }),
@@ -1877,6 +1891,7 @@ export const deliveryAPI = {
     try {
       localStorage.removeItem("app:isOnline");
     } catch (_) { }
+    clearRideModeSession();
     const token =
       refreshToken ||
       (typeof localStorage !== "undefined"
@@ -1980,6 +1995,21 @@ export const deliveryAPI = {
     apiClient.get(`/food/delivery/support-tickets/${id}`, {
       contextModule: "delivery",
     }),
+  /** Ride & Parcel mode: the partner also takes taxi rides / parcels through a linked ride profile. */
+  getRideMode: () =>
+    apiClient.get("/food/delivery/ride-mode", { contextModule: "delivery" }),
+  getRideModeVehicleTypes: () =>
+    apiClient.get("/food/delivery/ride-mode/vehicle-types", { contextModule: "delivery" }),
+  applyForRideMode: (formData) =>
+    apiClient.post("/food/delivery/ride-mode/apply", formData, {
+      contextModule: "delivery",
+      timeout: 120000,
+    }),
+  /** mode: 'food' | 'taxi'. Switching to taxi returns a ride-app token (taxiToken). */
+  switchRideMode: (mode, extras = {}) =>
+    apiClient.post("/food/delivery/ride-mode/switch", { mode, ...extras }, { contextModule: "delivery" }),
+  getRideSession: () =>
+    apiClient.post("/food/delivery/ride-mode/session", {}, { contextModule: "delivery" }),
   /** PATCH /food/delivery/availability - set online/offline (and optional lat/lng). */
   updateOnlineStatus: (isOnline, selfieImageUrl = "") =>
     apiClient.patch(
@@ -3055,6 +3085,8 @@ export const franchiseAPI = {
   /** Logged-in franchise partner: its own dashboard (no params) and its taxi data */
   getMyDashboard: () =>
     apiClient.get("/franchise/partner-dashboard"),
+  getMyZone: () =>
+    apiClient.get("/franchise/my-zone"),
   /** Own earnings / platform commission / wallet / fee & deposit (franchise id comes from the login token) */
   getMyFinance: (params = {}) =>
     apiClient.get("/franchise/finance", { params }),
@@ -3115,6 +3147,10 @@ export const franchisePartnerAPI = {
     apiClient.get("/food/admin/categories", { params, contextModule: "franchise" }),
   createCategory: (body) =>
     apiClient.post("/food/admin/categories", body ?? {}, { contextModule: "franchise" }),
+  updateCategory: (id, body) =>
+    apiClient.patch(`/food/admin/categories/${id}`, body ?? {}, { contextModule: "franchise" }),
+  deleteCategory: (id) =>
+    apiClient.delete(`/food/admin/categories/${id}`, { contextModule: "franchise" }),
   getZones: (params = {}) =>
     apiClient.get("/food/admin/zones", { params, contextModule: "franchise" }),
   getOrders: (params = {}) =>

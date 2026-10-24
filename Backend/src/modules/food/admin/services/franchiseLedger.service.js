@@ -275,6 +275,22 @@ export async function reimburseFranchiseRefund(franchiseId, claimId, amount, { o
     }]);
 }
 
+/**
+ * A restaurant in this franchise's zone cancelled an order after accepting it. The admin-set penalty taken from the
+ * restaurant is handed to the franchise that operates the zone (it carries the local operational cost of the cancel).
+ * Posted as a standalone 'adjustment' credit, so it is never mistaken for order earning and never reversed by a refund.
+ * Idempotent per order (unique franchiseId+type+refId).
+ */
+export async function creditFranchiseCancelPenalty(franchiseId, orderId, amount, { orderLabel = null, actorId = null } = {}) {
+    const paise = toPaise(amount);
+    if (!franchiseId || paise <= 0) return null;
+    return postAtomic(franchiseId, async () => [{
+        franchiseId, module: 'food', account: 'wallet', type: 'adjustment', amountPaise: paise, amount: fromPaise(paise),
+        refType: 'order', refId: `cancel-penalty:${orderId}`, sourceId: String(orderId), engineVersion: 2, createdBy: actorId,
+        note: `Restaurant cancel penalty (order ${orderLabel || orderId})`,
+    }]);
+}
+
 /* ----------------------------- PAYOUTS ------------------------------ */
 
 /** Debit the wallet when a payout is approved. Idempotent per request; never lets the wallet go negative. */

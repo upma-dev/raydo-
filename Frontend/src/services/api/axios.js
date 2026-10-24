@@ -228,6 +228,17 @@ apiClient.interceptors.request.use(
   (config) => {
     config.contextModule = getModuleFromConfig(config);
 
+    // Inside the admin panel every call carries the admin login, even for /restaurant/... or /delivery/... endpoints
+    // (those used to look for a restaurant/delivery login, find none and kick the admin out).
+    if (
+      typeof window !== "undefined" &&
+      window.location.pathname.startsWith("/admin") &&
+      !config.contextModule?.startsWith?.("admin") &&
+      localStorage.getItem("admin_accessToken")
+    ) {
+      config.contextModule = "admin";
+    }
+
     if (typeof window !== "undefined" && window.location.pathname.includes("/franchise")) {
       config.headers["x-portal-context"] = "franchise";
       const params = new URLSearchParams(window.location.search);
@@ -349,8 +360,16 @@ apiClient.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newAccessToken}`;
         return apiClient(original);
       }
-    } catch (_) {
-      onRefreshFailed(module);
+    } catch (refreshErr) {
+      // Only a definite "this refresh token is not valid" answer ends the session. A timeout, network blip or 5xx
+      // on the refresh call must not log the person out: just fail this one request and let the next one retry.
+      const refreshStatus = refreshErr?.response?.status;
+      if (refreshStatus === 400 || refreshStatus === 401 || refreshStatus === 403) {
+        onRefreshFailed(module);
+      } else {
+        refreshSubscribers.forEach((cb) => cb(null, module));
+        refreshSubscribers = [];
+      }
       return Promise.reject(err);
     } finally {
       isRefreshing = false;

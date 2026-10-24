@@ -959,6 +959,7 @@ export const useDeliveryNotifications = () => {
       };
       // Force immediate buzz for notification events, even if dedupe would skip.
       activeOrderRef.current = normalizedData || { id: Date.now() };
+      setNewOrder(normalizedData);
       playNotificationSound(normalizedData);
       startAlertLoop(playNotificationSound);
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
@@ -1185,6 +1186,34 @@ export const useDeliveryNotifications = () => {
       void recoverDeliveryState();
     }
   }, [deliveryPartnerId, joinDeliveryRoomIfPossible, recoverDeliveryState]);
+
+  useEffect(() => {
+    const handlePushOrderIncoming = async (event) => {
+      const data = event.detail || {};
+      debugLog('Push notification incoming order alert received:', data);
+      const orderId = data.orderId || data.order_id || data.orderMongoId;
+      if (orderId) {
+        try {
+          const res = await deliveryAPI.getOrder(orderId);
+          const order = res?.data?.data || res?.data;
+          if (order && (order._id || order.orderId)) {
+            setNewOrder(order);
+            handleIncomingOrderAlert(order);
+            return;
+          }
+        } catch {
+          // fallback to normalized data from push
+        }
+        setNewOrder(data);
+        handleIncomingOrderAlert(data);
+      } else {
+        void recoverDeliveryState();
+      }
+    };
+
+    window.addEventListener('delivery_order_incoming', handlePushOrderIncoming);
+    return () => window.removeEventListener('delivery_order_incoming', handlePushOrderIncoming);
+  }, [handleIncomingOrderAlert, recoverDeliveryState]);
 
   // Helper functions
   const clearNewOrder = () => {

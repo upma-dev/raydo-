@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus, Pencil } from "lucide-react"
-import { adminAPI, restaurantAPI, uploadAPI } from "@food/api"
+import { adminAPI, restaurantAPI, uploadAPI, zoneAPI } from "@food/api"
 import { clearModuleAuth } from "@food/utils/auth"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { exportRestaurantsToPDF } from "@food/components/admin/restaurants/restaurantsExportUtils"
@@ -103,6 +103,8 @@ const getPrimaryRestaurantImage = (restaurant, fallback = "") => {
 
 export default function RestaurantsList() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const isFranchise = location.pathname.includes('/franchise')
   const [searchQuery, setSearchQuery] = useState("")
   const [restaurants, setRestaurants] = useState([])
   const [loading, setLoading] = useState(true)
@@ -205,10 +207,15 @@ export default function RestaurantsList() {
         setError(null)
 
         const response = await adminAPI.getApprovedRestaurants({})
-        adminAPI.getZones({ limit: 1000 }).then((zRes) => {
-          const list = zRes?.data?.data?.zones || zRes?.data?.data || []
-          if (!cancelled && Array.isArray(list)) setZones(list)
-        }).catch(() => {})
+        if (!isFranchise) {
+          adminAPI.getZones({ limit: 1000 })
+            .catch(() => (zoneAPI?.getPublicZones ? zoneAPI.getPublicZones({ limit: 1000 }) : Promise.reject()))
+            .then((zRes) => {
+              const list = zRes?.data?.data?.zones || zRes?.data?.data || []
+              if (!cancelled && Array.isArray(list)) setZones(list)
+            })
+            .catch(() => {})
+        }
 
         if (cancelled) return
 
@@ -284,12 +291,13 @@ export default function RestaurantsList() {
         const status = err?.response?.status
         const serverMessage = err?.response?.data?.message || err?.response?.data?.error
         if (status === 401) {
-          setError(serverMessage || "Session expired or not logged in. Please log in as admin.")
+          setError(serverMessage || (isFranchise ? "Session expired or not logged in. Please log in to Franchise Portal." : "Session expired or not logged in. Please log in as admin."))
           setRestaurants([])
           try {
-            clearModuleAuth("admin")
+            clearModuleAuth(isFranchise ? "franchise" : "admin")
           } catch (_) {}
-          navigate("/admin/login", { replace: true, state: { from: "/admin/food/restaurants" } })
+          const loginPath = isFranchise ? "/food/franchise/login" : "/admin/login"
+          navigate(loginPath, { replace: true, state: { from: location.pathname } })
           return
         }
         setError(serverMessage || err.message || "Failed to fetch restaurants")
@@ -1083,13 +1091,15 @@ export default function RestaurantsList() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-50 p-4 lg:p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className={isFranchise ? "w-full" : "h-full overflow-y-auto bg-slate-50 p-4 lg:p-6"}>
+      <div className={isFranchise ? "w-full space-y-6" : "max-w-7xl mx-auto"}>
         {/* Page Header */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-slate-900">Restaurants List</h1>
+              <h1 className="text-2xl font-bold text-slate-900">
+                {isFranchise ? "Franchise Restaurants List" : "Restaurants List"}
+              </h1>
             </div>
 
           </div>
@@ -1144,7 +1154,7 @@ export default function RestaurantsList() {
 
             <div className="flex items-center gap-3">
               <button
-                onClick={() => navigate("/admin/food/restaurants/add")}
+                onClick={() => navigate(isFranchise ? "/food/franchise/dashboard/food/restaurants/add" : "/admin/food/restaurants/add")}
                 className="px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 transition-all"
               >
                 <Plus className="w-4 h-4" />
@@ -1160,21 +1170,23 @@ export default function RestaurantsList() {
                 />
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               </div>
-              <select
-                value={filters.zone || ""}
-                onChange={(e) => setFilters(prev => ({ ...prev, zone: e.target.value }))}
-                className="px-4 py-2.5 min-w-[180px] text-sm rounded-lg border border-slate-300 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Zones</option>
-                {zones.map((z) => {
-                  const zName = z.name || z.zoneName || "Unnamed Zone"
-                  return (
-                    <option key={z._id || z.id} value={zName}>
-                      {zName}
-                    </option>
-                  )
-                })}
-              </select>
+              {!isFranchise && (
+                <select
+                  value={filters.zone || ""}
+                  onChange={(e) => setFilters(prev => ({ ...prev, zone: e.target.value }))}
+                  className="px-4 py-2.5 min-w-[180px] text-sm rounded-lg border border-slate-300 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Zones</option>
+                  {zones.map((z) => {
+                    const zName = z.name || z.zoneName || "Unnamed Zone"
+                    return (
+                      <option key={z._id || z.id} value={zName}>
+                        {zName}
+                      </option>
+                    )
+                  })}
+                </select>
+              )}
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1415,7 +1427,7 @@ export default function RestaurantsList() {
                               <Eye className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => navigate(`/admin/food/restaurants/edit/${restaurant._id || restaurant.id}`)}
+                              onClick={() => navigate(isFranchise ? `/food/franchise/dashboard/food/restaurants/edit/${restaurant._id || restaurant.id}` : `/admin/food/restaurants/edit/${restaurant._id || restaurant.id}`)}
                               className="p-1.5 rounded text-amber-600 hover:bg-amber-50 transition-colors"
                               title="Edit Restaurant"
                             >

@@ -333,7 +333,11 @@ export const useRestaurantNotifications = () => {
 
     // Initial poll immediately.
     pollOrders();
-    const intervalId = setInterval(pollOrders, ALERT_POLL_MS);
+    // The socket already pushes new orders in real time; this poll is only a fallback, so pause it in background tabs.
+    const intervalId = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      pollOrders();
+    }, ALERT_POLL_MS);
 
     return () => {
       isCancelled = true;
