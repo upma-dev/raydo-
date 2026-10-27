@@ -119,9 +119,10 @@ export const hasDeliveryLogin = () => {
 
 /** One logout for the merged partner: ends the delivery login and the ride session, then opens the delivery login. */
 export const logoutMergedPartner = async (navigate) => {
-  try {
-    await deliveryAPI.logout(); // revokes the refresh token and clears the ride session keys
-  } catch { /* offline / already expired: the local clean-up below still logs the partner out */ }
+  // Clear this device first so Back can never re-open the app, then revoke on the server in the background.
+  const refreshToken = (() => { try { return localStorage.getItem('delivery_refreshToken'); } catch { return null; } })();
+  let revoke = null;
+  try { revoke = deliveryAPI.logout(refreshToken); } catch { /* the local clean-up below still logs the partner out */ }
   clearModuleAuth('delivery');
   try {
     localStorage.removeItem('app:isOnline');
@@ -129,4 +130,5 @@ export const logoutMergedPartner = async (navigate) => {
     sessionStorage.setItem('deliveryLoggedOutAt', String(Date.now()));
   } catch { /* storage blocked */ }
   navigate('/food/delivery/login', { replace: true });
+  Promise.resolve(revoke).catch(() => {});
 };

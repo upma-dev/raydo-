@@ -105,15 +105,18 @@ export const ProfileV2 = () => {
   const handleLogout = async () => {
     if (logoutSubmitting) return
     setShowLogoutConfirm(false)
-    try {
-      setLogoutSubmitting(true)
-      await deliveryAPI.logout()
-    } catch (error) {}
+    setLogoutSubmitting(true)
+    // The device is logged out RIGHT NOW (Back can never re-open the app); the server revoke happens in the background.
+    // deliveryAPI.logout also ends the ride session on this device before it sends anything.
+    const refreshToken = localStorage.getItem("delivery_refreshToken")
+    let revoke = null
+    try { revoke = deliveryAPI.logout(refreshToken) } catch (error) {}
     clearModuleAuth("delivery")
     localStorage.removeItem("app:isOnline")
     toast.success("Logged out successfully")
     navigate("/food/delivery/login", { replace: true })
     setLogoutSubmitting(false)
+    Promise.resolve(revoke).catch(() => {})
   }
 
   if (loading) {
