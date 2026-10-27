@@ -162,13 +162,19 @@ export const HistoryV2 = () => {
         if (trip.status === 'Completed') {
            acc.earnings += Number(trip.deliveryEarning || trip.amount || trip.earningAmount || 0);
            const isCOD = (trip.paymentMethod || '').toLowerCase() === 'cash' || (trip.paymentMethod || '').toLowerCase() === 'cod';
-           if (isCOD) acc.cod += Number(trip.codCollectedAmount || trip.orderTotal || 0);
+           // Cash taken on a bike ride / parcel is not food COD that has to be deposited
+           if (isCOD && trip.source !== 'ride') acc.cod += Number(trip.codCollectedAmount || trip.orderTotal || 0);
         }
         return acc;
      }, { earnings: 0, cod: 0 });
   }, [trips]);
 
   const extractItems = (trip) => {
+    if (trip.source === 'ride') {
+      const from = trip.pickupAddress || 'Pickup';
+      const to = trip.dropAddress || 'Drop';
+      return `${from} → ${to}`;
+    }
     const items = trip.items || trip.orderItems || [];
     if (items.length === 0) return 'Standard Delivery';
     const first = items[0];
@@ -180,6 +186,14 @@ export const HistoryV2 = () => {
   const formatCurrency = (amount) => `₹${Number(amount || 0).toFixed(2)}`;
 
   const getEarningBreakdown = (trip) => {
+    if (trip.source === 'ride') {
+      const fare = Number(trip.orderTotal || trip.totalAmount || 0);
+      const commission = Number(trip.commissionAmount || 0);
+      const rideRows = [{ key: 'fare', label: 'Trip Fare', value: fare }];
+      if (commission > 0) rideRows.push({ key: 'commission', label: 'Platform Commission', value: -commission });
+      rideRows.push({ key: 'totalPayout', label: 'Total Earned', value: Number(trip.deliveryEarning || 0), isTotal: true });
+      return rideRows;
+    }
     const basePay = Number(trip.riderBasePay || trip.pricing?.deliveryFeeBreakdown?.basePayout || 0);
     const deliveryFeeShare = Number(trip.riderDeliveryFeeShare || trip.deliveryFee || trip.pricing?.deliveryFee || 0);
     const distancePay = Math.max(0, Math.round((deliveryFeeShare - basePay) * 100) / 100);
@@ -333,7 +347,7 @@ export const HistoryV2 = () => {
                       trip.earningAmount ||
                       0
                    );
-                   const collection = Number(trip.codCollectedAmount || trip.orderTotal || 0);
+                   const collection = trip.source === 'ride' ? 0 : Number(trip.codCollectedAmount || trip.orderTotal || 0);
                    const isCOD = (trip.paymentMethod || '').toLowerCase() === 'cash' || (trip.paymentMethod || '').toLowerCase() === 'cod';
                    const breakdown = getEarningBreakdown(trip);
                    const tripKey = trip.orderId || trip._id || idx;
@@ -354,7 +368,7 @@ export const HistoryV2 = () => {
                          
                          <div className="flex gap-2 mb-4 mt-3">
                              <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${isCOD ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-[#10B981]'}`}>
-                                {isCOD ? 'COD' : 'Online'}
+                                {trip.source === 'ride' ? (isCOD ? 'Cash' : 'Online') : (isCOD ? 'COD' : 'Online')}
                              </span>
                          </div>
 

@@ -175,7 +175,8 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     const deliveryWithdrawalLimit = Number(cashLimitSettings.deliveryWithdrawalLimit) || 100;
 
     // Fetch transactions for UI (Orders, Bonuses, Withdrawals)
-    const [ordersTx, rideTransferRows] = await Promise.all([
+    const rideDriverId = partner.rideMode?.taxiDriverId || null;
+    const [ordersTx, rideTransferRows, rideTripRows] = await Promise.all([
         FoodOrder.find({ 'dispatch.deliveryPartnerId': partnerId, orderStatus: 'delivered' })
             .sort({ createdAt: -1 })
             .select('orderId riderEarning riderBasePay riderDeliveryFeeShare riderSurgePay riderIncentivePay riderTotalPayout pricing payment orderStatus createdAt')
@@ -183,6 +184,15 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
             .lean(),
         rideTransfers.mergedIn || rideTransfers.duesRecovered
             ? HybridWalletTransfer.find({ deliveryPartnerId: partnerId }).sort({ createdAt: -1 }).limit(20).lean()
+            : [],
+        // Each completed bike ride / parcel, so the wallet shows ride money next to food deliveries
+        rideDriverId
+            ? Ride.find({ driverId: rideDriverId, status: 'completed' })
+                .sort({ completedAt: -1, createdAt: -1 })
+                .limit(20)
+                .select('serviceType fare commissionAmount driverEarnings paymentMethod pickupAddress dropAddress completedAt createdAt')
+                .lean()
+                .catch(() => [])
             : [],
     ]);
 
@@ -230,6 +240,26 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
             razorpayPaymentId: d.razorpayPaymentId || '',
             razorpayOrderId: d.razorpayOrderId || ''
         })),
+        // Own type (not 'payment'): the app adds up 'payment' rows as food earnings, and ride earnings are totalled separately
+        ...(rideTripRows || []).map(r => {
+            const stored = Number(r.driverEarnings);
+            const earned = r.driverEarnings != null && Number.isFinite(stored)
+                ? stored
+                : Math.max((Number(r.fare) || 0) - (Number(r.commissionAmount) || 0), 0);
+            const label = r.serviceType === 'parcel' ? 'Parcel' : r.serviceType === 'intercity' ? 'Intercity ride' : 'Bike ride';
+            return {
+                id: r._id,
+                type: 'ride_trip',
+                amount: round2(earned),
+                status: 'Completed',
+                date: r.completedAt || r.createdAt,
+                description: `${label} earning`,
+                orderId: `RIDE-${String(r._id).slice(-6).toUpperCase()}`,
+                paymentMethod: r.paymentMethod || '',
+                pickupAddress: r.pickupAddress || '',
+                dropAddress: r.dropAddress || ''
+            };
+        }),
         ...(rideTransferRows || []).map(t => ({
             id: t._id,
             type: t.direction === 'taxi_to_food' ? 'ride_earning' : 'ride_dues',

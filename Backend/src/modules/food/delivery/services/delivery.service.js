@@ -5,6 +5,7 @@ import { DeliverySupportTicket } from '../models/supportTicket.model.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { FoodEarningAddon } from '../../admin/models/earningAddon.model.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
+import { Ride } from '../../../taxi/user/models/Ride.js';
 import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
@@ -770,6 +771,90 @@ const toTripDto = (order) => {
     };
 };
 
+const RIDE_TRIP_LABELS = { ride: 'Bike Ride', parcel: 'Parcel Delivery', intercity: 'Intercity Ride' };
+
+/** What the partner earned on one ride / parcel: the stored driver earning, else fare minus the platform commission. */
+const rideEarningOf = (ride) => {
+    const stored = Number(ride?.driverEarnings);
+    if (ride?.driverEarnings != null && Number.isFinite(stored)) return Math.round(stored * 100) / 100;
+    const net = Math.max((Number(ride?.fare) || 0) - (Number(ride?.commissionAmount) || 0), 0);
+    return Math.round(net * 100) / 100;
+};
+
+const toRideTripDto = (ride) => {
+    const when = ride?.completedAt || ride?.updatedAt || ride?.createdAt || null;
+    const rawStatus = String(ride?.status || '').toLowerCase();
+    const status = rawStatus === 'completed' ? 'Completed' : rawStatus === 'cancelled' ? 'Cancelled' : 'Pending';
+    const serviceType = String(ride?.serviceType || 'ride').toLowerCase();
+    const label = RIDE_TRIP_LABELS[serviceType] || 'Ride';
+    const earning = status === 'Completed' ? rideEarningOf(ride) : 0;
+    const fare = Number(ride?.fare) || 0;
+    const time = when ? new Date(when).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+
+    return {
+        id: ride?._id,
+        _id: ride?._id,
+        orderId: `RIDE-${String(ride?._id || '').slice(-6).toUpperCase()}`,
+        source: 'ride',
+        tripType: serviceType,
+        status,
+        restaurantName: label,
+        restaurant: label,
+        pickupAddress: ride?.pickupAddress || '',
+        dropAddress: ride?.dropAddress || '',
+        items: [],
+        orderItems: [],
+        paymentMethod: ride?.paymentMethod || '',
+        totalAmount: fare,
+        orderTotal: fare,
+        codAmount: 0,
+        codCollectedAmount: 0,
+        deliveryEarning: earning,
+        earningAmount: earning,
+        amount: earning,
+        riderTotalPayout: earning,
+        commissionAmount: Number(ride?.commissionAmount) || 0,
+        createdAt: ride?.createdAt,
+        deliveredAt: when,
+        completedAt: when,
+        date: when,
+        time
+    };
+};
+
+/**
+ * Bike rides / parcels the partner took on the linked ride profile in a date range, shaped like delivery trips so they
+ * show in the same Trip History and Pocket lists. Empty for partners without a ride profile.
+ */
+const getLinkedRideTrips = async (deliveryPartnerId, { start, end, statusFilter, limit }) => {
+    const partner = await FoodDeliveryPartner.findById(deliveryPartnerId).select('rideMode.taxiDriverId').lean();
+    const driverId = partner?.rideMode?.taxiDriverId;
+    if (!driverId) return [];
+
+    const inRange = { $gte: start, $lte: end };
+    const match = {
+        driverId: new mongoose.Types.ObjectId(String(driverId)),
+        $or: [{ completedAt: inRange }, { updatedAt: inRange }, { createdAt: inRange }]
+    };
+    const sf = String(statusFilter || '').toLowerCase();
+    if (sf === 'completed') match.status = 'completed';
+    else if (sf === 'cancelled') match.status = 'cancelled';
+    else if (sf === 'pending') match.status = { $in: ['accepted', 'ongoing'] };
+    else match.status = { $in: ['accepted', 'ongoing', 'completed', 'cancelled'] };
+
+    const rides = await Ride.find(match)
+        .select('serviceType status fare commissionAmount driverEarnings paymentMethod pickupAddress dropAddress completedAt createdAt updatedAt')
+        .sort({ completedAt: -1, createdAt: -1 })
+        .limit(limit)
+        .lean();
+    return rides.map(toRideTripDto);
+};
+
+const tripDateMs = (trip) => {
+    const t = new Date(trip?.date || trip?.createdAt || 0).getTime();
+    return Number.isFinite(t) ? t : 0;
+};
+
 export const getDeliveryPartnerTripHistory = async (deliveryPartnerId, query = {}) => {
     if (!deliveryPartnerId || !mongoose.Types.ObjectId.isValid(deliveryPartnerId)) {
         throw new ValidationError('Delivery partner not found');
@@ -812,17 +897,28 @@ export const getDeliveryPartnerTripHistory = async (deliveryPartnerId, query = {
         match.$or = dateFilterClause.$or;
     }
 
-    const orders = await FoodOrder.find(match)
-        .populate({ path: 'restaurantId', select: 'restaurantName' })
-        .sort({ 'deliveryState.deliveredAt': -1, deliveredAt: -1, createdAt: -1 })
-        .limit(limit)
-        .lean();
+    const [orders, rideTrips] = await Promise.all([
+        FoodOrder.find(match)
+            .populate({ path: 'restaurantId', select: 'restaurantName' })
+            .sort({ 'deliveryState.deliveredAt': -1, deliveredAt: -1, createdAt: -1 })
+            .limit(limit)
+            .lean(),
+        // A failure on the ride side must never hide the food trips
+        getLinkedRideTrips(deliveryPartnerId, { start, end, statusFilter, limit }).catch((err) => {
+            logger.warn(`[TripHistory] ride trips skipped for partner ${deliveryPartnerId}: ${err?.message || err}`);
+            return [];
+        })
+    ]);
+
+    const trips = [...(orders || []).map(toTripDto), ...rideTrips]
+        .sort((a, b) => tripDateMs(b) - tripDateMs(a))
+        .slice(0, limit);
 
     return {
         period,
         date: (date || new Date()).toISOString(),
         range: { start: start.toISOString(), end: end.toISOString() },
-        trips: (orders || []).map(toTripDto)
+        trips
     };
 };
 
@@ -860,9 +956,26 @@ export const getDeliveryPocketDetails = async (deliveryPartnerId, query = {}) =>
         .limit(limit)
         .lean();
 
-    const trips = (orders || []).map(toTripDto);
+    const rideTrips = (await getLinkedRideTrips(deliveryPartnerId, { start, end, statusFilter: 'completed', limit }).catch((err) => {
+        logger.warn(`[Pocket] ride trips skipped for partner ${deliveryPartnerId}: ${err?.message || err}`);
+        return [];
+    }));
 
-    const paymentTransactions = (orders || []).map((o) => ({
+    const trips = [...(orders || []).map(toTripDto), ...rideTrips].sort((a, b) => tripDateMs(b) - tripDateMs(a));
+
+    const ridePaymentTransactions = rideTrips.map((t) => ({
+        _id: t._id,
+        type: 'payment',
+        amount: Number(t.deliveryEarning) || 0,
+        status: 'Completed',
+        date: t.date,
+        createdAt: t.date,
+        orderId: t.orderId,
+        metadata: { orderId: t.orderId, source: 'ride' },
+        description: `${t.restaurantName} earning`
+    }));
+
+    const paymentTransactions = [...(orders || []).map((o) => ({
         _id: o._id,
         type: 'payment',
         amount: Number(o.riderEarning) || 0,
@@ -872,7 +985,7 @@ export const getDeliveryPocketDetails = async (deliveryPartnerId, query = {}) =>
         orderId: o.orderId || String(o._id),
         metadata: { orderId: o.orderId || String(o._id) },
         description: o?.restaurantId?.restaurantName ? `Order earning - ${o.restaurantId.restaurantName}` : 'Order earning'
-    }));
+    })), ...ridePaymentTransactions];
 
     const bonusTransactions = (bonusTxList || []).map((t) => ({
         _id: t._id,
