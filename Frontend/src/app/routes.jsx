@@ -7,6 +7,7 @@ import {
   syncActiveModule,
 } from '../shared/utils/activeModule.js'
 import lazyWithRetry from '../shared/utils/lazyWithRetry.js'
+import { homeForPath, isInstalledApp } from '../shared/utils/appHome.js'
 import { isRideModePartner, recoverRideSession } from '@/modules/DeliveryV2/utils/rideModeSession'
 
 // Lazy load the Food service module (Quick-spicy app)
@@ -72,6 +73,20 @@ const RedirectToFoodFranchise = () => {
 const LandingPage = lazyWithRetry(() => import('../modules/Taxi/modules/shared/pages/LandingPage'))
 const LegalPage = lazyWithRetry(() => import('../modules/Taxi/modules/shared/pages/LegalPage'))
 const AdminRouter = lazyWithRetry(() => import('../modules/Food/components/admin/AdminRouter'))
+
+/**
+ * "/": the public landing page for website visitors. An installed app (native shell / home-screen app) that opens at "/"
+ * goes straight to the home of the app the person was last in, so Raydo / Partner / Driver never start on the landing page.
+ */
+const RootEntry = () => {
+  if (isInstalledApp()) {
+    try {
+      const home = homeForPath(localStorage.getItem(NATIVE_LAST_ROUTE_KEY) || '')
+      if (home && home !== '/login') return <Navigate to={home} replace />
+    } catch { /* storage blocked: show the landing page */ }
+  }
+  return <Suspense fallback={<PageLoader />}><LandingPage /></Suspense>
+}
 
 const SmartFallbackRedirect = () => {
   const location = useLocation()
@@ -210,12 +225,7 @@ const AppRoutes = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const protocol = String(window.location?.protocol || '').toLowerCase()
-    const userAgent = String(window.navigator?.userAgent || '').toLowerCase()
-    const isNativeLikeShell =
-      Boolean(window.flutter_inappwebview) ||
-      Boolean(window.ReactNativeWebView) ||
-      protocol === 'file:'
+    const isNativeLikeShell = isInstalledApp()
 
     if (!isNativeLikeShell) return
 
@@ -252,7 +262,7 @@ const AppRoutes = () => {
 
   return (
     <Routes>
-      <Route path="/" element={<Suspense fallback={<PageLoader />}><LandingPage /></Suspense>} />
+      <Route path="/" element={<RootEntry />} />
       <Route path="/landing" element={<Suspense fallback={<PageLoader />}><LandingPage /></Suspense>} />
       <Route path="/terms" element={<Suspense fallback={<PageLoader />}><LegalPage /></Suspense>} />
       <Route path="/terms-and-conditions" element={<Suspense fallback={<PageLoader />}><LegalPage /></Suspense>} />

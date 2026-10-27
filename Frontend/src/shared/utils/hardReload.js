@@ -37,3 +37,21 @@ export const stripCacheBustParam = () => {
     window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
   } catch { /* leave the address as it is */ }
 }
+
+/** Opens another address as a fresh page load (cache storage cleared, never answered from a cached old index.html). */
+export const hardNavigate = async (path) => {
+  if (typeof window === 'undefined') return
+  try {
+    if ('caches' in window) {
+      const keys = await window.caches.keys()
+      await Promise.all(keys.map((key) => window.caches.delete(key)))
+    }
+  } catch { /* cache storage unavailable */ }
+  try {
+    const url = new URL(path, window.location.origin)
+    url.searchParams.set(CACHE_BUST_PARAM, String(Date.now()))
+    window.location.replace(url.toString())
+  } catch {
+    window.location.href = path
+  }
+}

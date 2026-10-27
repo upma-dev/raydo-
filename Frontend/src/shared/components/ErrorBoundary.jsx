@@ -1,5 +1,6 @@
 import React from 'react'
-import { hardReload } from '../utils/hardReload.js'
+import { hardReload, hardNavigate } from '../utils/hardReload.js'
+import { homeForPath } from '../utils/appHome.js'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -68,27 +69,12 @@ class ErrorBoundary extends React.Component {
   handleGoHome = () => {
     try {
       window.sessionStorage.removeItem('page-has-been-refreshed')
+      window.sessionStorage.removeItem('chunk-error-reloaded')
     } catch {
       // ignore
     }
-    const pathname = String(window.location?.pathname || '').toLowerCase()
-    if (pathname.startsWith('/food/delivery') || pathname.startsWith('/delivery')) {
-      window.location.href = '/food/delivery'
-    } else if (pathname.startsWith('/food/restaurant') || pathname.startsWith('/restaurant')) {
-      window.location.href = '/food/restaurant'
-    } else if (pathname.startsWith('/admin')) {
-      window.location.href = '/admin'
-    } else if (pathname.startsWith('/taxi/driver')) {
-      window.location.href = '/taxi/driver/home'
-    } else if (pathname.startsWith('/taxi/owner')) {
-      window.location.href = '/taxi/owner/dashboard'
-    } else if (pathname.startsWith('/taxi/admin')) {
-      window.location.href = '/taxi/admin/dashboard'
-    } else if (pathname.startsWith('/taxi')) {
-      window.location.href = '/taxi/user'
-    } else {
-      window.location.href = '/'
-    }
+    // The home page of the app the person is in (never the public landing page "/" while inside an app)
+    hardNavigate(homeForPath(window.location?.pathname) || '/')
   }
 
   render() {
