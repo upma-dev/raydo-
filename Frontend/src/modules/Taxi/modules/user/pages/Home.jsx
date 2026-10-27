@@ -18,6 +18,7 @@ import api from '../../../shared/api/axiosInstance';
 import { BACKEND_ORIGIN } from '../../../shared/api/runtimeConfig';
 import { useSettings } from '../../../shared/context/SettingsContext';
 import { userService } from '../services/userService';
+import { getLocalUserToken } from '../services/authService';
 import { RENTAL_ENABLED } from '../../../shared/featureFlags';
 import {
   CURRENT_RIDE_UPDATED_EVENT,
@@ -346,6 +347,12 @@ const Home = ({ embedded = false }) => {
 
     const syncCurrentRide = async () => {
       if (cancelled || syncInFlight || document.visibilityState === 'hidden') {
+        scheduleNextSync();
+        return;
+      }
+
+      // Not signed in (guest): there is no ride to look up, and the API would only answer 401
+      if (!getLocalUserToken()) {
         scheduleNextSync();
         return;
       }
