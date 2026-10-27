@@ -43,6 +43,7 @@ const loadRazorpayScript = () =>
 import carIcon from '@/assets/hero_sedan.png';
 import bikeIcon from '@/assets/hero_bike.png';
 import autoIcon from '@/assets/hero_bike.png';
+import { useLiveDriverLocation } from '../../hooks/useLiveDriverLocation';
 import deliveryIcon from '@/assets/hero_parcel.png';
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
@@ -209,7 +210,14 @@ const ParcelTracking = () => {
   
   const pickupPosition = useMemo(() => toLatLng(rideRealtime?.pickup?.coordinates || state.pickupCoords || [75.9048, 22.7039]), [rideRealtime?.pickup?.coordinates, state.pickupCoords]);
   const dropPosition = useMemo(() => toLatLng(rideRealtime?.drop?.coordinates || state.dropCoords || [75.8937, 22.7533], pickupPosition), [pickupPosition, rideRealtime?.drop?.coordinates, state.dropCoords]);
-  const driverPosition = useMemo(() => toLatLng(rideRealtime?.driverLocation?.coordinates, pickupPosition), [pickupPosition, rideRealtime?.driverLocation?.coordinates]);
+  // Raw point = what the server last sent (route and camera use it). The marker uses `driverPosition`, which glides between points.
+  const rawDriverPosition = useMemo(() => toLatLng(rideRealtime?.driverLocation?.coordinates, pickupPosition), [pickupPosition, rideRealtime?.driverLocation?.coordinates]);
+  const liveDriver = useLiveDriverLocation({
+    rideId,
+    initialLocation: rideRealtime?.driverLocation,
+    enabled: Boolean(rideId) && !['completed', 'cancelled', 'delivered'].includes(tripStatus),
+  });
+  const driverPosition = liveDriver.position || rawDriverPosition;
   const activeDestination = useMemo(
     () => (['started', 'ongoing', 'arrived', 'completed', 'delivered'].includes(tripStatus) ? dropPosition : pickupPosition),
     [dropPosition, pickupPosition, tripStatus],
@@ -607,19 +615,19 @@ const ParcelTracking = () => {
   // Route Path Update
   useEffect(() => {
     if (!isLoaded || !window.google?.maps?.DirectionsService) {
-      setRoutePath(arePositionsNearlyEqual(driverPosition, activeDestination) ? [driverPosition] : [driverPosition, activeDestination]);
+      setRoutePath(arePositionsNearlyEqual(rawDriverPosition, activeDestination) ? [rawDriverPosition] : [rawDriverPosition, activeDestination]);
       return;
     }
 
-    if (arePositionsNearlyEqual(driverPosition, activeDestination)) {
-      setRoutePath([driverPosition]);
+    if (arePositionsNearlyEqual(rawDriverPosition, activeDestination)) {
+      setRoutePath([rawDriverPosition]);
       return;
     }
 
     let active = true;
     const directionsService = new window.google.maps.DirectionsService();
     directionsService.route({
-      origin: driverPosition,
+      origin: rawDriverPosition,
       destination: activeDestination,
       travelMode: window.google.maps.TravelMode.DRIVING,
       provideRouteAlternatives: false,
@@ -633,13 +641,13 @@ const ParcelTracking = () => {
         return;
       }
 
-      setRoutePath([driverPosition, activeDestination]);
+      setRoutePath([rawDriverPosition, activeDestination]);
     });
 
     return () => {
       active = false;
     };
-  }, [isLoaded, driverPosition, activeDestination]);
+  }, [isLoaded, rawDriverPosition, activeDestination]);
 
   useEffect(() => {
     if (!map || !window.google?.maps) {
@@ -650,26 +658,26 @@ const ParcelTracking = () => {
       if (!hasAutoFramedMapRef.current) {
         const bounds = new window.google.maps.LatLngBounds();
         routePath.forEach((point) => bounds.extend(point));
-        bounds.extend(driverPosition);
+        bounds.extend(rawDriverPosition);
         bounds.extend(activeDestination);
         map.fitBounds(bounds, { top: 120, right: 48, bottom: 320, left: 48 });
         hasAutoFramedMapRef.current = true;
         return;
       }
 
-      map.panTo(driverPosition);
+      map.panTo(rawDriverPosition);
       return;
     }
 
     if (!hasAutoFramedMapRef.current) {
-      map.panTo(driverPosition);
+      map.panTo(rawDriverPosition);
       map.setZoom(15);
       hasAutoFramedMapRef.current = true;
       return;
     }
 
-    map.panTo(driverPosition);
-  }, [activeDestination, driverPosition, map, routePath]);
+    map.panTo(rawDriverPosition);
+  }, [activeDestination, rawDriverPosition, map, routePath]);
 
   const handleCall = () => {
     if (driver.phone) window.open(`tel:${driver.phone}`, '_self');
@@ -827,7 +835,7 @@ const ParcelTracking = () => {
         {isLoaded ? (
           <GoogleMap
             mapContainerStyle={MAP_CONTAINER_STYLE}
-            center={driverPosition}
+            center={rawDriverPosition}
             zoom={15}
             onLoad={setMap}
             options={{

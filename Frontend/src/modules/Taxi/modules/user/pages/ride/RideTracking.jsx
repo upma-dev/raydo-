@@ -16,6 +16,7 @@ import bikeIcon from '@/assets/hero_bike.png';
 import autoIcon from '@/assets/hero_bike.png';
 import deliveryIcon from '@/assets/hero_parcel.png';
 import { useSettings } from '../../../../shared/context/SettingsContext';
+import { useLiveDriverLocation, distanceMeters } from '../../hooks/useLiveDriverLocation';
 // Cancellation receipt removed per requirements - user should not see bill on cancel
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
@@ -75,13 +76,14 @@ const getVehicleMarkerOffset = (width, height) => ({
   y: -(height / 2),
 });
 
-const RotatingVehicleMarker = ({ position, iconUrl = carIcon, heading = 0, title = 'Driver' }) => (
+const RotatingVehicleMarker = ({ position, iconUrl = carIcon, heading = 0, title = 'Driver', live = false }) => (
   <OverlayViewF
     position={position}
     mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
     getPixelPositionOffset={getVehicleMarkerOffset}
   >
-    <div title={title} className="pointer-events-none flex h-14 w-14 items-center justify-center">
+    <div title={title} className="pointer-events-none relative flex h-14 w-14 items-center justify-center">
+      {live ? <span className="absolute h-10 w-10 animate-ping rounded-full bg-emerald-400/30" /> : null}
       <div
         className="flex h-11 w-11 items-center justify-center transition-transform duration-500 ease-out"
         style={{ transform: `rotate(${normalizeHeading(heading)}deg)` }}
@@ -396,12 +398,19 @@ const RideTracking = () => {
     () => toLatLng(rideRealtime?.drop?.coordinates || state.dropCoords || [75.8937, 22.7533], pickupPosition),
     [pickupPosition, rideRealtime?.drop?.coordinates, state.dropCoords],
   );
-  const driverPosition = useMemo(
+  // The latest point as the server sent it (used for routing). The marker uses `driverPosition`, which glides between points.
+  const rawDriverPosition = useMemo(
     () => toLatLng(rideRealtime?.driverLocation?.coordinates, pickupPosition),
     [pickupPosition, rideRealtime?.driverLocation?.coordinates],
   );
-  const hasLiveDriverLocation = Boolean(rideRealtime?.driverLocation?.coordinates?.length);
   const tripStatus = String(rideRealtime?.status || state.liveStatus || state.status || 'accepted').toLowerCase();
+  const liveDriver = useLiveDriverLocation({
+    rideId,
+    initialLocation: rideRealtime?.driverLocation,
+    enabled: Boolean(rideId) && !TERMINAL_STATUSES.has(tripStatus),
+  });
+  const hasLiveDriverLocation = Boolean(rideRealtime?.driverLocation?.coordinates?.length) || liveDriver.hasLocation;
+  const driverPosition = liveDriver.position || rawDriverPosition;
   const otp = ['started', 'ongoing', 'arrived', 'completed'].includes(tripStatus)
     ? ''
     : String(rideRealtime?.otp || state.otp || state.ride_otp || '');
@@ -441,7 +450,15 @@ const RideTracking = () => {
   // Waiting is billed by the server at completion; until the trip starts show it live so the rider sees the real payable
   const payableFare = Math.round(displayFare + (isWaitingForOtp ? liveWaitingChargeTotal : 0));
   const vehicleIcon = getTrackingVehicleIcon(trackingSnapshot, driver);
+  // The map is given its centre once; after that the camera is moved by the follow logic, never by a changing prop
+  const initialMapCenterRef = useRef(null);
+  if (!initialMapCenterRef.current) initialMapCenterRef.current = rawDriverPosition;
+  const initialMapCenter = initialMapCenterRef.current;
   const displayDriverHeading = useMemo(() => {
+    if (Number.isFinite(Number(liveDriver.heading))) {
+      return normalizeHeading(liveDriver.heading);
+    }
+
     if (Number.isFinite(Number(rideRealtime?.driverLocation?.heading))) {
       return normalizeHeading(rideRealtime.driverLocation.heading);
     }
@@ -451,7 +468,7 @@ const RideTracking = () => {
       routePath,
       calculateBearing(driverPosition, activeDestination),
     );
-  }, [activeDestination, driverPosition, rideRealtime?.driverLocation?.heading, routePath]);
+  }, [activeDestination, driverPosition, liveDriver.heading, rideRealtime?.driverLocation?.heading, routePath]);
   const vehicleLabel = driver.vehicle || driver.vehicleType || (serviceType === 'parcel' ? 'Parcel' : 'Taxi');
   const nextDriverImage = resolveAssetUrl(
     driver.profileImage || driver.profile_image || driver.image || driver.avatar || driver.selfie || '',
@@ -639,7 +656,7 @@ const RideTracking = () => {
               address: payload?.dropAddress || latestStateRef.current.drop || 'Drop',
             },
             driverLocation: payload?.lastDriverLocation
-              ? { coordinates: payload.lastDriverLocation.coordinates }
+              ? { coordinates: payload.lastDriverLocation.coordinates, updatedAt: payload.lastDriverLocation.updatedAt }
               : null,
             status: nextStatus,
             fare: payload?.fare || latestStateRef.current.fare || 0,
@@ -672,7 +689,7 @@ const RideTracking = () => {
                 address: payload?.dropAddress || latestStateRef.current.drop || 'Drop',
               },
               driverLocation: payload?.lastDriverLocation
-                ? { coordinates: payload.lastDriverLocation.coordinates }
+                ? { coordinates: payload.lastDriverLocation.coordinates, updatedAt: payload.lastDriverLocation.updatedAt }
                 : null,
               status: nextStatus,
               fare: payload?.fare || latestStateRef.current.fare || 0,
@@ -710,6 +727,7 @@ const RideTracking = () => {
             ? {
                 coordinates: payload.lastDriverLocation.coordinates,
                 heading: payload.lastDriverLocation.heading,
+                updatedAt: payload.lastDriverLocation.updatedAt,
               }
             : null,
           status: payload?.liveStatus || payload?.status || 'accepted',
@@ -839,6 +857,7 @@ const RideTracking = () => {
           ? {
               coordinates: payload.lastDriverLocation.coordinates,
               heading: payload.lastDriverLocation.heading,
+              updatedAt: payload.lastDriverLocation.updatedAt,
             }
           : null,
         status: payload.liveStatus || payload.status || 'accepted',
@@ -939,21 +958,44 @@ const RideTracking = () => {
     };
   }, [rideId]);
 
+  // The route is asked from Google only when the driver has moved a real distance (or every 30 s), not on every GPS tick
+  const [routeOrigin, setRouteOrigin] = useState(null);
+  const [routeMetrics, setRouteMetrics] = useState(null);
+  const lastRouteOriginAtRef = useRef(0);
+  useEffect(() => {
+    if (!hasLiveDriverLocation) return;
+    const now = Date.now();
+    setRouteOrigin((previous) => {
+      if (!previous) {
+        lastRouteOriginAtRef.current = now;
+        return rawDriverPosition;
+      }
+      const moved = distanceMeters(previous, rawDriverPosition);
+      if (moved > 60 || (moved > 10 && now - lastRouteOriginAtRef.current > 30000)) {
+        lastRouteOriginAtRef.current = now;
+        return rawDriverPosition;
+      }
+      return previous;
+    });
+  }, [hasLiveDriverLocation, rawDriverPosition]);
+  const routeFrom = routeOrigin || rawDriverPosition;
+
   useEffect(() => {
     if (isScheduledUpcoming && !hasLiveDriverLocation) {
       setRoutePath([]);
+      setRouteMetrics(null);
       setRouteError('');
       return;
     }
 
     if (!isLoaded || !window.google?.maps?.DirectionsService) {
-      setRoutePath([driverPosition, activeDestination]);
+      setRoutePath([routeFrom, activeDestination]);
       setRouteError('');
       return;
     }
 
-    if (arePositionsNearlyEqual(driverPosition, activeDestination)) {
-      setRoutePath([driverPosition]);
+    if (arePositionsNearlyEqual(routeFrom, activeDestination)) {
+      setRoutePath([routeFrom]);
       setRouteError('');
       return;
     }
@@ -963,7 +1005,7 @@ const RideTracking = () => {
 
     directionsService.route(
       {
-        origin: driverPosition,
+        origin: routeFrom,
         destination: activeDestination,
         travelMode: window.google.maps.TravelMode.DRIVING,
         provideRouteAlternatives: false,
@@ -974,6 +1016,12 @@ const RideTracking = () => {
         }
 
         if (status === 'OK' && result?.routes?.[0]?.overview_path?.length) {
+          const leg = result.routes[0].legs?.[0];
+          setRouteMetrics(leg?.distance?.value ? {
+            meters: Number(leg.distance.value),
+            seconds: Number(leg.duration?.value || 0),
+            at: Date.now(),
+          } : null);
           setRoutePath(
             result.routes[0].overview_path.map((point) => ({
               lat: point.lat(),
@@ -984,7 +1032,8 @@ const RideTracking = () => {
           return;
         }
 
-        setRoutePath([driverPosition, activeDestination]);
+        setRoutePath([routeFrom, activeDestination]);
+        setRouteMetrics(null);
         setRouteError(status || 'Directions unavailable');
       },
     );
@@ -992,7 +1041,7 @@ const RideTracking = () => {
     return () => {
       active = false;
     };
-  }, [activeDestination, driverPosition, hasLiveDriverLocation, isLoaded, isScheduledUpcoming]);
+  }, [activeDestination, hasLiveDriverLocation, isLoaded, isScheduledUpcoming, routeFrom]);
 
   useEffect(() => {
     if (!map || !window.google?.maps) {
@@ -1003,28 +1052,64 @@ const RideTracking = () => {
       if (!hasAutoFramedMapRef.current) {
         const bounds = new window.google.maps.LatLngBounds();
         routePath.forEach((point) => bounds.extend(point));
-        bounds.extend(driverPosition);
+        bounds.extend(rawDriverPosition);
         bounds.extend(activeDestination);
         map.fitBounds(bounds, { top: 120, right: 48, bottom: 300, left: 48 });
         hasAutoFramedMapRef.current = true;
-        lastMapPanPositionRef.current = driverPosition;
+        lastMapPanPositionRef.current = rawDriverPosition;
         return;
       }
 
-      lastMapPanPositionRef.current = driverPosition;
+      lastMapPanPositionRef.current = rawDriverPosition;
       return;
     }
 
     if (!hasAutoFramedMapRef.current) {
-      map.panTo(driverPosition);
+      map.panTo(rawDriverPosition);
       map.setZoom(15);
       hasAutoFramedMapRef.current = true;
-      lastMapPanPositionRef.current = driverPosition;
+      lastMapPanPositionRef.current = rawDriverPosition;
       return;
     }
 
-    lastMapPanPositionRef.current = driverPosition;
-  }, [activeDestination, driverPosition, map, routePath, tripStatus]);
+    lastMapPanPositionRef.current = rawDriverPosition;
+  }, [activeDestination, rawDriverPosition, map, routePath, tripStatus]);
+
+  // Camera follows the driver like a navigation app, until the rider drags the map (then "Re-center" brings it back)
+  const [followDriver, setFollowDriver] = useState(true);
+  const lastFollowPanRef = useRef({ at: 0, point: null });
+  useEffect(() => {
+    if (!map || !followDriver || !hasAutoFramedMapRef.current || !liveDriver.position) return;
+    const now = Date.now();
+    const last = lastFollowPanRef.current;
+    if (now - last.at < 1200) return;
+    if (last.point && distanceMeters(last.point, liveDriver.position) < 12) return;
+    lastFollowPanRef.current = { at: now, point: liveDriver.position };
+    map.panTo(liveDriver.position);
+  }, [followDriver, liveDriver.position, map]);
+
+  // Live feed status and the driver's ETA, shown on the map
+  const liveStatusLabel = liveDriver.connection === 'live'
+    ? 'Live'
+    : liveDriver.connection === 'delayed'
+      ? 'Updating'
+      : liveDriver.connection === 'lost'
+        ? 'Reconnecting'
+        : 'Waiting for driver';
+  const liveStatusDot = liveDriver.connection === 'live'
+    ? 'bg-emerald-500'
+    : liveDriver.connection === 'delayed'
+      ? 'bg-amber-500'
+      : 'bg-rose-500';
+  const etaText = (() => {
+    if (!routeMetrics || !routeMetrics.seconds) return '';
+    const remainingSeconds = Math.max(0, routeMetrics.seconds - (Date.now() - routeMetrics.at) / 1000);
+    const minutes = Math.max(1, Math.ceil(remainingSeconds / 60));
+    const km = routeMetrics.meters / 1000;
+    const distance = km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(routeMetrics.meters / 10) * 10} m`;
+    const toDrop = ['started', 'ongoing'].includes(tripStatus);
+    return `${toDrop ? 'Drop in' : 'Arriving in'} ${minutes} min · ${distance}`;
+  })();
 
   const handleShare = async () => {
     const text = buildRideShareText({
@@ -1245,9 +1330,10 @@ const RideTracking = () => {
         ) : isLoaded ? (
           <GoogleMap
             mapContainerStyle={MAP_CONTAINER_STYLE}
-            center={driverPosition}
+            center={initialMapCenter}
             zoom={14}
             onLoad={setMap}
+            onDragStart={() => setFollowDriver(false)}
             onUnmount={() => setMap(null)}
             options={{
               disableDefaultUI: true,
@@ -1275,6 +1361,7 @@ const RideTracking = () => {
                 title="Driver"
                 iconUrl={vehicleIcon}
                 heading={displayDriverHeading}
+                live={liveDriver.connection === 'live'}
               />
             ) : null}
             <MarkerF
@@ -1320,8 +1407,42 @@ const RideTracking = () => {
         <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Safety</span>
       </motion.button>
 
+      {hasLiveDriverLocation && !isScheduledUpcoming ? (
+        <div className="absolute top-[88px] left-4 right-28 z-10 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-full border border-white/80 bg-white/90 px-3 py-1.5 shadow-[0_4px_14px_rgba(15,23,42,0.08)] backdrop-blur-md">
+            <span className={`h-2 w-2 rounded-full ${liveStatusDot} ${liveDriver.connection === 'live' ? 'animate-pulse' : ''}`} />
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-700">{liveStatusLabel}</span>
+            {liveDriver.ageSeconds >= 5 ? (
+              <span className="text-[10px] font-bold text-slate-400">· {liveDriver.ageSeconds}s ago</span>
+            ) : null}
+            {liveDriver.speedKmph > 0 && liveDriver.connection === 'live' ? (
+              <span className="text-[10px] font-bold text-slate-400">· {liveDriver.speedKmph} km/h</span>
+            ) : null}
+          </div>
+          {etaText ? (
+            <div className="rounded-full border border-white/80 bg-slate-900/90 px-3 py-1.5 shadow-[0_4px_14px_rgba(15,23,42,0.18)] backdrop-blur-md">
+              <span className="text-[10px] font-black tracking-wide text-white">{etaText}</span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!followDriver && hasLiveDriverLocation ? (
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={() => {
+            setFollowDriver(true);
+            if (map) map.panTo(driverPosition);
+          }}
+          className="absolute right-4 bottom-[300px] z-10 flex items-center gap-1.5 rounded-full border border-white/80 bg-white/95 px-3.5 py-2 shadow-[0_4px_14px_rgba(15,23,42,0.12)]"
+        >
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-700">Re-center</span>
+        </motion.button>
+      ) : null}
+
       {routeError && (
-        <div className="absolute top-24 left-4 z-10 rounded-[12px] border border-amber-100 bg-white/90 px-3 py-2 shadow-sm">
+        <div className="absolute top-[140px] left-4 z-10 rounded-[12px] border border-amber-100 bg-white/90 px-3 py-2 shadow-sm">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Route</p>
           <p className="text-[11px] font-bold text-slate-700">Using fallback path while directions load.</p>
         </div>

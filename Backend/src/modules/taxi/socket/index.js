@@ -23,7 +23,7 @@ import {
   startDispatchFlow,
 } from '../services/dispatchService.js';
 import { findZoneByPickup } from '../services/matchingService.js';
-import { acceptRideAssignment, createRideRecord, getRideRoom, submitRideBid } from '../services/rideService.js';
+import { acceptRideAssignment, createRideRecord, getActiveRideForIdentity, getRideRoom, submitRideBid } from '../services/rideService.js';
 import { SOCKET_EVENTS } from './events.js';
 import { registerRideSocketHandlers } from './handlers/rideSocketHandler.js';
 import { authorizeRideRoomAccess } from './middleware/rideRoomAuth.js';
@@ -85,6 +85,16 @@ const registerTaxiSocketConnectionHandlers = (io) => {
     socket.auth = identity;
 
     addSocketSubscriptions(socket, { role: identity.role, entityId: identity.sub });
+
+    // A reconnected socket (network blip, server reload) is a NEW socket that has lost its ride room. Put a rider / driver
+    // back into the room of the ride they are in, so live location and status keep flowing without the app doing anything.
+    if (identity.role === 'user' || identity.role === 'driver') {
+      getActiveRideForIdentity({ role: identity.role, entityId: identity.sub })
+        .then((activeRide) => {
+          if (activeRide) joinRideRoom(socket, activeRide._id);
+        })
+        .catch(() => {});
+    }
 
     socket.join(getSupportParticipantRoom(identity.role, identity.sub));
     socket.join(getSupportRoleRoom(identity.role));

@@ -1868,6 +1868,10 @@ const ActiveTrip = () => {
         return () => window.clearInterval(intervalId);
     }, [phase, waitingStartedAt]);
 
+    // When each kind of location message was last sent, so a fast GPS does not flood the server
+    const locationSentRef = React.useRef({ rideAt: 0, idleAt: 0, patchAt: 0, point: null });
+    const RIDE_LOCATION_SEND_MS = 2000;
+
     const publishDriverLocation = (position, heading = displayDriverHeading) => {
         if (!rideId || !position) {
             return;
@@ -2200,29 +2204,45 @@ const ActiveTrip = () => {
                     );
                     setDriverHeading(nextHeading);
                     if (rideId) {
-                        socketService.emit('ride:driver-location:update', {
-                            rideId,
-                            coordinates: [nextPosition.lng, nextPosition.lat],
-                            heading: nextHeading,
-                            speed: pos.coords.speed,
-                        });
-                        socketService.emit('locationUpdate', {
-                            coordinates: [nextPosition.lng, nextPosition.lat],
-                            lat: nextPosition.lat,
-                            lng: nextPosition.lng,
-                            heading: nextHeading,
-                        });
-                        socketService.emit('driver_location_update', {
-                            coordinates: [nextPosition.lng, nextPosition.lat],
-                            latitude: nextPosition.lat,
-                            longitude: nextPosition.lng,
-                            heading: nextHeading,
-                        });
-                        api.patch('/drivers/location', {
-                            coordinates: [nextPosition.lng, nextPosition.lat],
-                            lat: nextPosition.lat,
-                            lng: nextPosition.lng,
-                        }).catch(() => {});
+                        const nowMs = Date.now();
+                        const sent = locationSentRef.current;
+                        const movedMeters = sent.point
+                            ? Math.hypot(
+                                (nextPosition.lat - sent.point.lat) * 111320,
+                                (nextPosition.lng - sent.point.lng) * 111320 * Math.cos((nextPosition.lat * Math.PI) / 180),
+                            )
+                            : Infinity;
+
+                        // What the rider's map needs: a fresh point about every 2 s while moving (or every 6 s when standing still)
+                        if (nowMs - sent.rideAt >= RIDE_LOCATION_SEND_MS && (movedMeters >= 4 || nowMs - sent.rideAt >= 6000)) {
+                            sent.rideAt = nowMs;
+                            sent.point = nextPosition;
+                            socketService.emit('ride:driver-location:update', {
+                                rideId,
+                                coordinates: [nextPosition.lng, nextPosition.lat],
+                                heading: nextHeading,
+                                speed: pos.coords.speed,
+                            });
+                        }
+
+                        // Background bookkeeping (dispatch / admin map): much less often, and one channel is enough
+                        if (nowMs - sent.idleAt >= 8000) {
+                            sent.idleAt = nowMs;
+                            socketService.emit('driver_location_update', {
+                                coordinates: [nextPosition.lng, nextPosition.lat],
+                                latitude: nextPosition.lat,
+                                longitude: nextPosition.lng,
+                                heading: nextHeading,
+                            });
+                        }
+                        if (nowMs - sent.patchAt >= 20000) {
+                            sent.patchAt = nowMs;
+                            api.patch('/drivers/location', {
+                                coordinates: [nextPosition.lng, nextPosition.lat],
+                                lat: nextPosition.lat,
+                                lng: nextPosition.lng,
+                            }).catch(() => {});
+                        }
                     }
                     driverPositionRef.current = nextPosition;
                     evaluateRouteRefresh();

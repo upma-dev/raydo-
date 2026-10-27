@@ -15,6 +15,11 @@ import { SOCKET_EVENTS } from '../events.js';
 import { clearDriverRoute, updateDriverRoute } from '../services/driverRouteService.js';
 import { sendPushNotificationToEntities } from '../../services/pushNotificationService.js';
 
+// Live location is shown to the rider the moment it arrives; only every Nth tick is also written to the database
+const RIDE_LOCATION_SAVE_MIN_INTERVAL_MS = Number(process.env.RIDE_LOCATION_SAVE_MS || 4000);
+const RIDE_AUTH_CACHE_MS = 60 * 1000;
+const lastLocationSavedAt = new Map(); // rideId -> last time the location was written to the database
+
 const driverLifecycleStatuses = new Set([
   RIDE_LIVE_STATUS.ACCEPTED,
   RIDE_LIVE_STATUS.ARRIVING,
@@ -79,6 +84,10 @@ export const registerRideSocketHandlers = ({ io, socket, onAsync }) => {
     }),
   );
 
+  // This socket's driver may send live location only for rides it is assigned to. The check is cached per ride (re-checked
+  // every minute) so a GPS tick does not cost a database read.
+  const authorizedRides = new Map(); // rideId -> { userId, at }
+
   socket.on(
     SOCKET_EVENTS.RIDE_DRIVER_LOCATION_UPDATE,
     onAsync(socket, async ({ rideId, coordinates, heading, speed }) => {
@@ -86,23 +95,53 @@ export const registerRideSocketHandlers = ({ io, socket, onAsync }) => {
         throw new Error('Only drivers can update live ride location');
       }
 
-      await authorizeRideRoomAccess({ socket, rideId });
+      const rideKey = String(rideId || '');
+      const now = Date.now();
+      let access = authorizedRides.get(rideKey);
+      if (!access || now - access.at > RIDE_AUTH_CACHE_MS) {
+        const ride = await authorizeRideRoomAccess({ socket, rideId });
+        access = { userId: String(ride.userId || ''), at: now };
+        authorizedRides.set(rideKey, access);
+      }
 
-      const locationUpdate = await updateRideDriverLocation({
-        rideId,
-        driverId: socket.auth.sub,
-        coordinates: normalizePoint(coordinates, 'coordinates'),
-        heading,
-        speed,
-      });
+      const point = normalizePoint(coordinates, 'coordinates');
+      const safeHeading = Number.isFinite(Number(heading)) ? Number(heading) : null;
+      const safeSpeed = Number.isFinite(Number(speed)) ? Number(speed) : null;
+      const locationUpdate = {
+        rideId: rideKey,
+        coordinates: point,
+        heading: safeHeading,
+        speed: safeSpeed,
+        updatedAt: new Date(now).toISOString(),
+        sentAt: now,
+      };
 
-      io.to(getRideRoom(rideId)).emit(SOCKET_EVENTS.RIDE_DRIVER_LOCATION_UPDATED, locationUpdate);
+      // 1. Tell the passenger FIRST. The ride room is the normal way; the passenger's own room is a second way, so a rider
+      //    whose socket reconnected and has not re-joined the ride room still sees the driver move.
+      const target = io.to(getRideRoom(rideId));
+      (access.userId ? target.to(getUserRoom(access.userId)) : target).emit(SOCKET_EVENTS.RIDE_DRIVER_LOCATION_UPDATED, locationUpdate);
+
+      // 2. Save it for the "last known place" (a rider who opens the screen later, a refresh), but not on every tick
+      const lastSavedAt = lastLocationSavedAt.get(rideKey) || 0;
+      if (now - lastSavedAt >= RIDE_LOCATION_SAVE_MIN_INTERVAL_MS) {
+        lastLocationSavedAt.set(rideKey, now);
+        if (lastLocationSavedAt.size > 5000) lastLocationSavedAt.clear();
+        updateRideDriverLocation({
+          rideId,
+          driverId: socket.auth.sub,
+          coordinates: point,
+          heading: safeHeading,
+          speed: safeSpeed,
+        }).catch((error) => {
+          console.error('Failed to save ride driver location', error?.message || error);
+        });
+      }
 
       updateDriverRoute({
         io,
         rideId,
         driverId: socket.auth.sub,
-        coordinates: locationUpdate.coordinates,
+        coordinates: point,
       });
     }),
   );
