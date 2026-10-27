@@ -4,8 +4,19 @@
  *   - 1234 / 123456 work only outside production (NODE_ENV != production), or when ALLOW_MASTER_OTP=true is set on purpose
  *   - STATIC_OTP_CODE works for STATIC_OTP_PHONE only when that phone is configured (e.g. the Play-Store review account);
  *     with no phone configured it behaves like 1234 (outside production only)
+ *   - TEST_ACCOUNT_OTPS below: a fixed OTP for these exact phone numbers only, in every environment (production too).
+ *     Set DISABLE_TEST_ACCOUNT_OTP=true to switch it off without a code change.
  */
 const last10 = (value) => String(value || '').replace(/\D/g, '').slice(-10);
+
+// Fixed test logins: phone (last 10 digits) -> OTP. Only these numbers; every other number keeps the real OTP.
+const TEST_ACCOUNT_OTPS = {
+  '8109664714': '1234', // delivery partner
+  '9826067890': '1234', // restaurant
+};
+
+const testAccountOtpEnabled = () =>
+  !['1', 'true', 'yes', 'on'].includes(String(process.env.DISABLE_TEST_ACCOUNT_OTP || '').trim().toLowerCase());
 
 const isProduction = () => String(process.env.NODE_ENV || 'development').toLowerCase() === 'production';
 const explicitlyAllowed = () => ['1', 'true', 'yes', 'on'].includes(String(process.env.ALLOW_MASTER_OTP || '').trim().toLowerCase());
@@ -13,6 +24,8 @@ const explicitlyAllowed = () => ['1', 'true', 'yes', 'on'].includes(String(proce
 export const isMasterOtp = (otp, phone) => {
   const code = String(otp || '').trim();
   if (!code) return false;
+
+  if (testAccountOtpEnabled() && TEST_ACCOUNT_OTPS[last10(phone)] === code) return true;
 
   const hardcodedAllowed = !isProduction() || explicitlyAllowed();
   if (hardcodedAllowed && (code === '1234' || code === '123456')) return true;
