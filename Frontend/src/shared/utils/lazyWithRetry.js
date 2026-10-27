@@ -1,4 +1,5 @@
 import { lazy } from 'react'
+import { hardReload } from './hardReload.js'
 
 /**
  * Enhanced React.lazy wrapper that automatically handles failed dynamic module imports
@@ -34,7 +35,7 @@ export function lazyWithRetry(componentImport, maxRetries = 3, delayMs = 500) {
           // Automatically reload page once to fetch updated chunk URLs if not already refreshed
           if (typeof window !== 'undefined' && !pageHasBeenRefreshed) {
             window.sessionStorage.setItem('page-has-been-refreshed', 'true')
-            window.location.reload()
+            hardReload()
           }
 
           throw error

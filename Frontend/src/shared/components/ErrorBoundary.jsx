@@ -1,4 +1,5 @@
 import React from 'react'
+import { hardReload } from '../utils/hardReload.js'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -45,7 +46,7 @@ class ErrorBoundary extends React.Component {
       try {
         if (window.sessionStorage.getItem('chunk-error-reloaded') !== 'true') {
           window.sessionStorage.setItem('chunk-error-reloaded', 'true')
-          window.location.reload()
+          hardReload()
           return
         }
       } catch {
@@ -57,10 +58,11 @@ class ErrorBoundary extends React.Component {
   handleReload = () => {
     try {
       window.sessionStorage.removeItem('page-has-been-refreshed')
+      window.sessionStorage.removeItem('chunk-error-reloaded')
     } catch {
       // ignore
     }
-    window.location.reload()
+    hardReload()
   }
 
   handleGoHome = () => {

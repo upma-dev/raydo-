@@ -7,6 +7,8 @@ import { isModuleAuthenticated } from './modules/Food/utils/auth.js'
 import { syncThemeForPath } from './shared/utils/theme.js'
 import { NATIVE_LAST_ROUTE_KEY } from './shared/utils/activeModule.js'
 import './shared/styles/global.css'
+import { stripCacheBustParam } from './shared/utils/hardReload.js'
+stripCacheBustParam()
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => {
