@@ -1181,10 +1181,28 @@ const DriverHome = () => {
                     return;
                 }
 
+                let deliveryResult = activeDelivery;
+                let rideResult = activeRide;
+                // The lookup failed (server / network glitch), which does not mean there is no ride: try again a few times
+                for (let attempt = 0; attempt < 3 && active; attempt += 1) {
+                    const found = deliveryResult.status === 'fulfilled' && deliveryResult.value?.rideId
+                        || rideResult.status === 'fulfilled' && rideResult.value?.rideId;
+                    if (found || (deliveryResult.status === 'fulfilled' && rideResult.status === 'fulfilled')) break;
+                    await new Promise((resolve) => setTimeout(resolve, 2000));
+                    if (!active) return;
+                    [deliveryResult, rideResult] = await Promise.allSettled([
+                        fetchActiveJob('parcel'),
+                        fetchActiveJob('ride'),
+                    ]);
+                }
+                if (!active) {
+                    return;
+                }
+
                 const deliveryPayload =
-                    activeDelivery.status === 'fulfilled' ? activeDelivery.value : null;
+                    deliveryResult.status === 'fulfilled' ? deliveryResult.value : null;
                 const ridePayload =
-                    activeRide.status === 'fulfilled' ? activeRide.value : null;
+                    rideResult.status === 'fulfilled' ? rideResult.value : null;
 
                 const currentJob = deliveryPayload?.rideId
                     ? deliveryPayload

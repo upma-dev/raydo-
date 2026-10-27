@@ -12,7 +12,7 @@ const SETTINGS_KEY = 'food_business_settings';
 export const normalizeCompanyName = (value) => {
   const raw = typeof value === "string" ? value.trim() : "";
   if (!raw) return "Raydo";
-  if (raw.toLowerCase() === "appzeto") return "Raydo";
+  if (["appzeto", "eqosy"].includes(raw.toLowerCase())) return "Raydo";
   return raw;
 };
 

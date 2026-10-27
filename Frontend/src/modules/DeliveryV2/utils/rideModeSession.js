@@ -1,5 +1,6 @@
 import { deliveryAPI } from '@food/api';
-import { persistDriverAuthSession } from '@/modules/Taxi/modules/driver/services/registrationService';
+import { persistDriverAuthSession, getLocalDriverToken } from '@/modules/Taxi/modules/driver/services/registrationService';
+import taxiApi from '@/modules/Taxi/shared/api/axiosInstance';
 
 /**
  * Ride & Parcel mode: a delivery partner works rides inside the existing taxi driver screens (/taxi/driver/*). Those
@@ -79,4 +80,25 @@ export const openRideApp = async (navigate, path = '/taxi/driver/home') => {
   const session = unwrap(await deliveryAPI.getRideSession());
   startRideSession(session.taxiToken);
   navigate(path);
+};
+
+/**
+ * A partner who accepted a ride / parcel and then lost the screen (app restart, crash, refresh) is taken back to it.
+ * Only for partners with a ride profile; returns true when a running ride was found and opened.
+ */
+export const restoreActiveRide = async (navigate) => {
+  try {
+    if (!(await ensureRideToken())) return false;
+    const token = getLocalDriverToken();
+    const response = await taxiApi.get('/rides/active/me', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      params: { t: Date.now() },
+    });
+    const ride = response?.data?.data;
+    if (!ride?.rideId) return false;
+    navigate('/taxi/driver/active-trip', { state: { rideId: ride.rideId, type: ride.serviceType || 'ride' } });
+    return true;
+  } catch {
+    return false;
+  }
 };
