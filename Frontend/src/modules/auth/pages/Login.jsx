@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react"
 import { motion } from "framer-motion"
-import { Link, useNavigate, useLocation } from "react-router-dom"
+import { Link, Navigate, useNavigate, useLocation } from "react-router-dom"
 import { ShieldCheck, Loader2, ArrowRight, ArrowLeft, X } from "lucide-react"
 import { toast } from "sonner"
 import apiClient, { authAPI } from "@food/api"
@@ -24,6 +24,8 @@ export default function UnifiedOTPFastLogin() {
   const navigate = useNavigate()
   const location = useLocation()
   const submitting = useRef(false)
+  // Already signed in when this page opened: go straight on, so the login form is never drawn for a moment first
+  const [openedAlreadySignedIn] = useState(() => isUnifiedAuthenticated())
 
   // Dismiss soft keyboard on unmount & auto-redirect if already logged in
   useEffect(() => {
@@ -429,6 +431,10 @@ export default function UnifiedOTPFastLogin() {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+  }
+
+  if (openedAlreadySignedIn) {
+    return <Navigate to={location.state?.from || resolvePostLoginRoute()} replace />
   }
 
   return (

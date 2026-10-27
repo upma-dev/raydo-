@@ -2,6 +2,7 @@ import { verifyAccessToken } from './token.util.js';
 import { sendError } from '../../utils/response.js';
 import { FoodUser } from '../users/user.model.js';
 import mongoose from 'mongoose';
+import { logger } from '../../utils/logger.js';
 
 export const requireAdmin = (req, res, next) => {
     if (req.user?.role !== 'ADMIN') {
@@ -79,6 +80,8 @@ export const authMiddleware = (req, res, next) => {
 
         return next();
     } catch (error) {
+        // Why a login was refused (expired / bad signature / malformed), so a surprise "please log in again" can be traced
+        logger.warn(`[auth] 401 ${req.method} ${req.originalUrl} - ${error?.name || 'Error'}: ${error?.message || ''}`);
         return sendError(res, 401, 'Invalid or expired token');
     }
 };

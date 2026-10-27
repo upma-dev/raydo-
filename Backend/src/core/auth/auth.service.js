@@ -926,6 +926,7 @@ export const refreshAccessToken = async (token) => {
 
   const stored = await FoodRefreshToken.findOne({ token }).lean();
   if (!stored) {
+    logger.warn("[auth] refresh refused: this refresh token is not stored (logged out, expired, or issued on another database)");
     throw new AuthError("Invalid refresh token");
   }
 
@@ -933,7 +934,8 @@ export const refreshAccessToken = async (token) => {
   let payload;
   try {
     payload = jwt.default.verify(token, config.jwtRefreshSecret);
-  } catch {
+  } catch (verifyError) {
+    logger.warn(`[auth] refresh refused: ${verifyError?.name || 'Error'}: ${verifyError?.message || ''}`);
     throw new AuthError("Invalid refresh token");
   }
 
