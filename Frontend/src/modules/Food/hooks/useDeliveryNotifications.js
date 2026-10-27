@@ -315,9 +315,8 @@ export const useDeliveryNotifications = () => {
         return;
       }
 
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        playSoundFn(activeOrderRef.current);
-      }
+      // Keep ringing while the order is pending (screen open or not), until it is accepted, ignored or times out
+      playSoundFn(activeOrderRef.current);
     }, ALERT_LOOP_INTERVAL_MS);
   }, [stopAlertLoop]);
 

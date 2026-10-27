@@ -208,10 +208,8 @@ export const useRestaurantNotifications = () => {
         return;
       }
 
-      // Keep re-alerting while order is pending and tab is not visible.
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        playNotificationSound(activeOrderRef.current);
-      }
+      // Keep ringing while the order is pending (screen open or not), until it is accepted, rejected or times out
+      playNotificationSound(activeOrderRef.current);
     }, ALERT_LOOP_INTERVAL_MS);
   };
 

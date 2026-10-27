@@ -397,6 +397,8 @@ export async function notifyRestaurantNewOrder(orderDoc) {
         body: `Order #${orderDoc.order_id || orderDoc._id} is waiting for review.`,
         data: {
           type: "new_order",
+          // Same flag the driver ride request carries: the device rings (not just a silent banner) and keeps it on screen
+          ring: "true",
           orderId: orderDoc._id.toString(),
           orderMongoId: orderDoc._id?.toString?.() || "",
           restaurantId: targetRestaurantId,

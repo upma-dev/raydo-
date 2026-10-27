@@ -372,6 +372,9 @@ export async function tryAutoAssign(orderId, options = {}) {
           body: `Order #${order.order_id || order._id} is nearby (${targetPartner.distanceKm || 0} km). Accept now!`,
           data: {
             type: 'new_order',
+            ring: 'true',
+            link: '/food/delivery/feed',
+            targetUrl: '/food/delivery/feed',
             orderId: order._id.toString(),
             order_id: order.order_id || order.orderId || order._id.toString(),
             displayOrderId: order.order_id || order.orderId || order._id.toString()

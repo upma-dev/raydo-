@@ -1663,8 +1663,11 @@ export async function assignDeliveryPartnerAdmin(
       body: `You have been assigned order #${order.order_id || order._id} by Admin. Click to accept trip!`,
       data: {
         type: "new_order",
+        ring: "true",
         orderId: String(order._id),
         orderMongoId: order._id.toString(),
+        link: "/food/delivery/feed",
+        targetUrl: "/food/delivery/feed",
       }
     });
   } catch (err) {
