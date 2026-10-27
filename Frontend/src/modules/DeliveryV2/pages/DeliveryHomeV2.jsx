@@ -261,9 +261,13 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   // A ride / parcel the partner already accepted comes back after an app restart or a glitch (once per page load)
   const rideRestoreTried = useRef(false);
   useEffect(() => {
-    if (rideRestoreTried.current || tab !== 'feed' || activeOrder) return;
-    rideRestoreTried.current = true;
-    restoreActiveRide(navigate);
+    if (rideRestoreTried.current || tab !== 'feed' || activeOrder) return undefined;
+    // A few seconds after the feed is up, so these extra calls never compete with the first load
+    const timer = setTimeout(() => {
+      rideRestoreTried.current = true;
+      restoreActiveRide(navigate);
+    }, 3000);
+    return () => clearTimeout(timer);
   }, [tab, activeOrder, navigate]);
 
   const [showVerification, setShowVerification] = useState(false);
