@@ -44,8 +44,9 @@ export const authMiddleware = (req, res, next) => {
                 }
                 next();
             }).catch(() => {
+                // A database hiccup is not a bad token: 401 would make the app log the person out
                 if (!res.headersSent) {
-                    sendError(res, 401, 'Invalid user token');
+                    sendError(res, 503, 'Service temporarily unavailable. Please try again.');
                 }
             });
             return;
@@ -70,7 +71,7 @@ export const authMiddleware = (req, res, next) => {
                 next();
             }).catch(() => {
                 if (!res.headersSent) {
-                    sendError(res, 401, 'Invalid admin token');
+                    sendError(res, 503, 'Service temporarily unavailable. Please try again.');
                 }
             });
             return;

@@ -150,7 +150,11 @@ export function getCurrentUser(module) {
  */
 export function isModuleAuthenticated(module) {
   const token = getModuleToken(module);
-  return !!token && !isTokenExpired(token);
+  if (!token) return false;
+  if (!isTokenExpired(token)) return true;
+  // The short-lived access token ran out (typical on a page refresh), but a refresh token is still there: the API client
+  // swaps it for a new access token on the first call, so the person must not be sent back to login.
+  return !!getModuleRefreshToken(module);
 }
 
 /**

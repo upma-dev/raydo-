@@ -1,5 +1,8 @@
 import { MaintenanceSetting } from './maintenanceSetting.model.js';
 import { sendResponse } from '../../utils/response.js';
+import { verifyAccessToken } from '../auth/token.util.js';
+import { FoodDeliveryPartner } from '../../modules/food/delivery/models/deliveryPartner.model.js';
+import { Driver } from '../../modules/taxi/driver/models/Driver.js';
 
 /**
  * MAINTENANCE MODE
@@ -43,6 +46,34 @@ const detectApp = (url) => {
     return { moduleType: null, app: null };
 };
 
+// The driver / delivery apps never send a zone header, so the zone of a signed-in partner or driver is read from their
+// profile (cached briefly). This is what makes a zone rule lock the delivery partner and taxi driver apps.
+const ZONE_CACHE_MS = 60 * 1000;
+const zoneCache = new Map();
+
+const zoneOfSignedInUser = async (req, app) => {
+    if (app !== 'food_delivery' && app !== 'taxi_driver') return '';
+    const header = String(req.headers.authorization || '');
+    if (!header.startsWith('Bearer ')) return '';
+    try {
+        const decoded = verifyAccessToken(header.slice(7));
+        const id = String(decoded.userId || decoded.id || decoded.sub || decoded.partnerId || '');
+        if (!id) return '';
+        const key = `${app}:${id}`;
+        const hit = zoneCache.get(key);
+        if (hit && Date.now() - hit.at < ZONE_CACHE_MS) return hit.zoneId;
+        const doc = app === 'food_delivery'
+            ? await FoodDeliveryPartner.findById(id).select('zoneId').lean()
+            : await Driver.findById(id).select('zoneId').lean();
+        const zoneId = doc?.zoneId ? String(doc.zoneId) : '';
+        zoneCache.set(key, { at: Date.now(), zoneId });
+        if (zoneCache.size > 5000) zoneCache.clear();
+        return zoneId;
+    } catch {
+        return '';
+    }
+};
+
 export const checkMaintenanceMiddleware = async (req, res, next) => {
     try {
         const url = (req.originalUrl || req.url || '').split('?')[0].toLowerCase();
@@ -53,7 +84,10 @@ export const checkMaintenanceMiddleware = async (req, res, next) => {
         const rules = await loadRules();
         if (!rules.length) return next();
 
-        const zoneId = String(req.headers['x-zone-id'] || req.query?.zoneId || req.query?.zone_id || '');
+        let zoneId = String(req.headers['x-zone-id'] || req.query?.zoneId || req.query?.zone_id || '');
+        if (!zoneId && rules.some((r) => r.zoneId && String(r.zoneId) !== 'null')) {
+            zoneId = await zoneOfSignedInUser(req, app);
+        }
         const hintedService = TAXI_SERVICE_HINTS.find((s) => url.includes(s)) || '';
 
         const hit = rules.find((r) => {

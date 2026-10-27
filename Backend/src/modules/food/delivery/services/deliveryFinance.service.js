@@ -6,6 +6,7 @@ import { FoodDeliveryCashDeposit } from '../models/foodDeliveryCashDeposit.model
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { HybridWalletTransfer } from '../models/hybridWalletTransfer.model.js';
 import { Driver } from '../../../taxi/driver/models/Driver.js';
+import { Ride } from '../../../taxi/user/models/Ride.js';
 import { withPartnerWalletLock } from './rideWalletLock.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
@@ -40,6 +41,32 @@ export const rideWalletTransferTotals = async (partnerId) => {
     ]);
     const byDirection = Object.fromEntries(rows.map((r) => [r._id, round2(r.total)]));
     return { mergedIn: byDirection.taxi_to_food || 0, duesRecovered: byDirection.food_to_taxi || 0 };
+};
+
+/**
+ * What the partner earned from completed rides / parcels on the linked ride profile, straight from the rides (the same
+ * figure the driver app shows). The wallet merge only moves money around, so it is not used for this.
+ */
+export const getRideEarningsTotals = async (deliveryPartnerId) => {
+    const partner = await FoodDeliveryPartner.findById(deliveryPartnerId).select('rideMode.taxiDriverId').lean();
+    const driverId = partner?.rideMode?.taxiDriverId;
+    if (!driverId) return { rideEarnings: 0, rideTrips: 0, rideGrossFare: 0 };
+    const rows = await Ride.aggregate([
+        { $match: { driverId: new mongoose.Types.ObjectId(String(driverId)), status: 'completed' } },
+        {
+            $group: {
+                _id: null,
+                earned: {
+                    $sum: {
+                        $ifNull: ['$driverEarnings', { $max: [{ $subtract: [{ $ifNull: ['$fare', 0] }, { $ifNull: ['$commissionAmount', 0] }] }, 0] }],
+                    },
+                },
+                gross: { $sum: { $ifNull: ['$fare', 0] } },
+                trips: { $sum: 1 },
+            },
+        },
+    ]);
+    return { rideEarnings: round2(rows[0]?.earned), rideTrips: rows[0]?.trips || 0, rideGrossFare: round2(rows[0]?.gross) };
 };
 
 /**
@@ -128,9 +155,10 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     }
 
     const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
-    const [partner, totals, cashLimitSettings, withdrawalsList, depositList] = await Promise.all([
+    const [partner, totals, rideTotals, cashLimitSettings, withdrawalsList, depositList] = await Promise.all([
         FoodDeliveryPartner.findById(partnerId).lean(),
         getDeliveryPocketTotals(deliveryPartnerId),
+        getRideEarningsTotals(deliveryPartnerId),
         getDeliveryCashLimitSettings(),
         // Recent Withdrawals / deposits for History
         FoodDeliveryWithdrawal.find({ deliveryPartnerId: partnerId }).sort({ createdAt: -1 }).limit(50).lean(),
@@ -218,7 +246,12 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
         : 0;
 
     return {
-        totalBalance: totalEarned + ledgerExtraEarnings + totalBonus, // Gross lifetime food earnings (ride earnings are shown in the ride app)
+        totalBalance: totalEarned + ledgerExtraEarnings + totalBonus, // Gross lifetime food earnings + bonus
+        // Earnings split shown in the wallet: food deliveries, bike rides / parcels, and the total of both (plus bonus)
+        foodEarnings: round2(totalEarned + ledgerExtraEarnings),
+        rideEarnings: rideTotals.rideEarnings,
+        rideTrips: rideTotals.rideTrips,
+        totalEarnings: round2(totalEarned + ledgerExtraEarnings + totalBonus + rideTotals.rideEarnings),
         unifiedBalance: round2(pocketBalance + rideBalance),
         rideEarningsMerged: rideTransfers.mergedIn,
         rideDuesRecovered: rideTransfers.duesRecovered,

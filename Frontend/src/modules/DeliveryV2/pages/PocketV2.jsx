@@ -71,7 +71,7 @@ export const PocketV2 = () => {
         setWalletState({
           // Same amount as the ride wallet (Pocket + ride wallet); earnings below stay food-only
           totalBalance: Number(wallet.unifiedBalance ?? wallet.pocketBalance) || 0,
-          rideEarningsMerged: 0,
+          rideEarningsMerged: Number(wallet.rideEarnings) || 0,
           cashInHand: Number(wallet.cashInHand) || 0,
           availableCashLimit: Number(wallet.availableCashLimit) || 0,
           totalCashLimit: Number(wallet.totalCashLimit) || 0,
@@ -308,7 +308,7 @@ export const PocketV2 = () => {
                    <div>
                       <span className="text-sm font-bold text-gray-800 block">Pocket balance</span>
                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">
-                         {walletState.rideEarningsMerged > 0 ? `Food + ₹${walletState.rideEarningsMerged.toFixed(0)} from rides` : 'Withdrawal Hub'}
+                         {walletState.rideEarningsMerged > 0 ? `Food + ₹${walletState.rideEarningsMerged.toFixed(0)} from bike rides` : 'Withdrawal Hub'}
                       </p>
                    </div>
                 </div>

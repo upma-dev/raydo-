@@ -5334,21 +5334,34 @@ export async function getDeliveryWallets(query = {}) {
     const globalLimit = Number(cashLimitSettings?.deliveryCashLimit || 0);
 
     const cashPositions = await getRiderCashPositions(partners.map((p) => p._id));
+    // Imported here: deliveryFinance already imports this file
+    const { getDeliveryPocketTotals, getRideEarningsTotals } = await import('../../delivery/services/deliveryFinance.service.js');
     const wallets = await Promise.all(partners.map(async (p) => {
         const wallet = await FoodDeliveryWallet.findOne({ deliveryPartnerId: p._id }).lean();
         const cashHeld = cashPositions.get(String(p._id))?.cashInHand || 0;
+        // The stored wallet document is not kept in step with deliveries, so the live Pocket is the source of truth
+        const [pocket, ride] = await Promise.all([
+            getDeliveryPocketTotals(String(p._id)).catch(() => null),
+            getRideEarningsTotals(p._id).catch(() => ({ rideEarnings: 0, rideTrips: 0 })),
+        ]);
+        const foodEarning = pocket ? Number(pocket.totalEarned || 0) + Number(pocket.ledgerExtraEarnings || 0) : Number(wallet?.totalEarnings || 0);
+        const bonus = pocket ? Number(pocket.totalBonus || 0) : Number(wallet?.totalBonus || 0);
 
         return {
             walletId: wallet?._id,
             deliveryId: p._id,
             name: p.name,
             deliveryIdString: p.phone, // Placeholder or sequential ID if available
-            pocketBalance: Number(wallet?.balance || 0),
+            pocketBalance: pocket ? Number(pocket.pocketBalance || 0) : Number(wallet?.balance || 0),
             remainingCashLimit: Math.max(0, globalLimit - cashHeld),
             cashCollected: cashHeld,
-            totalEarning: Number(wallet?.totalEarnings || 0),
-            bonus: Number(wallet?.totalBonus || 0),
-            totalWithdrawn: Number(wallet?.totalSettled || 0)
+            foodEarning,
+            rideEarning: ride.rideEarnings,
+            rideTrips: ride.rideTrips,
+            totalEarning: Math.round((foodEarning + ride.rideEarnings + bonus) * 100) / 100,
+            bonus,
+            totalWithdrawn: pocket ? Number(pocket.totalWithdrawn || 0) : Number(wallet?.totalSettled || 0),
+            isRideLinked: Boolean(p.rideMode?.taxiDriverId),
         };
     }));
 

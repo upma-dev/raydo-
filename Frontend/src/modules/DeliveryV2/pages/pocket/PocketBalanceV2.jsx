@@ -54,6 +54,10 @@ export const PocketBalanceV2 = () => {
         setWalletState({
            pocketBalance: pocketBalance,
            weeklyEarnings: Number(summary.totalEarnings) || 0,
+           foodEarnings: Number(wallet.foodEarnings) || 0,
+           rideEarnings: Number(wallet.rideEarnings) || 0,
+           rideTrips: Number(wallet.rideTrips) || 0,
+           totalEarnings: Number(wallet.totalEarnings) || 0,
            totalBonus: Number(wallet.totalBonus) || 0,
            totalWithdrawn: Number(wallet.totalWithdrawn) || 0,
            cashCollected: Number(wallet.cashInHand) || 0,
@@ -166,6 +170,13 @@ export const PocketBalanceV2 = () => {
 
              <div className="bg-white px-4">
                 <DetailRow label="Earnings" value={formatCurrency(walletState.weeklyEarnings)} />
+                <DetailRow label="Food delivery earnings" value={formatCurrency(walletState.foodEarnings)} />
+                <DetailRow
+                   label="Bike ride & parcel earnings"
+                   value={formatCurrency(walletState.rideEarnings)}
+                   subLabel={walletState.rideTrips > 0 ? `${walletState.rideTrips} completed trips` : undefined}
+                />
+                <DetailRow label="Total earnings (food + bike + bonus)" value={formatCurrency(walletState.totalEarnings)} />
                 <DetailRow label="Bonus" value={formatCurrency(walletState.totalBonus)} />
                 <DetailRow label="Amount withdrawn" value={formatCurrency(walletState.totalWithdrawn)} />
                 <DetailRow label="Cash collected" value={formatCurrency(walletState.cashCollected)} />

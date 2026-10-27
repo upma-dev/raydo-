@@ -426,9 +426,9 @@ export default function MaintenanceMode() {
                   )}
 
                   {/* TAXI ZONES */}
-                  {(formData.module === 'all' || formData.module === 'taxi' || formData.module.startsWith('taxi_')) && taxiZones.length > 0 && (
+                  {(formData.module === 'all' || formData.module === 'taxi' || formData.module.startsWith('taxi_') || formData.module === 'food_delivery') && taxiZones.length > 0 && (
                     <>
-                      <div className="px-3 py-1.5 text-[10px] font-bold text-sky-700 bg-sky-50 rounded my-1 uppercase tracking-wider">Taxi Module Zones</div>
+                      <div className="px-3 py-1.5 text-[10px] font-bold text-sky-700 bg-sky-50 rounded my-1 uppercase tracking-wider">{formData.module === 'food_delivery' ? 'Delivery Partner Zones' : 'Taxi Module Zones'}</div>
                       {taxiZones.map(z => (
                         <SelectItem key={`taxi-${z._id || z.id}`} value={String(z._id || z.id)} className="rounded-lg py-2 font-medium">
                           🚕 {z.service_location_name || z.name || z.zoneName} {formData.module === 'all' ? '(Taxi)' : ''}

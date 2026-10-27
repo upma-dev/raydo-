@@ -5243,15 +5243,35 @@ export const getDriverProfile = async (id) => {
   }, 0);
   const byCash = sum(completedRides.filter((r) => r.paymentMethod === 'cash'), 'fare');
   const byCard = sum(completedRides.filter((r) => r.paymentMethod === 'online'), 'fare');
-  const spendAmount = walletTransactions.reduce((total, item) => {
+  // Money swept to / from the delivery Pocket (wallet merge) is a transfer, not spending or earning
+  const realWalletTransactions = walletTransactions.filter((item) => item?.type !== 'wallet_merge');
+  const spendAmount = realWalletTransactions.reduce((total, item) => {
     const amount = Number(item?.amount || 0);
     return amount < 0 ? total + Math.abs(amount) : total;
   }, 0);
-  const creditAmount = walletTransactions.reduce((total, item) => {
+  const creditAmount = realWalletTransactions.reduce((total, item) => {
     const amount = Number(item?.amount || 0);
     return amount > 0 ? total + amount : total;
   }, 0);
-  const balanceAmount = Number(driver?.wallet?.balance || 0);
+  let balanceAmount = Number(driver?.wallet?.balance || 0);
+  // A driver linked to a delivery partner keeps ride earnings in the partner's Pocket: show the combined figures
+  let linkedDelivery = null;
+  if (driver.linkedDeliveryPartnerId) {
+    try {
+      const { getDeliveryPocketTotals } = await import('../../../food/delivery/services/deliveryFinance.service.js');
+      const pocket = await getDeliveryPocketTotals(String(driver.linkedDeliveryPartnerId));
+      linkedDelivery = {
+        delivery_partner_id: String(driver.linkedDeliveryPartnerId),
+        pocket_balance: Number(pocket.pocketBalance.toFixed(2)),
+        food_earnings: Number((pocket.totalEarned + pocket.ledgerExtraEarnings).toFixed(2)),
+        ride_earnings_in_pocket: Number(pocket.rideTransfers.mergedIn.toFixed(2)),
+        ride_dues_recovered: Number(pocket.rideTransfers.duesRecovered.toFixed(2)),
+      };
+      balanceAmount += pocket.pocketBalance;
+    } catch (err) {
+      linkedDelivery = null;
+    }
+  }
   const cashLimit = Number(driver?.wallet?.cashLimit ?? 500);
   const isWalletBlocked = Boolean(driver?.wallet?.isBlocked);
 
@@ -5294,13 +5314,14 @@ export const getDriverProfile = async (id) => {
       spend_amount: Number(spendAmount.toFixed(2)),
       balance_amount: Number(balanceAmount.toFixed(2)),
     },
+    linked_delivery: linkedDelivery,
     wallet: {
       balance: Number(balanceAmount.toFixed(2)),
       cash_limit: Number(cashLimit.toFixed(2)),
       is_blocked: isWalletBlocked,
       total_credits: Number(creditAmount.toFixed(2)),
       total_debits: Number(spendAmount.toFixed(2)),
-      transaction_count: walletTransactions.length,
+      transaction_count: realWalletTransactions.length,
     },
     location: hasValidLocation ? { lat, lng } : null,
   };
