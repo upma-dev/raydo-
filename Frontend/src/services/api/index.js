@@ -1998,6 +1998,9 @@ export const deliveryAPI = {
   /** Ride & Parcel mode: the partner also takes taxi rides / parcels through a linked ride profile. */
   getRideMode: () =>
     apiClient.get("/food/delivery/ride-mode", { contextModule: "delivery" }),
+  /** The driver documents the ride side asks for, with what the delivery profile already covers. */
+  getRideModeRequirements: () =>
+    apiClient.get("/food/delivery/ride-mode/requirements", { contextModule: "delivery" }),
   getRideModeVehicleTypes: () =>
     apiClient.get("/food/delivery/ride-mode/vehicle-types", { contextModule: "delivery" }),
   applyForRideMode: (formData) =>
@@ -2010,6 +2013,9 @@ export const deliveryAPI = {
     apiClient.post("/food/delivery/ride-mode/switch", { mode, ...extras }, { contextModule: "delivery" }),
   getRideSession: () =>
     apiClient.post("/food/delivery/ride-mode/session", {}, { contextModule: "delivery" }),
+  /** One panel: keep getting rides / parcels while turning food orders off (or back on). */
+  setFoodOrders: (enabled) =>
+    apiClient.put("/food/delivery/ride-mode/food-orders", { enabled: Boolean(enabled) }, { contextModule: "delivery" }),
   /** PATCH /food/delivery/availability - set online/offline (and optional lat/lng). */
   updateOnlineStatus: (isOnline, selfieImageUrl = "") =>
     apiClient.patch(

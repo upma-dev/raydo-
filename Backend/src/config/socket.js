@@ -78,6 +78,10 @@ export const initSocket = async (server) => {
                 : socketOrigins;
 
     io = new Server(server, {
+        // Mobile networks stall for a few seconds when the phone changes tower / goes through a tunnel: do not treat a
+        // slow ping as a dead connection.
+        pingInterval: 20000,
+        pingTimeout: 40000,
         cors: {
             origin: socketCorsOrigin,
             methods: ['GET', 'POST'],

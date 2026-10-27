@@ -76,6 +76,13 @@ async function listNearbyOnlineDeliveryPartners(
 
   allOnline = allOnline.filter(p => !p.status || p.status === 'approved' || p.status === 'pending');
 
+  // One panel (food + rides): skip partners who turned food orders off or are on a ride / parcel trip
+  {
+    const { partnerIdsBlockedForFood } = await import('../../delivery/services/hybridRide.service.js');
+    const blocked = await partnerIdsBlockedForFood(allOnline.map((p) => p._id));
+    if (blocked.size) allOnline = allOnline.filter((p) => !blocked.has(String(p._id)));
+  }
+
   if (!restaurant?.location?.coordinates?.length) {
     let partners = allOnline;
     if (hasActiveZones) {
@@ -291,12 +298,17 @@ export async function tryAutoAssign(orderId, options = {}) {
 
     // Filter to strictly ONLINE delivery partners right now
     const partnerIdsToVerify = codEligiblePartners.map(p => p.partnerId).filter(Boolean);
-    const onlineDocs = partnerIdsToVerify.length > 0
+    let onlineDocs = partnerIdsToVerify.length > 0
       ? await FoodDeliveryPartner.find({
           _id: { $in: partnerIdsToVerify },
           availabilityStatus: 'online'
         }).select('_id vehicleType').lean()
       : [];
+    if (onlineDocs.length > 0) {
+      const { partnerIdsBlockedForFood } = await import('../../delivery/services/hybridRide.service.js');
+      const blockedForFood = await partnerIdsBlockedForFood(onlineDocs.map((d) => d._id));
+      if (blockedForFood.size) onlineDocs = onlineDocs.filter((d) => !blockedForFood.has(String(d._id)));
+    }
     // Long orders (> 7 km) must not be offered to cycle / scooter riders.
     const orderDistanceKm = estimateOrderDistanceKm(order);
     const isLongOrder = orderDistanceKm != null && orderDistanceKm > SHORT_RANGE_MAX_KM;

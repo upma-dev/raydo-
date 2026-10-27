@@ -7,6 +7,7 @@ import {
   syncActiveModule,
 } from '../shared/utils/activeModule.js'
 import lazyWithRetry from '../shared/utils/lazyWithRetry.js'
+import { isRideModePartner, recoverRideSession } from '@/modules/DeliveryV2/utils/rideModeSession'
 
 // Lazy load the Food service module (Quick-spicy app)
 const FoodApp = lazyWithRetry(() => import('../modules/Food/routes'))
@@ -159,6 +160,14 @@ const AppRoutes = () => {
       } else if (role === 'restaurant') {
         navigate('/food/restaurant/login', { replace: true })
       } else if (['driver', 'owner', 'bus_driver', 'service_center', 'service_center_staff'].includes(role)) {
+        // A delivery partner in Ride & Parcel mode has no driver-app login: get a fresh ride session instead of logging out
+        if (role === 'driver' && isRideModePartner()) {
+          recoverRideSession().then((recovered) => {
+            if (recovered) window.location.reload()
+            else navigate('/food/delivery/feed', { replace: true })
+          })
+          return
+        }
         navigate(role === 'owner' ? '/taxi/owner/login' : '/taxi/driver/login', { replace: true })
       } else {
         localStorage.removeItem('token')

@@ -29,13 +29,10 @@ import { registerRideSocketHandlers } from './handlers/rideSocketHandler.js';
 import { authorizeRideRoomAccess } from './middleware/rideRoomAuth.js';
 import { attachSocketAuth } from './middleware/socketAuth.js';
 import { clearDriverRoute } from './services/driverRouteService.js';
-import { FoodDeliveryPartner } from '../../food/delivery/models/deliveryPartner.model.js';
 
 const linkedDriverInRideMode = async (driverId) => {
-  const driver = await Driver.findById(driverId).select('linkedDeliveryPartnerId').lean();
-  if (!driver?.linkedDeliveryPartnerId) return true;
-  const partner = await FoodDeliveryPartner.findById(driver.linkedDeliveryPartnerId).select('rideMode.activeMode').lean();
-  return !partner || partner.rideMode?.activeMode === 'taxi';
+  const { linkedDriverMayBeOnline } = await import('../../food/delivery/services/hybridRide.service.js');
+  return linkedDriverMayBeOnline(driverId);
 };
 
 const onAsync = (socket, handler) => async (payload = {}) => {
@@ -93,7 +90,9 @@ const registerTaxiSocketConnectionHandlers = (io) => {
     socket.join(getSupportRoleRoom(identity.role));
 
     if (identity.role === 'driver') {
-      await Driver.findByIdAndUpdate(identity.sub, { socketId: socket.id });
+      await Driver.findByIdAndUpdate(identity.sub, { socketId: socket.id }).catch((error) => {
+        console.error('Failed to store driver socket id on connect', error?.message || error);
+      });
       notifyLateAvailableDriver(identity.sub).catch((error) => {
         console.error('Failed to notify late-available driver on socket connect', error);
       });
@@ -193,7 +192,7 @@ const registerTaxiSocketConnectionHandlers = (io) => {
       const normalizedCoords = normalizePoint(coordsInput, 'coordinates');
       const zone = await findZoneByPickup(normalizedCoords);
 
-      // A delivery partner's linked ride profile only counts as online while the partner is in Ride & Parcel mode
+      // A delivery partner's linked ride profile only counts as online while the partner is online in the delivery app
       const mayGoOnline = await linkedDriverInRideMode(identity.sub);
       await Driver.findByIdAndUpdate(identity.sub, {
         socketId: socket.id,
@@ -321,10 +320,14 @@ const registerTaxiSocketConnectionHandlers = (io) => {
 
       // Only release the driver if THIS socket is still his current one. A page change / app resume opens the new socket
       // before the old one's disconnect arrives; that old disconnect must not take the driver offline.
+      // A database outage must never take the whole server down from a socket event
       const released = await Driver.findOneAndUpdate(
         { _id: identity.sub, socketId: socket.id },
         { socketId: null },
-      );
+      ).catch((error) => {
+        console.error('Failed to release driver socket on disconnect', error?.message || error);
+        return null;
+      });
       if (!released) {
         return;
       }

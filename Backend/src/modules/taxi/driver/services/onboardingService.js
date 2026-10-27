@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { assertVehicleTypeFitsServices, narrowServicesForVehicle } from '../../services/vehicleServiceRules.js';
+import { assertVehicleTypeFitsServices, isTwoWheelerRecord, narrowServicesForVehicle } from '../../services/vehicleServiceRules.js';
 import { isMasterOtp as isMasterOtpFor } from '../../../../core/otp/masterOtp.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { env } from '../../../../config/env.js';
@@ -728,6 +728,10 @@ export const saveDriverVehicle = async ({
   let finalServiceCategories = normalizedServiceCategories;
   if (!isOwner && hasValue(vehicleTypeId)) {
     const pickedVehicle = await assertVehicleTypeFitsServices({ vehicleTypeId, serviceCategories: normalizedServiceCategories });
+    // Two-wheelers join as Delivery Partners (they can switch to bike rides & parcels there); this app is for cars, autos and the like
+    if (String(session.role || 'driver').toLowerCase() !== 'bus_driver' && isTwoWheelerRecord(pickedVehicle)) {
+      throw new ApiError(400, 'Bike and scooter riders register as a Delivery Partner in the Raydo delivery app. You can take bike rides and parcels there too.');
+    }
     // e.g. "All" on a bike becomes taxi + delivery (a bike never gets outstation / pooling)
     finalServiceCategories = narrowServicesForVehicle(pickedVehicle, normalizedServiceCategories);
   }

@@ -11,6 +11,7 @@ const api = axios.create({
   },
 });
 
+const NETWORK_RETRIES = 2;
 const DEDUPED_GET_TTL_MS = 2500;
 const dedupedGetRequests = new Map();
 const recentDedupedGetResponses = new Map();
@@ -298,6 +299,16 @@ api.interceptors.response.use(
         }
       }
       return Promise.reject({ ...error.response.data, status: error.response.status });
+    }
+
+    // No response at all (dropped signal, tower change, timeout): safe read requests are retried quietly before the
+    // screen is told the network is gone. Writes are never retried here because they may already have reached the server.
+    const config = error.config;
+    const isRead = String(config?.method || 'get').toLowerCase() === 'get';
+    const attempt = Number(config?._networkRetry || 0);
+    if (config && isRead && attempt < NETWORK_RETRIES && !config.signal?.aborted && error.code !== 'ERR_CANCELED') {
+      config._networkRetry = attempt + 1;
+      return new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1))).then(() => api(config));
     }
 
     return Promise.reject({ message: 'Network error or server down.' });

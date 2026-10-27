@@ -10,17 +10,23 @@ import { FoodOrder } from '../src/modules/food/orders/models/order.model.js';
 import { Driver } from '../src/modules/taxi/driver/models/Driver.js';
 import { WalletTransaction } from '../src/modules/taxi/driver/models/WalletTransaction.js';
 import { Vehicle } from '../src/modules/taxi/admin/models/Vehicle.js';
+import { DriverNeededDocument } from '../src/modules/taxi/admin/models/DriverNeededDocument.js';
 import { Ride } from '../src/modules/taxi/user/models/Ride.js';
 import { applyDriverWalletAdjustment, settleCompletedRideWallet } from '../src/modules/taxi/driver/services/walletService.js';
 import { verifyAccessToken } from '../src/modules/taxi/services/tokenService.js';
 import {
     applyForRideMode,
     assertLinkedDriverMayGoOnline,
+    getRideDocumentRequirements,
     getRideModeStatus,
     issueRideSession,
     listRideModeVehicleTypes,
     reconcileRideWallet,
     switchRideMode,
+    filterLinkedDriversForDispatch,
+    partnerIdsBlockedForFood,
+    setFoodOrdersEnabled,
+    syncRidesWithOnline,
 } from '../src/modules/food/delivery/services/hybridRide.service.js';
 import { getDeliveryPartnerWalletEnhanced, requestDeliveryWithdrawal } from '../src/modules/food/delivery/services/deliveryFinance.service.js';
 import { deleteDeliveryPartnerAccount, updateDeliveryAvailability } from '../src/modules/food/delivery/services/delivery.service.js';
@@ -121,7 +127,7 @@ beforeEach(async () => {
     await Promise.all([
         FoodDeliveryPartner.deleteMany({}), HybridWalletTransfer.deleteMany({}), FoodDeliveryWithdrawal.deleteMany({}),
         FoodOrder.collection.deleteMany({}), Driver.deleteMany({}), WalletTransaction.deleteMany({}), Ride.deleteMany({}),
-        Vehicle.collection.deleteMany({}),
+        Vehicle.collection.deleteMany({}), DriverNeededDocument.deleteMany({}),
     ]);
     bikeId = (await Vehicle.collection.insertOne({ name: 'Bike', transport_type: 'both', icon_types: 'bike', active: true, status: 1 })).insertedId;
     carTaxiOnlyId = (await Vehicle.collection.insertOne({ name: 'Sedan', transport_type: 'taxi', icon_types: 'car', active: true, status: 1 })).insertedId;
@@ -176,8 +182,8 @@ describe('Ride & Parcel enrolment', () => {
 
         await rejectsWith(apply(partner), 'ALREADY_APPLIED');
 
-        // An application made from the delivery app needs no admin review: switching approves it (the wallet rule still applies)
-        await rejectsWith(switchRideMode(partner._id, { mode: 'taxi' }), 'RIDE_WALLET_DUES');
+        // An application made from the delivery app needs no admin review: switching approves it (no reserve is needed in the ride wallet)
+        await switchRideMode(partner._id, { mode: 'taxi' });
         assert.equal((await getRideModeStatus(partner._id)).status, 'approved');
     });
 
@@ -267,8 +273,7 @@ describe('Mode switch', () => {
         assert.equal(d.onlineSelfie.imageUrl, 'https://cdn.test/selfie.jpg');
         assert.deepEqual(d.location.coordinates, [75.8, 22.7]);
 
-        // Food can not go online in ride mode; the taxi app may go online now
-        await rejectsWith(updateDeliveryAvailability(String(partner._id), { status: 'online' }), 'RIDE_MODE_ACTIVE');
+        // The taxi app may go online in ride mode
         await assertLinkedDriverMayGoOnline(d);
         assert.equal((await issueRideSession(partner._id)).activeMode, 'taxi');
     });
@@ -294,8 +299,8 @@ describe('Mode switch', () => {
         assert.equal(back.wasOnline, true);
         assert.equal((await Driver.findById(driverId).lean()).isOnline, false);
 
-        // In food mode the ride app can not go online
-        await rejectsWith(assertLinkedDriverMayGoOnline(await Driver.findById(driverId).lean()), 'SWITCH_TO_RIDE_MODE');
+        // With the partner offline in the delivery app, the ride app can not go online on its own
+        await rejectsWith(assertLinkedDriverMayGoOnline(await Driver.findById(driverId).lean()), 'GO_ONLINE_IN_DELIVERY_APP');
     });
 
     it('reports a scheduled ride that is still ahead when switching back to food', async () => {
@@ -349,30 +354,26 @@ describe('Merged wallet', () => {
         const status = await getRideModeStatus(partner._id);
         assert.equal(status.wallet.rideWalletBalance, -600);
         assert.equal(status.wallet.duesPending, 600);
-        assert.equal(status.wallet.topUpNeeded, 700); // 600 dues + the default minimum balance of 100
+        assert.equal(status.wallet.topUpNeeded, 600); // the dues only: a delivery partner needs no minimum reserve
         assert.equal(status.wallet.isBlocked, true);
         assert.equal((await getDeliveryPartnerWalletEnhanced(String(partner._id))).pocketBalance, 0);
 
         await rejectsWith(switchRideMode(partner._id, { mode: 'taxi' }), 'RIDE_WALLET_DUES');
     });
 
-    it('funds the ride wallet minimum from the Pocket in ride mode and gives it back in food mode', async () => {
+    it('moves nothing from the Pocket just to go to rides; cash-ride commission is still recovered from it', async () => {
         const { partner, driverId } = await enrolledPartner({ pocket: 300 });
-        await rejectsWith(
-            (async () => { const p2 = await enrolledPartner(); await switchRideMode(p2.partner._id, { mode: 'taxi' }); })(),
-            'RIDE_WALLET_DUES'
-        );
 
         await switchRideMode(partner._id, { mode: 'taxi' });
-        assert.equal((await Driver.findById(driverId).lean()).wallet.balance, 100);
-        assert.equal((await getDeliveryPartnerWalletEnhanced(String(partner._id))).pocketBalance, 200);
+        assert.equal((await Driver.findById(driverId).lean()).wallet.balance, 0);
+        assert.equal((await getDeliveryPartnerWalletEnhanced(String(partner._id))).pocketBalance, 300);
 
-        // A cash ride in ride mode: the 50 commission is taken back from the Pocket to keep the minimum
+        // A cash ride: the 50 commission is taken back from the Pocket
         const ride = await makeRide(driverId, { paymentMethod: 'cash', fare: 500 });
         await settle(ride._id);
         await reconcileRideWallet(partner._id);
-        assert.equal((await Driver.findById(driverId).lean()).wallet.balance, 100);
-        assert.equal((await getDeliveryPartnerWalletEnhanced(String(partner._id))).pocketBalance, 150);
+        assert.equal((await Driver.findById(driverId).lean()).wallet.balance, 0);
+        assert.equal((await getDeliveryPartnerWalletEnhanced(String(partner._id))).pocketBalance, 250);
 
         await switchRideMode(partner._id, { mode: 'food' });
         assert.equal((await Driver.findById(driverId).lean()).wallet.balance, 0);
@@ -459,15 +460,20 @@ describe('HTTP: delivery app -> ride app', () => {
         res = await request(app).get('/drivers/me').set(rideAuth);
         assert.equal(res.status, 200, JSON.stringify(res.body));
 
+        // Going online from the older ride mode moves the partner back to the one-panel mode (food + rides)
         res = await request(app).patch('/food/delivery/availability').set(auth).send({ status: 'online' });
-        assert.equal(res.body.code, 'RIDE_MODE_ACTIVE');
+        assert.equal(res.status, 200, JSON.stringify(res.body));
+        assert.equal((await FoodDeliveryPartner.findById(partner._id).lean()).rideMode.activeMode, 'food');
 
         res = await request(app).post('/food/delivery/ride-mode/switch').set(auth).send({ mode: 'food' });
         assert.equal(res.status, 200);
 
+        res = await request(app).patch('/food/delivery/availability').set(auth).send({ status: 'offline' });
+        assert.equal(res.status, 200, JSON.stringify(res.body));
+
         res = await request(app).patch('/drivers/online').set(rideAuth).send({ location: [75.86, 22.72] });
         assert.equal(res.status, 400);
-        assert.equal(res.body.code, 'SWITCH_TO_RIDE_MODE');
+        assert.equal(res.body.code, 'GO_ONLINE_IN_DELIVERY_APP');
 
         res = await request(app).post('/drivers/wallet/withdrawals').set(rideAuth).send({ amount: 100 });
         assert.equal(res.status, 400);
@@ -494,5 +500,136 @@ describe('Repeated switching', () => {
         }
         const pocket = await getDeliveryPartnerWalletEnhanced(String(partner._id));
         assert.equal(pocket.pocketBalance, 500); // nothing lost or doubled after 4 rounds
+    });
+});
+
+describe('Documents the driver app asks for', () => {
+    const licenceTemplate = (extra = {}) => DriverNeededDocument.create({
+        name: 'Driving Licence', slug: 'driving-licence', image_type: 'front_back', front_key: 'drivingLicenceFront',
+        back_key: 'drivingLicenceBack', is_required: true, has_identify_number: true, active: true, ...extra,
+    });
+    const rcTemplate = () => DriverNeededDocument.create({
+        name: 'Vehicle RC', slug: 'vehicle-rc', image_type: 'image', key: 'vehicleRc', is_required: true, active: true,
+    });
+
+    it('reuses licence details from the delivery profile and asks only for what is missing', async () => {
+        await licenceTemplate();
+        await rcTemplate();
+        const partner = await makePartner({ vehicleNumber: 'MP09DD4444', drivingLicensePhotoBack: 'https://cdn.test/dl-back.jpg' });
+
+        const requirements = await getRideDocumentRequirements(partner._id);
+        assert.deepEqual(requirements.missing, ['Vehicle RC']);
+        assert.equal(requirements.needsRcPhoto, false);
+        const licence = requirements.documents.find((d) => d.name === 'Driving Licence');
+        assert.deepEqual(licence.fields.map((f) => [f.key, f.fromProfile]), [['drivingLicenceFront', true], ['drivingLicenceBack', true]]);
+        assert.equal(licence.identifyNumber, 'MP09-2020-0001');
+
+        await rejectsWith(switchRideMode(partner._id, { mode: 'taxi' }), 'RIDE_DOCUMENTS_REQUIRED');
+        assert.equal(await Driver.countDocuments({}), 0); // nothing half-created
+    });
+
+    it('enrols straight away when the profile already covers every document', async () => {
+        await licenceTemplate();
+        const partner = await makePartner({ vehicleNumber: 'MP09EE5555', drivingLicensePhotoBack: 'https://cdn.test/dl-back.jpg' });
+        await deliveredOrder(partner._id, 500); // the ride wallet minimum comes from the Pocket
+        const result = await switchRideMode(partner._id, { mode: 'taxi' });
+        assert.equal(result.mode, 'taxi');
+        const driver = await Driver.findById(result.driverId).lean();
+        assert.equal(driver.documents.drivingLicenceFront.secureUrl, 'https://cdn.test/dl.jpg');
+        assert.equal(driver.documents.drivingLicenceFront.identifyNumber, 'MP09-2020-0001');
+        assert.equal(driver.documents.driving_license.secureUrl, 'https://cdn.test/dl.jpg'); // older key stays
+    });
+
+    it('asks for an expiry date the delivery profile never stored, then accepts it', async () => {
+        await licenceTemplate({ has_expiry_date: true });
+        const partner = await makePartner({ vehicleNumber: 'MP09FF6666', drivingLicensePhotoBack: 'https://cdn.test/dl-back.jpg' });
+        await assert.rejects(switchRideMode(partner._id, { mode: 'taxi' }), (err) => {
+            assert.equal(err.code, 'RIDE_DOCUMENTS_REQUIRED');
+            assert.deepEqual(err.details.missing, ['Driving Licence expiry date']);
+            return true;
+        });
+
+        await apply(partner, { documentMeta: JSON.stringify({ drivingLicenceFront: { expiryDate: '2031-04-01' } }) });
+        const driver = await Driver.findOne({ phone: partner.phone }).lean();
+        assert.equal(driver.documents.drivingLicenceBack.expiryDate, '2031-04-01');
+        assert.equal(driver.status, 'pending');
+    });
+});
+
+describe('One panel: food orders and rides together', () => {
+    it('going online / offline in the delivery app puts the ride profile online / offline too', async () => {
+        const { partner, driverId } = await enrolledPartner({ pocket: 500 });
+        await Driver.updateOne({ _id: driverId }, { $set: { isOnline: false } });
+
+        const on = await updateDeliveryAvailability(String(partner._id), { status: 'online', latitude: 22.7, longitude: 75.8, selfieImageUrl: 'https://cdn.test/s.jpg' });
+        assert.equal(on.rides.active, true, JSON.stringify(on.rides));
+        const online = await Driver.findById(driverId).lean();
+        assert.equal(online.isOnline, true);
+        assert.deepEqual(online.location.coordinates, [75.8, 22.7]);
+        assert.equal((await FoodDeliveryPartner.findById(partner._id).lean()).rideMode.activeMode, 'food');
+
+        await updateDeliveryAvailability(String(partner._id), { status: 'offline' });
+        assert.equal((await Driver.findById(driverId).lean()).isOnline, false);
+    });
+
+    it('a partner who is not enrolled yet is enrolled from the delivery profile when going online', async () => {
+        const partner = await makePartner({ vehicleNumber: 'MP09ZZ1111' });
+        await deliveredOrder(partner._id, 500); // the Pocket funds the ride wallet's minimum balance
+        const on = await updateDeliveryAvailability(String(partner._id), { status: 'online', latitude: 22.7, longitude: 75.8 });
+        assert.equal(on.rides.active, true, JSON.stringify(on.rides));
+        assert.equal((await getDeliveryPartnerWalletEnhanced(String(partner._id))).pocketBalance, 500); // nothing moved to the ride wallet
+        const status = await getRideModeStatus(partner._id, { reconcile: false });
+        assert.equal(status.status, 'approved');
+        assert.equal(status.activeMode, 'food');
+    });
+
+    it('food keeps working and the reason is returned when rides can not be switched on', async () => {
+        const partner = await makePartner(); // no vehicle number: no ride profile can be made
+        const res = await updateDeliveryAvailability(String(partner._id), { status: 'online' });
+        assert.equal(res.availabilityStatus, 'online');
+        assert.equal(res.rides.active, false);
+        assert.equal(res.rides.code, 'VEHICLE_NUMBER_REQUIRED');
+    });
+
+    it('food orders can be turned off and on; food dispatch skips the partner while they are off', async () => {
+        const { partner } = await enrolledPartner({ pocket: 500 });
+        assert.equal((await partnerIdsBlockedForFood([partner._id])).size, 0);
+
+        assert.deepEqual(await setFoodOrdersEnabled(partner._id, false), { foodOrdersEnabled: false });
+        assert.equal((await partnerIdsBlockedForFood([partner._id])).has(String(partner._id)), true);
+        assert.equal((await getRideModeStatus(partner._id, { reconcile: false })).foodOrdersEnabled, false);
+
+        await setFoodOrdersEnabled(partner._id, true);
+        assert.equal((await partnerIdsBlockedForFood([partner._id])).size, 0);
+    });
+
+    it('food orders can not be turned off without a ride profile', async () => {
+        const partner = await makePartner();
+        await rejectsWith(setFoodOrdersEnabled(partner._id, false), 'RIDE_MODE_NOT_ENROLLED');
+    });
+
+    it('food dispatch skips a partner on a ride; taxi dispatch skips a partner on a food order or offline', async () => {
+        const { partner, driverId } = await enrolledPartner({ pocket: 500 });
+        await syncRidesWithOnline(partner._id, true, { latitude: 22.7, longitude: 75.8 });
+        const linked = () => Driver.find({ _id: driverId }).select('linkedDeliveryPartnerId').lean();
+
+        // online and free: both sides may offer work
+        assert.equal((await filterLinkedDriversForDispatch(await linked())).length, 1);
+        assert.equal((await partnerIdsBlockedForFood([partner._id])).size, 0);
+
+        // on a ride: no food order
+        await Driver.updateOne({ _id: driverId }, { $set: { isOnRide: true } });
+        assert.equal((await partnerIdsBlockedForFood([partner._id])).has(String(partner._id)), true);
+        await Driver.updateOne({ _id: driverId }, { $set: { isOnRide: false } });
+
+        // on a food order: no ride
+        const order = await FoodOrder.collection.insertOne({ dispatch: { deliveryPartnerId: partner._id }, orderStatus: 'picked_up', createdAt: new Date() });
+        assert.equal((await filterLinkedDriversForDispatch(await linked())).length, 0);
+        await FoodOrder.collection.deleteOne({ _id: order.insertedId });
+        assert.equal((await filterLinkedDriversForDispatch(await linked())).length, 1);
+
+        // offline in the delivery app: no ride
+        await FoodDeliveryPartner.updateOne({ _id: partner._id }, { $set: { availabilityStatus: 'offline' } });
+        assert.equal((await filterLinkedDriversForDispatch(await linked())).length, 0);
     });
 });

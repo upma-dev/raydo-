@@ -200,6 +200,11 @@ const isRingEvent = (payload = {}) => {
         return true;
     }
 
+    // Taxi / parcel ride request for a driver: must ring like an incoming call, not just vibrate
+    if (type === 'ride_request' || String(data.ring || '').toLowerCase() === 'true') {
+        return true;
+    }
+
     // 1. Order aane par
     if (
         type.includes('new_order') ||

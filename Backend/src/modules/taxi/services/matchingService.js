@@ -357,7 +357,7 @@ const findDriversForZone = async ({
     serviceType,
   });
   const selectedFields =
-    'name phone socketId vehicleTypeId vehicleType vehicleIconType vehicleNumber vehicleColor vehicleMake vehicleModel rating ratingCount location zoneId isOnline isOnRide routeBooking serviceCategories registerFor';
+    'name phone socketId vehicleTypeId vehicleType vehicleIconType vehicleNumber vehicleColor vehicleMake vehicleModel rating ratingCount location zoneId isOnline isOnRide routeBooking serviceCategories registerFor linkedDeliveryPartnerId';
 
   const [liveLocationDrivers, routeBookingDrivers] = await Promise.all([
     Driver.find({
@@ -378,12 +378,14 @@ const findDriversForZone = async ({
       .select(selectedFields),
   ]);
 
-  return sortDriversByDispatchAnchorDistance(
-    [...liveLocationDrivers, ...routeBookingDrivers].filter(
-      (driver, index, items) => items.findIndex((item) => String(item._id) === String(driver._id)) === index,
-    ),
-    coordinates,
-  ).slice(0, limit);
+  const uniqueDrivers = [...liveLocationDrivers, ...routeBookingDrivers].filter(
+    (driver, index, items) => items.findIndex((item) => String(item._id) === String(driver._id)) === index,
+  );
+  // Delivery partners linked to a ride profile: only while online in the delivery app and not busy with a food order
+  const { filterLinkedDriversForDispatch } = await import('../../food/delivery/services/hybridRide.service.js');
+  const eligibleDrivers = await filterLinkedDriversForDispatch(uniqueDrivers);
+
+  return sortDriversByDispatchAnchorDistance(eligibleDrivers, coordinates).slice(0, limit);
 };
 
 export const matchDrivers = async (pickupCoords, options = {}) => {

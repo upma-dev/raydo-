@@ -174,6 +174,9 @@ const deliveryPartnerSchema = new mongoose.Schema(
             activeMode: { type: String, enum: ['food', 'taxi'], default: 'food' },
             appliedAt: { type: Date, default: null },
             lastSwitchedAt: { type: Date, default: null },
+            // One panel: going online in the delivery app takes food orders AND ride / parcel requests. The partner can
+            // switch food orders off here and keep getting rides only.
+            foodOrdersEnabled: { type: Boolean, default: true },
             // Short lock so a wallet merge and a Pocket withdrawal never read the same balance at once
             walletLockUntil: { type: Date, default: null },
         },

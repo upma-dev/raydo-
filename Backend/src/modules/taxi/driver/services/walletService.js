@@ -141,6 +141,11 @@ const resolveWalletRules = async () => {
 
 const getWalletSnapshot = async (driver) => {
   const rules = await resolveWalletRules();
+  // A delivery partner's ride profile never needs a reserve in the ride wallet (nothing is moved from the Pocket just to
+  // go online): only cash-ride commission dues below the cash limit block it
+  if (driver?.linkedDeliveryPartnerId && rules.minimumBalanceForOrders > 0) {
+    rules.minimumBalanceForOrders = 0;
+  }
   const balance = Number(driver?.wallet?.balance || 0);
 
   return {

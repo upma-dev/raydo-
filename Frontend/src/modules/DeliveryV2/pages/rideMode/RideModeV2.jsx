@@ -85,12 +85,26 @@ const RideModeV2 = () => {
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ vehicleTypeId: '', vehicleNumber: '', vehicleMake: '', vehicleModel: '', vehicleColor: '', services: ['taxi', 'delivery'] });
   const [rcPhoto, setRcPhoto] = useState(null);
+  // The documents the Raydo Sarthi (driver) registration asks for; licence / Aadhaar / PAN come from the delivery profile
+  const [requirements, setRequirements] = useState({ documents: [], needsRcPhoto: true });
+  const [docFiles, setDocFiles] = useState({}); // field key -> File
+  const [docMeta, setDocMeta] = useState({}); // template id -> { identifyNumber, expiryDate }
 
   const load = useCallback(async () => {
     try {
-      const [status, vehicleList] = await Promise.all([deliveryAPI.getRideMode(), deliveryAPI.getRideModeVehicleTypes()]);
+      const [status, vehicleList, requirementList] = await Promise.all([
+        deliveryAPI.getRideMode(),
+        deliveryAPI.getRideModeVehicleTypes(),
+        deliveryAPI.getRideModeRequirements().catch(() => null),
+      ]);
       const s = unwrap(status);
       setState(s);
+      const req = unwrap(requirementList);
+      if (req) {
+        setRequirements({ documents: req.documents || [], needsRcPhoto: req.needsRcPhoto !== false });
+        setDocMeta(Object.fromEntries((req.documents || []).map((d) => [d.id, { identifyNumber: d.identifyNumber || '', expiryDate: d.expiryDate || '' }])));
+        if (req.vehicleNumber) setForm((f) => ({ ...f, vehicleNumber: f.vehicleNumber || req.vehicleNumber }));
+      }
       // Bikes first: they are the only vehicles that can be added here; the rest are shown greyed out below them
       const list = [...(unwrap(vehicleList)?.vehicles || [])].sort((a, b) => Number(b.allowed) - Number(a.allowed));
       setVehicles(list);
@@ -141,11 +155,21 @@ const RideModeV2 = () => {
     if (!form.vehicleTypeId) return toast.error('Select your vehicle type');
     if (!/^[A-Za-z0-9 -]{4,15}$/.test(form.vehicleNumber.trim())) return toast.error('Enter a valid vehicle number');
     if (form.services.length === 0) return toast.error('Select Rides, Parcels or both');
-    if (!rcPhoto && state?.status !== 'rejected') return toast.error('Add a photo of your vehicle RC');
+    if (requirements.needsRcPhoto && !rcPhoto && state?.status !== 'rejected') return toast.error('Add a photo of your vehicle RC');
+    for (const doc of requirements.documents) {
+      const meta = docMeta[doc.id] || {};
+      const filled = doc.fields.some((f) => f.url || docFiles[f.key]);
+      const lacking = doc.fields.filter((f) => f.required && !f.url && !docFiles[f.key]);
+      if (doc.required && lacking.length) return toast.error(`Add ${lacking[0].label}`);
+      if (filled && doc.hasIdentifyNumber && !String(meta.identifyNumber || '').trim()) return toast.error(`Enter your ${doc.name} number`);
+      if (filled && doc.hasExpiryDate && !meta.expiryDate) return toast.error(`Enter the ${doc.name} expiry date`);
+    }
 
     const data = new FormData();
     Object.entries(form).forEach(([key, value]) => data.append(key, Array.isArray(value) ? value.join(',') : value));
     if (rcPhoto) data.append('rcPhoto', rcPhoto);
+    Object.entries(docFiles).forEach(([key, file]) => data.append(`doc__${key}`, file));
+    data.append('documentMeta', JSON.stringify(docMeta));
 
     setSubmitting(true);
     try {
@@ -261,17 +285,75 @@ const RideModeV2 = () => {
 
               <section className="rounded-2xl bg-white border border-gray-100 p-4 shadow-sm">
                 <p className="text-[11px] font-black uppercase tracking-wider text-gray-400 mb-3">3. Documents</p>
-                <label className="flex items-center gap-3 rounded-xl border border-dashed border-gray-300 p-3 cursor-pointer">
-                  <span className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center"><Camera className="w-5 h-5 text-gray-500" /></span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-black text-gray-900">Vehicle RC photo</span>
-                    <span className="block text-[11px] font-bold text-gray-400 truncate">{rcPhoto ? rcPhoto.name : 'Tap to upload'}</span>
-                  </span>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => setRcPhoto(e.target.files?.[0] || null)} />
-                </label>
+                <div className="space-y-3">
+                  {requirements.documents.map((doc) => (
+                    <div key={doc.id} className="rounded-xl border border-gray-100 p-3">
+                      <p className="text-sm font-black text-gray-900">{doc.name}{doc.required ? '' : ' (optional)'}</p>
+                      <div className="mt-2 space-y-2">
+                        {doc.fields.map((field) => {
+                          const chosen = docFiles[field.key];
+                          const hasIt = Boolean(chosen || field.url);
+                          return (
+                            <label key={field.key} className="flex items-center gap-3 rounded-xl border border-dashed border-gray-300 p-2.5 cursor-pointer">
+                              <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${hasIt ? 'bg-emerald-50' : 'bg-gray-100'}`}>
+                                {hasIt ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Camera className="w-4 h-4 text-gray-500" />}
+                              </span>
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-xs font-black text-gray-900">{field.label}</span>
+                                <span className="block text-[11px] font-bold text-gray-400 truncate">
+                                  {chosen ? chosen.name : field.url ? (field.fromProfile ? 'Taken from your delivery profile' : 'Already uploaded') : 'Tap to upload'}
+                                </span>
+                              </span>
+                              {field.url && !chosen && <span className="text-[10px] font-black uppercase text-gray-400">Change</span>}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) setDocFiles((prev) => ({ ...prev, [field.key]: file }));
+                                }}
+                              />
+                            </label>
+                          );
+                        })}
+                        {doc.hasIdentifyNumber && (
+                          <input
+                            value={docMeta[doc.id]?.identifyNumber || ''}
+                            onChange={(e) => setDocMeta((m) => ({ ...m, [doc.id]: { ...m[doc.id], identifyNumber: e.target.value } }))}
+                            placeholder={`${doc.name} number`}
+                            className="w-full h-11 rounded-xl border border-gray-200 px-3 text-xs font-bold outline-none focus:border-gray-900"
+                          />
+                        )}
+                        {doc.hasExpiryDate && (
+                          <label className="block">
+                            <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Expiry date</span>
+                            <input
+                              type="date"
+                              value={docMeta[doc.id]?.expiryDate || ''}
+                              onChange={(e) => setDocMeta((m) => ({ ...m, [doc.id]: { ...m[doc.id], expiryDate: e.target.value } }))}
+                              className="w-full h-11 rounded-xl border border-gray-200 px-3 text-xs font-bold outline-none focus:border-gray-900"
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {requirements.needsRcPhoto && (
+                    <label className="flex items-center gap-3 rounded-xl border border-dashed border-gray-300 p-3 cursor-pointer">
+                      <span className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center"><Camera className="w-5 h-5 text-gray-500" /></span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-black text-gray-900">Vehicle RC photo</span>
+                        <span className="block text-[11px] font-bold text-gray-400 truncate">{rcPhoto ? rcPhoto.name : 'Tap to upload'}</span>
+                      </span>
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => setRcPhoto(e.target.files?.[0] || null)} />
+                    </label>
+                  )}
+                </div>
                 <p className="mt-3 flex items-start gap-2 text-[11px] font-medium text-gray-500 leading-relaxed">
                   <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-                  Your driving licence, Aadhaar and PAN from your delivery profile are shared with the review. No need to upload them again.
+                  Documents already in your delivery profile (licence, Aadhaar, PAN) are reused. New documents are checked by admin before you can take rides.
                 </p>
               </section>
             </>

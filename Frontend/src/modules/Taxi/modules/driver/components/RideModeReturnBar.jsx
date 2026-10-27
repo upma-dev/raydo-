@@ -29,7 +29,7 @@ const RideModeReturnBar = ({ hasActiveRide = false }) => {
             toast.success(
                 upcoming.length
                     ? `Back on Food delivery. You still have ${upcoming.length} scheduled ride(s) — switch back before pickup time.`
-                    : 'Back on Food delivery. Go online to get orders.',
+                    : 'Back on the delivery panel. Food orders and rides come together while you are online.',
                 { duration: upcoming.length ? 8000 : 4000 },
             );
             navigate('/food/delivery/feed', { replace: true });
@@ -45,6 +45,7 @@ const RideModeReturnBar = ({ hasActiveRide = false }) => {
             <div className="fixed top-[92px] left-0 right-0 z-40 mx-auto max-w-md flex justify-center pointer-events-none">
                 <RideModePill
                     target="food"
+                    label="Back to Delivery"
                     busy={isSwitching}
                     className="pointer-events-auto"
                     onClick={() => (hasActiveRide

@@ -24,6 +24,7 @@ function shouldPlaySound(payload = {}) {
   const title = String(payload?.notification?.title || data.title || "").toLowerCase();
   const isChat = type.includes("chat") || data.openChat === "true" || Boolean(data.conversationId);
   if (isChat) return true;
+  if (type === "ride_request" || String(data.ring || "").toLowerCase() === "true") return true;
   return (
     type.includes("new_order") || type.includes("order_created") || type.includes("place_order") ||
     type.includes("order_assigned") || type.includes("order_assign") || type.includes("delivery_assigned") ||
@@ -163,7 +164,7 @@ async function loadFirebaseWebConfig() {
         tag: notificationKey,
         renotify: false,
         silent: !shouldPlaySound(payload),
-        requireInteraction: false,
+        requireInteraction: shouldPlaySound(payload),
         vibrate: [200, 100, 200, 100, 300],
         data: payload?.data || {},
       });

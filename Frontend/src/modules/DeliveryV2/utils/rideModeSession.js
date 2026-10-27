@@ -34,6 +34,22 @@ export const startRideSession = (taxiToken) => {
   } catch { /* storage blocked: the session token is still set for this tab */ }
 };
 
+/**
+ * One panel: the delivery app also takes ride / parcel requests, so it needs the ride session token while the partner is
+ * online. Unlike startRideSession it leaves the food online status alone. Returns true when the token is in place.
+ */
+export const ensureRideToken = async () => {
+  try {
+    const session = unwrap(await deliveryAPI.getRideSession());
+    if (!session?.taxiToken) return false;
+    persistDriverAuthSession({ token: session.taxiToken, role: 'driver' });
+    localStorage.setItem(RIDE_MODE_FLAG, '1');
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const setRideModeCache = (activeMode) => {
   try {
     localStorage.setItem('rideModeCard', JSON.stringify({ eligible: true, status: 'approved', activeMode }));

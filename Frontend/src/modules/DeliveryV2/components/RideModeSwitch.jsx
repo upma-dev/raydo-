@@ -66,6 +66,12 @@ const RideModeSwitch = ({ isOnline, hasActiveOrder, riderLocation, onLeaveFood }
       });
       return;
     }
+    if (code === 'RIDE_DOCUMENTS_REQUIRED') {
+      // Same documents as the Raydo Sarthi registration: the form asks for what the delivery profile does not have
+      toast.info(message, { duration: 6000 });
+      navigate('/food/delivery/ride-mode');
+      return;
+    }
     if (code === 'DRIVING_LICENSE_REQUIRED' || code === 'VEHICLE_NUMBER_REQUIRED') {
       toast.error(message, { duration: 8000, action: { label: 'Open profile', onClick: () => navigate('/food/delivery/profile/documents') } });
       return;

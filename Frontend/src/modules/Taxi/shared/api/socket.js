@@ -142,16 +142,18 @@ class SocketService {
     this.currentToken = token;
     this.socket = io(SOCKET_ORIGIN, {
       auth: { token },
-      // Start with polling and upgrade when possible so reverse proxies that
-      // don't immediately pass WebSocket upgrades can still complete the
-      // Socket.IO handshake in production.
-      transports: ['polling', 'websocket'],
+      // WebSocket first. The API runs as several PM2 cluster workers without sticky sessions, so a polling-first
+      // handshake can land on different workers ("Session ID unknown") and show up as constant network errors / offline.
+      // Polling stays only as a fallback when WebSocket itself is blocked.
+      transports: ['websocket', 'polling'],
       upgrade: true,
       withCredentials: true,
       reconnection: true,
-      reconnectionDelay: 750,
-      reconnectionDelayMax: 2500,
-      timeout: 10000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 3000,
+      randomizationFactor: 0.3,
+      timeout: 15000,
     });
     this.attachRegisteredListeners();
 

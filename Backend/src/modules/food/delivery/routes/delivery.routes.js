@@ -5,7 +5,7 @@ import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
 import { registerDeliveryPartnerController, updateDeliveryPartnerProfileController, updateDeliveryPartnerBankDetailsController, listSupportTicketsController, createSupportTicketController, getSupportTicketByIdController, updateDeliveryPartnerDetailsController, updateDeliveryPartnerProfilePhotoBase64Controller, updateAvailabilityController, getWalletController, createWithdrawalRequestController, createCashDepositOrderController, verifyCashDepositPaymentController, getEarningsController, getTripHistoryController, getPocketDetailsController, getEmergencyHelpController, getCashLimitController, getDeliveryReferralStatsController, getActiveEarningAddonsController, deleteDeliveryPartnerAccountController, getDeliveryPartnerReviewsController, requestEmergencyOfflineController, getEmergencyOfflineStatusController } from '../controllers/delivery.controller.js';
 
-import { applyForRideModeController, getRideModeStatusController, issueRideSessionController, listRideModeVehicleTypesController, switchRideModeController } from '../controllers/rideMode.controller.js';
+import { applyForRideModeController, getRideDocumentRequirementsController, getRideModeStatusController, issueRideSessionController, listRideModeVehicleTypesController, setFoodOrdersController, switchRideModeController } from '../controllers/rideMode.controller.js';
 
 const router = express.Router();
 
@@ -67,11 +67,14 @@ router.get('/earning-addons/active', authMiddleware, requireRoles('DELIVERY_PART
 router.post('/reverify', authMiddleware, requireRoles('DELIVERY_PARTNER'), (req, res) => res.json({ success: true, message: 'Submitted' })); // Stub
 
 // Ride & Parcel mode (taxi rides / parcels from the delivery app)
-const rideModeUpload = upload.fields([{ name: 'rcPhoto', maxCount: 1 }]);
+// rcPhoto + one `doc__<field key>` photo per document the admin asks drivers for
+const rideModeUpload = upload.any();
 router.get('/ride-mode', authMiddleware, requireRoles('DELIVERY_PARTNER'), getRideModeStatusController);
+router.get('/ride-mode/requirements', authMiddleware, requireRoles('DELIVERY_PARTNER'), getRideDocumentRequirementsController);
 router.get('/ride-mode/vehicle-types', authMiddleware, requireRoles('DELIVERY_PARTNER'), listRideModeVehicleTypesController);
 router.post('/ride-mode/apply', authMiddleware, requireRoles('DELIVERY_PARTNER'), rideModeUpload, applyForRideModeController);
 router.post('/ride-mode/switch', authMiddleware, requireRoles('DELIVERY_PARTNER'), switchRideModeController);
+router.put('/ride-mode/food-orders', authMiddleware, requireRoles('DELIVERY_PARTNER'), setFoodOrdersController);
 router.post('/ride-mode/session', authMiddleware, requireRoles('DELIVERY_PARTNER'), issueRideSessionController);
 
 // Pocket / requests page – wallet, earnings, and admin-set delivery settings

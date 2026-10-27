@@ -19,7 +19,7 @@ import {
     normalizeDriverPortalRole,
 } from '../../services/registrationService';
 import { POOLING_ENABLED } from '../../../../shared/featureFlags';
-import { transportChoicesForVehicle, vehicleCanDo, coerceTransport } from '../../../../shared/utils/vehicleServices';
+import { transportChoicesForVehicle, vehicleCanDo, coerceTransport, isTwoWheelerVehicle } from '../../../../shared/utils/vehicleServices';
 
 const VEHICLE_NUMBER_REGEX = /^[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4}$/;
 const getAllowedServiceCategories = () => (
@@ -173,8 +173,11 @@ const StepVehicle = () => {
     });
     // Only vehicle types that are switched on AND made for the service the driver chose
     // (taxi / outstation -> taxi vehicles, delivery -> delivery vehicles, pooling -> pooling vehicles; 'both' fits all)
+    // Bike / scooter riders join as Delivery Partners (where they can also take bike rides & parcels); this app is for the rest
+    const bikesGoToDelivery = !isOwner && role !== 'bus_driver';
     const selectableVehicleTypes = vehicleTypes.filter((type) => {
         if (type?.active === false || Number(type?.status ?? 1) === 0) return false;
+        if (bikesGoToDelivery && isTwoWheelerVehicle(type)) return false;
         const transport = String(type?.transport_type || 'taxi').toLowerCase();
         const chosen = String(formData?.registerFor || 'taxi').toLowerCase();
         if (!vehicleCanDo(type, chosen)) return false; // e.g. a bike is not offered for Outstation / Pooling
@@ -670,6 +673,18 @@ const StepVehicle = () => {
                                                     : 'Select a vehicle type now. Choosing your city later will refine availability if needed.'}
                                             </p>
                                         </div>
+                                         {bikesGoToDelivery && (
+                                             <button
+                                                 type="button"
+                                                 onClick={() => navigate('/food/delivery/login')}
+                                                 className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left"
+                                             >
+                                                 <span className="block text-[12px] font-black text-amber-900">Ride a bike or scooter?</span>
+                                                 <span className="block text-[11px] font-medium text-amber-800 leading-relaxed">
+                                                     Register as a Delivery Partner instead. You can take food orders, bike rides and parcels from that one app. Tap here to continue there.
+                                                 </span>
+                                             </button>
+                                         )}
                                          <div className="grid grid-cols-2 gap-3">
                                              {vehicleTypesLoading ? (
                                                  Array.from({ length: 4 }).map((_, i) => (

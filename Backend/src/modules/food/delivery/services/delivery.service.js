@@ -320,10 +320,12 @@ export const updateDeliveryAvailability = async (userId, payload) => {
 
     const todayKey = new Date().toISOString().slice(0, 10);
 
+    // One panel: a partner left in the older Ride & Parcel mode is moved back to the normal mode, which now takes food
+    // orders and rides together
     if (validStatus === 'online' && partner.rideMode?.activeMode === 'taxi') {
-        const err = new ValidationError('You are in Ride & Parcel mode. Switch to Food delivery to receive food orders.');
-        err.code = 'RIDE_MODE_ACTIVE';
-        throw err;
+        const { switchRideMode } = await import('./hybridRide.service.js');
+        await switchRideMode(partner._id, { mode: 'food' });
+        partner = await FoodDeliveryPartner.findById(partner._id);
     }
 
     if (validStatus === 'online' && !forceBypassForDev) {
@@ -407,6 +409,17 @@ export const updateDeliveryAvailability = async (userId, payload) => {
             throw err;
         }
 
+        // Guard 1b: a ride / parcel trip on the linked ride profile counts as work in progress too
+        if (partner.rideMode?.taxiDriverId) {
+            const { Driver } = await import('../../../taxi/driver/models/Driver.js');
+            const onRide = await Driver.exists({ _id: partner.rideMode.taxiDriverId, isOnRide: true });
+            if (onRide) {
+                const err = new ValidationError('You cannot go offline while you have a ride or parcel trip in progress.');
+                err.code = 'ACTIVE_RIDE_IN_PROGRESS';
+                throw err;
+            }
+        }
+
         /*
         // Guard 2: Active Scheduled Gig Shift Emergency Admin Approval Check (COMMENTED OUT)
         const { getActiveGigForPartner } = await import('./gig.service.js');
@@ -443,9 +456,18 @@ export const updateDeliveryAvailability = async (userId, payload) => {
         partner.lastLocationAt = new Date();
     }
     await partner.save();
+
+    // Rides and parcels follow the same switch (food orders can be turned off separately)
+    let rides = { active: false };
+    if (partner.rideMode?.taxiDriverId || validStatus === 'online') {
+        const { syncRidesWithOnline } = await import('./hybridRide.service.js');
+        rides = await syncRidesWithOnline(partner._id, validStatus === 'online', { latitude: numLat, longitude: numLng });
+    }
     return {
         availabilityStatus: partner.availabilityStatus,
-        onlineSelfie: partner.onlineSelfie || {}
+        onlineSelfie: partner.onlineSelfie || {},
+        rides,
+        foodOrdersEnabled: partner.rideMode?.foodOrdersEnabled !== false
     };
 };
 

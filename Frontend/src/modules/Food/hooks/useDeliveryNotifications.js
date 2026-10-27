@@ -817,7 +817,7 @@ export const useDeliveryNotifications = () => {
 
     socketRef.current = io(socketUrl, {
       path: '/socket.io/',
-      transports: ['polling', 'websocket'], // Allow both
+      transports: ['websocket', 'polling'], // WebSocket first: polling-first breaks behind PM2 cluster without sticky sessions
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
@@ -832,7 +832,7 @@ export const useDeliveryNotifications = () => {
     debugLog('Socket.IO client created', {
       socketUrl,
       path: '/socket.io/',
-      transports: ['polling', 'websocket'],
+      transports: ['websocket', 'polling'],
       tokenPresent: Boolean(token),
       deliveryPartnerId,
     });

@@ -20,7 +20,8 @@ import { OrderSummaryModal } from '@/modules/DeliveryV2/components/modals/OrderS
 import { SelfieVerificationModal } from '@/modules/DeliveryV2/components/modals/SelfieVerificationModal';
 import FoodOrderChatScreen from '@food/pages/user/orders/FoodOrderChatScreen';
 import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
-import RideModeSwitch from '@/modules/DeliveryV2/components/RideModeSwitch';
+import FoodOrdersToggle from '@/modules/DeliveryV2/components/FoodOrdersToggle';
+import RideRequestBridge from '@/modules/DeliveryV2/components/RideRequestBridge';
 
 // Sub Pages
 import PocketV2 from '@/modules/DeliveryV2/pages/PocketV2';
@@ -668,24 +669,23 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
         throw new Error(errorMsg);
       }
 
+      // The browser's own `timeout` does not run while a location permission prompt is open, so a prompt that is
+      // ignored would leave this switch stuck. A hard timer turns that into the normal "GPS timed out" message.
+      const getPosition = (options) => new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject({ code: 3 }), options.timeout + 5000);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => { clearTimeout(timer); resolve(pos); },
+          (err) => { clearTimeout(timer); reject(err); },
+          options,
+        );
+      });
+
       let position;
       try {
-        position = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 5000,
-          });
-        });
+        position = await getPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 });
       } catch (highAccError) {
         try {
-          position = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: false,
-              timeout: 10000,
-              maximumAge: 15000,
-            });
-          });
+          position = await getPosition({ enableHighAccuracy: false, timeout: 10000, maximumAge: 15000 });
         } catch (geoError) {
           setOnline(false);
           setIsTogglingDuty(false);
@@ -717,6 +717,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       setOnline(true);
       setShowGpsModal(false);
       toast.success('You are now online');
+      if (data.rides && data.rides.active === false && data.rides.reason) {
+        toast.info(`Ride & Parcel requests are off: ${data.rides.reason}`, { duration: 7000 });
+      }
     } catch (error) {
       setOnline(false);
       const data = error?.response?.data;
@@ -1402,14 +1405,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
             </div>
           </div>
 
-          {/* Food | Ride & Parcel mode switch */}
+          {/* One panel: food orders can be switched off while rides and parcels keep coming */}
           {currentTab === 'feed' && !activeOrder && (
-            <RideModeSwitch
-              isOnline={isOnline}
-              hasActiveOrder={Boolean(activeOrder)}
-              riderLocation={riderLocation}
-              onLeaveFood={() => setOnline(false)}
-            />
+            <FoodOrdersToggle hasActiveOrder={Boolean(activeOrder)} />
           )}
 
           {/* 📍 GPS OFF Sticky Alert Banner */}
@@ -1886,6 +1884,10 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
           await goOnline();
         }}
       />
+
+      {/* Ride and parcel requests arrive on this same screen while online. Kept outside the header: its backdrop blur
+          would trap the full-screen request card inside the header's box. */}
+      <RideRequestBridge enabled={isOnline} />
 
       {/* OVERLAYS & POPUPS */}
       <BottomPopup isOpen={showEmergencyPopup} title="Emergency Help" onClose={() => setShowEmergencyPopup(false)}>

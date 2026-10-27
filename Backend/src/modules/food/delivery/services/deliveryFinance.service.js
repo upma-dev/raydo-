@@ -43,24 +43,17 @@ export const rideWalletTransferTotals = async (partnerId) => {
 };
 
 /**
- * Enhanced wallet fetch for delivery partners.
- * Integrates:
- * 1. Historical orders (earnings)
- * 2. Admin bonuses
- * 3. Withdrawals (pending/payout)
- * 4. Cash collected vs limit
+ * The Pocket numbers only (no history lists). Every place that needs a balance - the wallet merge, the unified balance on
+ * /drivers/me, the ride-mode switch - uses this one calculation, so they always agree, and none of them has to load the
+ * 50-row histories the Pocket screen shows.
  */
-export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
+export const getDeliveryPocketTotals = async (deliveryPartnerId) => {
     if (!deliveryPartnerId || !mongoose.Types.ObjectId.isValid(deliveryPartnerId)) {
         throw new ValidationError('Invalid delivery partner ID');
     }
+    const partnerId = new mongoose.Types.ObjectId(String(deliveryPartnerId));
 
-    const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
-    const partner = await FoodDeliveryPartner.findById(partnerId).lean();
-    if (!partner) throw new ValidationError('Delivery partner not found');
-
-    const [cashLimitSettings, earningsAgg, cashCollectedAgg, cashDepositsAgg, bonusAgg, withdrawalAgg, withdrawalsList, depositList] = await Promise.all([
-        getDeliveryCashLimitSettings(),
+    const [earningsAgg, cashCollectedAgg, cashDepositsAgg, bonusAgg, withdrawalAgg, ledgerExtraEarnings, rideTransfers] = await Promise.all([
         // 1. Total Earnings from Delivered Orders
         FoodOrder.aggregate([
             { $match: { 'dispatch.deliveryPartnerId': partnerId, orderStatus: 'delivered' } },
@@ -68,23 +61,12 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
         ]),
         // 2. Gross cash collected (COD orders)
         FoodOrder.aggregate([
-            {
-                $match: {
-                    'dispatch.deliveryPartnerId': partnerId,
-                    orderStatus: 'delivered',
-                    'payment.method': 'cash'
-                }
-            },
+            { $match: { 'dispatch.deliveryPartnerId': partnerId, orderStatus: 'delivered', 'payment.method': 'cash' } },
             { $group: { _id: null, cashCollected: { $sum: { $ifNull: ['$pricing.total', 0] } } } }
         ]),
         // 3. Cash deposits (deduct from cash-in-hand)
         FoodDeliveryCashDeposit.aggregate([
-            {
-                $match: {
-                    deliveryPartnerId: partnerId,
-                    status: 'Completed'
-                }
-            },
+            { $match: { deliveryPartnerId: partnerId, status: 'Completed' } },
             { $group: { _id: null, depositedCash: { $sum: { $ifNull: ['$amount', 0] } } } }
         ]),
         // 4. Admin Bonuses
@@ -103,15 +85,9 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
                 }
             }
         ]),
-        // 6. Recent Withdrawals for History
-        FoodDeliveryWithdrawal.find({ deliveryPartnerId: partnerId })
-            .sort({ createdAt: -1 })
-            .limit(50)
-            .lean(),
-        FoodDeliveryCashDeposit.find({ deliveryPartnerId: partnerId })
-            .sort({ createdAt: -1 })
-            .limit(50)
-            .lean()
+        riderLedgerExtraEarnings(partnerId),
+        // Ride & Parcel mode: taxi earnings swept into the Pocket, minus cash-ride commission dues paid from it
+        rideWalletTransferTotals(partnerId),
     ]);
 
     const totalEarned = Number(earningsAgg?.[0]?.totalEarned) || 0;
@@ -122,14 +98,7 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     const totalWithdrawn = Number(withdrawalAgg?.[0]?.totalWithdrawn) || 0;
     const pendingWithdrawals = Number(withdrawalAgg?.[0]?.pendingWithdrawals) || 0;
 
-    const totalCashLimit = Number(cashLimitSettings.deliveryCashLimit) || 0;
-    const deliveryWithdrawalLimit = Number(cashLimitSettings.deliveryWithdrawalLimit) || 100;
-
-    // Pocket Balance = (Earnings + Bonus) - Total Withdrawn (approved) - Pending Withdrawals
-    // Wait, usually pocket balance subtracts pending too so user knows how much is "left" to request.
-    const ledgerExtraEarnings = await riderLedgerExtraEarnings(partnerId);
-    // Ride & Parcel mode: taxi earnings swept into the Pocket, minus cash-ride commission dues paid from it
-    const rideTransfers = await rideWalletTransferTotals(partnerId);
+    // Pocket Balance = (Earnings + Bonus + ride earnings) - Withdrawn (approved) - Pending Withdrawals - ride dues
     const rawGrossPocket = round2((totalEarned + ledgerExtraEarnings + totalBonus + rideTransfers.mergedIn) - (totalWithdrawn + pendingWithdrawals + rideTransfers.duesRecovered));
     const grossPocketBalance = Math.max(0, rawGrossPocket);
 
@@ -138,6 +107,44 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     const pocketBalance = Math.max(0, grossPocketBalance - cashInHand);
     // Not clamped at zero: a negative value means more has been promised (withdrawals) than earned
     const rawPocketBalance = round2(rawGrossPocket - cashInHand);
+
+    return {
+        totalEarned, ledgerExtraEarnings, totalBonus, totalWithdrawn, pendingWithdrawals, cashInHand,
+        rideTransfers, grossPocketBalance, pocketBalance, rawPocketBalance,
+    };
+};
+
+/**
+ * Enhanced wallet fetch for delivery partners.
+ * Integrates:
+ * 1. Historical orders (earnings)
+ * 2. Admin bonuses
+ * 3. Withdrawals (pending/payout)
+ * 4. Cash collected vs limit
+ */
+export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
+    if (!deliveryPartnerId || !mongoose.Types.ObjectId.isValid(deliveryPartnerId)) {
+        throw new ValidationError('Invalid delivery partner ID');
+    }
+
+    const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
+    const [partner, totals, cashLimitSettings, withdrawalsList, depositList] = await Promise.all([
+        FoodDeliveryPartner.findById(partnerId).lean(),
+        getDeliveryPocketTotals(deliveryPartnerId),
+        getDeliveryCashLimitSettings(),
+        // Recent Withdrawals / deposits for History
+        FoodDeliveryWithdrawal.find({ deliveryPartnerId: partnerId }).sort({ createdAt: -1 }).limit(50).lean(),
+        FoodDeliveryCashDeposit.find({ deliveryPartnerId: partnerId }).sort({ createdAt: -1 }).limit(50).lean(),
+    ]);
+    if (!partner) throw new ValidationError('Delivery partner not found');
+
+    const {
+        totalEarned, ledgerExtraEarnings, totalBonus, totalWithdrawn, pendingWithdrawals, cashInHand,
+        rideTransfers, grossPocketBalance, pocketBalance, rawPocketBalance,
+    } = totals;
+
+    const totalCashLimit = Number(cashLimitSettings.deliveryCashLimit) || 0;
+    const deliveryWithdrawalLimit = Number(cashLimitSettings.deliveryWithdrawalLimit) || 100;
 
     // Fetch transactions for UI (Orders, Bonuses, Withdrawals)
     const [ordersTx, rideTransferRows] = await Promise.all([
