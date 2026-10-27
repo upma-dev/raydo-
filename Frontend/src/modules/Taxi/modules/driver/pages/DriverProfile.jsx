@@ -1,3 +1,4 @@
+import { hasDeliveryLogin, logoutMergedPartner } from '@/modules/DeliveryV2/utils/rideModeSession';
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -138,9 +139,15 @@ const DriverProfile = () => {
         }
     };
 
-    const handleLogout = () => {
-        clearDriverAuthState();
+    const handleLogout = async () => {
         setIsLogoutOpen(false);
+        // A delivery partner who also works rides is ONE account: log out of both and go back to the delivery login
+        if (hasDeliveryLogin()) {
+            clearDriverAuthState();
+            await logoutMergedPartner(navigate);
+            return;
+        }
+        clearDriverAuthState();
         navigate(`${routePrefix}/login`, { replace: true });
     };
 

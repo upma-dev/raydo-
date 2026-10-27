@@ -1,6 +1,7 @@
 import { deliveryAPI } from '@food/api';
 import { persistDriverAuthSession, getLocalDriverToken } from '@/modules/Taxi/modules/driver/services/registrationService';
 import taxiApi from '@/modules/Taxi/shared/api/axiosInstance';
+import { clearModuleAuth } from '@food/utils/auth';
 
 /**
  * Ride & Parcel mode: a delivery partner works rides inside the existing taxi driver screens (/taxi/driver/*). Those
@@ -101,4 +102,31 @@ export const restoreActiveRide = async (navigate) => {
   } catch {
     return false;
   }
+};
+
+/**
+ * Delivery partners and their ride profile are one account. True when this device holds a delivery login (or is in Ride &
+ * Parcel mode), so a logout from ANY screen (ride or delivery) has to end both sessions and land on the delivery login.
+ */
+export const hasDeliveryLogin = () => {
+  try {
+    return isRideModePartner()
+      || Boolean(localStorage.getItem('delivery_accessToken') || localStorage.getItem('delivery_refreshToken'));
+  } catch {
+    return false;
+  }
+};
+
+/** One logout for the merged partner: ends the delivery login and the ride session, then opens the delivery login. */
+export const logoutMergedPartner = async (navigate) => {
+  try {
+    await deliveryAPI.logout(); // revokes the refresh token and clears the ride session keys
+  } catch { /* offline / already expired: the local clean-up below still logs the partner out */ }
+  clearModuleAuth('delivery');
+  try {
+    localStorage.removeItem('app:isOnline');
+    localStorage.removeItem('rideModePartner');
+    sessionStorage.setItem('deliveryLoggedOutAt', String(Date.now()));
+  } catch { /* storage blocked */ }
+  navigate('/food/delivery/login', { replace: true });
 };
