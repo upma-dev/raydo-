@@ -153,6 +153,15 @@ const AppRoutes = () => {
         return
       }
       const role = String(event.detail?.role || 'user').toLowerCase()
+      // A delivery partner who just logged out (or is in the delivery app) is never sent to the driver app login
+      const loggedOutAt = Number(sessionStorage.getItem('deliveryLoggedOutAt') || 0)
+      if (
+        ['driver', 'owner'].includes(role) &&
+        (window.location.pathname.startsWith('/food/delivery') || Date.now() - loggedOutAt < 15000)
+      ) {
+        navigate('/food/delivery/login', { replace: true })
+        return
+      }
       if (role === 'admin') {
         navigate('/admin/login', { replace: true })
       } else if (role === 'delivery') {

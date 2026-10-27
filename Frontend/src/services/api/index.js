@@ -1848,6 +1848,16 @@ const getDeliveryMeOnce = () => {
 const RIDE_MODE_SESSION_KEYS = ["token", "driverToken", "driverInfo", "role", "driverRole", "chatRole"];
 const clearRideModeSession = () => {
   try {
+    // A moment of "just logged out of the delivery app": a leftover ride-side call that gets a 401 must send the person to
+    // the delivery login, not to the driver app login
+    sessionStorage.setItem("deliveryLoggedOutAt", String(Date.now()));
+    // Saved ride screen state (waiting timer, trip phase) belongs to the account that just logged out
+    Object.keys(sessionStorage)
+      .filter((key) => key.startsWith("driverActiveTrip"))
+      .forEach((key) => sessionStorage.removeItem(key));
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith("driverActiveTrip"))
+      .forEach((key) => localStorage.removeItem(key));
     localStorage.removeItem("rideModeCard");
     if (localStorage.getItem("rideModePartner") !== "1") return;
     localStorage.removeItem("rideModePartner");

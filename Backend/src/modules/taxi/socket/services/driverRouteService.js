@@ -48,7 +48,7 @@ const maybeWriteRouteToFirebase = ({ driverId, points }) => {
     .ref(`rides/${driverId}/route`)
     .set({
       points,
-      updatedAt: firebaseServerTimestamp(),
+      updatedAt: firebaseServerTimestamp,
     })
     .catch((error) => {
       console.error(`Firebase route sync failed for driver ${driverId}:`, error.message);

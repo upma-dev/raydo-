@@ -38,6 +38,64 @@ const estimateRoute = (origin, destination) => {
   return { distanceMeters: meters, durationMinutes: Math.max(1, Math.round((meters / 1000 / AVERAGE_SPEED_KMPH) * 60)), source: 'estimate' };
 };
 
+const fetchFromRoutesApi = async (from, to, apiKey) => {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration',
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: from.lat, longitude: from.lng } } },
+        destination: { location: { latLng: { latitude: to.lat, longitude: to.lng } } },
+        travelMode: 'DRIVE',
+      }),
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    const route = data?.routes?.[0];
+    if (route?.distanceMeters > 0) {
+      return {
+        distanceMeters: Math.round(Number(route.distanceMeters)),
+        durationMinutes: Math.max(1, Math.round(parseFloat(String(route.duration || '0s')) / 60)),
+        source: 'google',
+      };
+    }
+    console.warn(`[routeMetrics] Google Routes API: ${data?.error?.status || 'no route'}${data?.error?.message ? `: ${data.error.message}` : ''}`);
+  } catch (error) {
+    console.warn('[routeMetrics] Google Routes API failed:', error?.message || error);
+  }
+  return null;
+};
+
+const fetchFromLegacyDirections = async (from, to, apiKey) => {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}&mode=driving&key=${apiKey}`;
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    const data = await res.json();
+    const leg = data?.status === 'OK' ? data.routes?.[0]?.legs?.[0] : null;
+    if (leg?.distance?.value > 0) {
+      return {
+        distanceMeters: Math.round(Number(leg.distance.value)),
+        durationMinutes: Math.max(1, Math.round(Number(leg.duration?.value || 0) / 60)),
+        source: 'google',
+      };
+    }
+    console.warn(`[routeMetrics] Google Directions status ${data?.status || 'unknown'}${data?.error_message ? `: ${data.error_message}` : ''}`);
+  } catch (error) {
+    console.warn('[routeMetrics] Google Directions failed:', error?.message || error);
+  }
+  return null;
+};
+
 export const getDrivingRoute = async ({ origin, destination } = {}) => {
   const from = toPoint(origin);
   const to = toPoint(destination);
@@ -51,26 +109,8 @@ export const getDrivingRoute = async ({ origin, destination } = {}) => {
   let value = null;
 
   if (apiKey) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6000);
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}&mode=driving&key=${apiKey}`;
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
-      const data = await res.json();
-      const leg = data?.status === 'OK' ? data.routes?.[0]?.legs?.[0] : null;
-      if (leg?.distance?.value > 0) {
-        value = {
-          distanceMeters: Math.round(Number(leg.distance.value)),
-          durationMinutes: Math.max(1, Math.round(Number(leg.duration?.value || 0) / 60)),
-          source: 'google',
-        };
-      } else {
-        console.warn(`[routeMetrics] Google Directions status ${data?.status || 'unknown'}${data?.error_message ? `: ${data.error_message}` : ''}`);
-      }
-    } catch (error) {
-      console.warn('[routeMetrics] Google Directions failed:', error?.message || error);
-    }
+    // The newer Routes API first (new Google projects cannot use the legacy Directions API), then the legacy one
+    value = await fetchFromRoutesApi(from, to, apiKey) || await fetchFromLegacyDirections(from, to, apiKey);
   }
 
   if (!value) value = estimateRoute(from, to);
