@@ -715,35 +715,50 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
         );
       });
 
-      let position;
-      try {
-        position = await getPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 });
-      } catch (highAccError) {
+      // A fix the app already has (fetched when the screen opened) is used straight away; waiting for a fresh GPS reading
+      // inside the app's WebView is what made going online hang for 30 seconds.
+      let position = lastCoordRef.current
+        ? { coords: { latitude: lastCoordRef.current.lat, longitude: lastCoordRef.current.lng } }
+        : null;
+      let gpsTimedOut = false;
+      if (!position) {
         try {
-          position = await getPosition({ enableHighAccuracy: false, timeout: 10000, maximumAge: 15000 });
-        } catch (geoError) {
-          setOnline(false);
-          setIsTogglingDuty(false);
-          let errorMsg = 'GPS Location is required to go online. Please turn ON location / GPS on your mobile.';
-          if (geoError.code === 1) {
-            errorMsg = 'Location permission is denied in phone/browser settings. Please grant location permission to go online.';
-          } else if (geoError.code === 2) {
-            errorMsg = 'Your mobile GPS / Location is turned OFF. Please turn ON location services on your phone to go online and accept delivery orders.';
-          } else if (geoError.code === 3) {
-            errorMsg = 'GPS signal request timed out. Please make sure location / GPS is turned ON and try again.';
+          position = await getPosition({ enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 });
+        } catch (firstError) {
+          try {
+            position = await getPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 });
+          } catch (geoError) {
+            if (geoError?.code === 3 || firstError?.code === 3) {
+              // Only slow, not refused or switched off: go online now, the live location watch fills in the position
+              gpsTimedOut = true;
+            } else {
+              setOnline(false);
+              setIsTogglingDuty(false);
+              let errorMsg = 'GPS Location is required to go online. Please turn ON location / GPS on your mobile.';
+              if (geoError.code === 1) {
+                errorMsg = 'Location permission is denied in phone/browser settings. Please grant location permission to go online.';
+              } else if (geoError.code === 2) {
+                errorMsg = 'Your mobile GPS / Location is turned OFF. Please turn ON location services on your phone to go online and accept delivery orders.';
+              }
+              setGpsErrorMessage(errorMsg);
+              setShowGpsModal(true);
+              toast.error(errorMsg);
+              return;
+            }
           }
-          setGpsErrorMessage(errorMsg);
-          setShowGpsModal(true);
-          toast.error(errorMsg);
-          return;
         }
       }
 
-      const { latitude, longitude } = position.coords;
       const cachedSelfieUrl = sendableSelfieUrl(selfieImageUrl || onlineSelfieRef.current?.imageUrl);
-      const response = cachedSelfieUrl
-        ? await deliveryAPI.updateLocation(latitude, longitude, true, { selfieImageUrl: cachedSelfieUrl })
-        : await deliveryAPI.updateLocation(latitude, longitude, true);
+      let response;
+      if (gpsTimedOut) {
+        response = await deliveryAPI.updateOnlineStatus(true, cachedSelfieUrl);
+      } else {
+        const { latitude, longitude } = position.coords;
+        response = cachedSelfieUrl
+          ? await deliveryAPI.updateLocation(latitude, longitude, true, { selfieImageUrl: cachedSelfieUrl })
+          : await deliveryAPI.updateLocation(latitude, longitude, true);
+      }
 
       const data = response?.data?.data || response?.data || {};
       if (data.onlineSelfie) {
@@ -1103,8 +1118,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 heading: 0,
                 speed: 0,
                 accuracy: null,
-                ...(onlineSelfieRef.current?.imageUrl
-                  ? { selfieImageUrl: onlineSelfieRef.current.imageUrl }
+                ...(sendableSelfieUrl(onlineSelfieRef.current?.imageUrl)
+                  ? { selfieImageUrl: sendableSelfieUrl(onlineSelfieRef.current.imageUrl) }
                   : {}),
               }
             ).catch(() => { });
