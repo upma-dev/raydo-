@@ -18,9 +18,21 @@ export const uploadImageBuffer = async (buffer, folder = 'uploads') => {
     }
 
     return new Promise((resolve) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+            if (!settled) {
+                settled = true;
+                console.warn("[Cloudinary Service] Upload timed out after 8s, using base64 fallback");
+                resolve("data:image/jpeg;base64," + buffer.toString("base64"));
+            }
+        }, 8000);
+
         const stream = cloudinary.uploader.upload_stream(
             { folder, resource_type: 'image' },
             (error, result) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
                 if (error || !result?.secure_url) {
                     console.warn('[Cloudinary Service] Upload stream failed, using base64 fallback:', error?.message || error);
                     return resolve(`data:image/jpeg;base64,${buffer.toString('base64')}`);

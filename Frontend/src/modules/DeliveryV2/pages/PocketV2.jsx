@@ -50,11 +50,15 @@ export const PocketV2 = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [profileRes, earningsRes, walletRes] = await Promise.all([
+        const [profileOutcome, earningsOutcome, walletOutcome] = await Promise.allSettled([
           deliveryAPI.getProfile(),
           deliveryAPI.getEarnings({ period: 'week' }),
           deliveryAPI.getWallet()
         ]);
+
+        const profileRes = profileOutcome.status === "fulfilled" ? profileOutcome.value : null;
+        const earningsRes = earningsOutcome.status === "fulfilled" ? earningsOutcome.value : null;
+        const walletRes = walletOutcome.status === "fulfilled" ? walletOutcome.value : null;
 
         const profile = profileRes?.data?.data?.profile || {};
         const summary = earningsRes?.data?.data?.summary || {};

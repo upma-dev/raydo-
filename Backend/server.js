@@ -1,3 +1,6 @@
+import dns from 'node:dns';
+try { dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']); } catch (_) {}
+
 import http from 'http';
 import crypto from 'crypto';
 import { exec } from 'child_process';
@@ -279,4 +282,5 @@ const startServer = async () => {
 };
 
 startServer();
+
 

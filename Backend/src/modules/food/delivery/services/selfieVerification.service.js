@@ -88,8 +88,8 @@ export const verifyLiveSelfie = async (deliveryPartnerId, payload, files = null)
       lockedUntil: null
     };
 
-    // Auto-update profile photo if missing
-    if (!partner.profilePhoto) {
+    // Auto-update profile photo if missing and is a valid URL (prevent saving multi-MB base64)
+    if (!partner.profilePhoto && (uploadedUrl.startsWith("http") || uploadedUrl.length < 50000)) {
       partner.profilePhoto = uploadedUrl;
     }
 

@@ -564,19 +564,19 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     return () => clearInterval(interval);
   }, [isSimMode, simPath, simIndex, activeOrder, publishLiveRiderLocation, setRiderLocation]);
 
-  // Fetch Emergency numbers and Profile (Restored logic)
+  // Fetch Emergency numbers and Profile (Resilient fetch with Promise.allSettled)
   useEffect(() => {
     (async () => {
       try {
-        const [emergencyRes, profileRes] = await Promise.all([
+        const [emergencyOutcome, profileOutcome] = await Promise.allSettled([
           deliveryAPI.getEmergencyHelp(),
           deliveryAPI.getProfile()
         ]);
-        if (emergencyRes?.data?.success && emergencyRes.data.data) {
-          setEmergencyNumbers(emergencyRes.data.data);
+        if (emergencyOutcome.status === "fulfilled" && emergencyOutcome.value?.data?.success && emergencyOutcome.value.data.data) {
+          setEmergencyNumbers(emergencyOutcome.value.data.data);
         }
-        if (profileRes?.data?.success && profileRes.data.data?.profile) {
-          const profile = profileRes.data.data.profile;
+        if (profileOutcome.status === "fulfilled" && profileOutcome.value?.data?.success && profileOutcome.value.data.data?.profile) {
+          const profile = profileOutcome.value.data.data.profile;
           setProfileImage(profile.profileImage?.url || profile.documents?.photo || null);
           setOnlineSelfie(profile.onlineSelfie || null);
         }

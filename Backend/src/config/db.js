@@ -50,7 +50,7 @@ export const connectDB = async () => {
             // Cap connections per process. Default is 100; with a PM2 cluster of N workers that becomes N*100 and can
             // blow past the Atlas tier's connection limit. Keep it explicit and tunable per deployment.
             maxPoolSize: Number(process.env.MONGODB_MAX_POOL_SIZE || 20),
-            minPoolSize: Number(process.env.MONGODB_MIN_POOL_SIZE || 2),
+            minPoolSize: Number(process.env.MONGODB_MIN_POOL_SIZE || 0),
         });
         logger.info(`MongoDB connected: ${conn.connection.host}`);
     } catch (error) {
