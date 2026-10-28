@@ -298,8 +298,9 @@ apiClient.interceptors.response.use(
     // Do NOT attempt token refresh or trigger onRefreshFailed for authentication endpoints
     // (login, verify-otp, send-otp, signup, etc.) where 401 is a credential validation failure.
     const reqUrl = String(original.url || "").toLowerCase();
+    // "/auth/me" is a normal session call: an expired access token there must be refreshed, not treated as a bad login
     const isAuthEndpoint =
-      reqUrl.includes("/auth/") ||
+      (reqUrl.includes("/auth/") && !/\/auth\/me(\?|$)/.test(reqUrl)) ||
       reqUrl.includes("/login") ||
       reqUrl.includes("/verify-otp") ||
       reqUrl.includes("/send-otp") ||

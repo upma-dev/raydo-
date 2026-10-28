@@ -261,13 +261,28 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   // A ride / parcel the partner already accepted comes back after an app restart or a glitch (once per page load)
   const rideRestoreTried = useRef(false);
   useEffect(() => {
-    if (rideRestoreTried.current || tab !== 'feed' || activeOrder) return undefined;
-    // A few seconds after the feed is up, so these extra calls never compete with the first load
-    const timer = setTimeout(() => {
+    if (tab !== 'feed' || activeOrder) return undefined;
+    let lastCheckAt = 0;
+    const check = () => {
+      // Throttled: coming back from a phone call / another app can fire focus and visibilitychange together
+      if (Date.now() - lastCheckAt < 10000) return;
+      lastCheckAt = Date.now();
       rideRestoreTried.current = true;
       restoreActiveRide(navigate);
-    }, 3000);
-    return () => clearTimeout(timer);
+    };
+    // A few seconds after the feed is up, so these extra calls never compete with the first load
+    const timer = rideRestoreTried.current ? null : setTimeout(check, 3000);
+    // Partner returns to the app (e.g. after calling the customer): look for a running ride again
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
   }, [tab, activeOrder, navigate]);
 
   const [showVerification, setShowVerification] = useState(false);
