@@ -34,6 +34,8 @@ export const uploadService = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        // Photos on a slow mobile link need longer than the 30 s default (the server itself retries up to 3 times)
+        timeout: 120000,
       });
       return response?.data || response;
     } catch (error) {

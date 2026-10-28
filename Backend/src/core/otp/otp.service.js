@@ -139,7 +139,9 @@ export const createOrUpdateOtp = async (phone, scope = 'default') => {
         });
     }
 
-    await sendSmsViaIndiaHub(normalizedPhone, otp);
+    // The SMS gateway can take 15 s+ to answer: do not keep the app waiting (and timing out) for it. The OTP is already saved,
+    // and sendSmsViaIndiaHub logs and swallows its own errors.
+    void sendSmsViaIndiaHub(normalizedPhone, otp);
 
     return otp;
 };

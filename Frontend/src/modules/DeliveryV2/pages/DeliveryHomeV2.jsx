@@ -179,7 +179,7 @@ const compressSelfieForUpload = async (file) => {
   if (typeof document === 'undefined') return originalDataUrl;
 
   const image = await loadImageFromDataUrl(originalDataUrl);
-  const maxSide = 960;
+  const maxSide = 720;
   const largestSide = Math.max(image.width, image.height, 1);
   const scale = largestSide > maxSide ? maxSide / largestSide : 1;
   const width = Math.max(1, Math.round(image.width * scale));
@@ -192,7 +192,7 @@ const compressSelfieForUpload = async (file) => {
   if (!context) return originalDataUrl;
 
   context.drawImage(image, 0, 0, width, height);
-  let quality = 0.82;
+  let quality = 0.75;
   let compressed = canvas.toDataURL('image/jpeg', quality);
   while (compressed.length > 8_500_000 && quality > 0.45) {
     quality -= 0.1;
@@ -203,7 +203,7 @@ const compressSelfieForUpload = async (file) => {
 
 const compressSelfieDataUrl = async (dataUrl) => {
   const image = await loadImageFromDataUrl(dataUrl);
-  const maxSide = 960;
+  const maxSide = 720;
   const largestSide = Math.max(image.width, image.height, 1);
   const scale = largestSide > maxSide ? maxSide / largestSide : 1;
   const width = Math.max(1, Math.round(image.width * scale));
@@ -216,7 +216,7 @@ const compressSelfieDataUrl = async (dataUrl) => {
   if (!context) return dataUrl;
 
   context.drawImage(image, 0, 0, width, height);
-  let quality = 0.82;
+  let quality = 0.75;
   let compressed = canvas.toDataURL('image/jpeg', quality);
   while (compressed.length > 8_500_000 && quality > 0.45) {
     quality -= 0.1;

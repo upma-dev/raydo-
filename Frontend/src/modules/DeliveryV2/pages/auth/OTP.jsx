@@ -4,7 +4,7 @@ import { ArrowLeft, Loader2, Timer, RefreshCw, AlertCircle, ShieldCheck, User } 
 import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"
 import { deliveryAPI } from "@food/api"
-import { setAuthData as storeAuthData } from "@food/utils/auth"
+import { setAuthData as storeAuthData, isModuleAuthenticated } from "@food/utils/auth"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { motion, AnimatePresence } from "framer-motion"
 import logoImg from "@food/assets/raydo-logo.png"
@@ -31,6 +31,11 @@ export default function DeliveryOTP() {
   const inputRefs = useRef([])
 
   useEffect(() => {
+    // Back button after login lands here: a signed-in partner goes straight back to the feed
+    if (isModuleAuthenticated("delivery")) {
+      navigate("/food/delivery/feed", { replace: true })
+      return
+    }
     const stored = sessionStorage.getItem("deliveryAuthData")
     if (stored) {
       setAuthData(JSON.parse(stored))

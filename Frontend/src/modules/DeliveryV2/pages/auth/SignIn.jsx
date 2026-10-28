@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { deliveryAPI } from "@food/api"
-import { clearModuleAuth } from "@food/utils/auth"
+import { clearModuleAuth, isModuleAuthenticated } from "@food/utils/auth"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { motion, AnimatePresence } from "framer-motion"
 import { Loader2, AlertCircle } from "lucide-react"
@@ -19,6 +19,11 @@ export default function DeliverySignIn() {
   const [error, setError] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [keyboardInset, setKeyboardInset] = useState(0)
+
+  // Back button after login lands here: a signed-in partner goes straight back to the feed
+  useEffect(() => {
+    if (isModuleAuthenticated("delivery")) navigate("/food/delivery/feed", { replace: true })
+  }, [navigate])
 
   useEffect(() => {
     const stored = sessionStorage.getItem("deliveryAuthData")
