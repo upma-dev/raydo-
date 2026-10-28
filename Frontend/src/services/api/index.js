@@ -2372,6 +2372,8 @@ export const deliveryAPI = {
   verifySelfie: (payload) =>
     apiClient.post("/food/gigs/partner/gigs/verify-selfie", payload ?? {}, {
       contextModule: "delivery",
+      // The selfie screen retries and words its own message; the generic red toast would flash on every attempt
+      silentError: true,
     }),
 };
 

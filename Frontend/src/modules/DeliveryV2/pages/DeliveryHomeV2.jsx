@@ -762,7 +762,12 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       const details = data?.details;
       const message = data?.message || data?.error || error?.message || 'Failed to go online';
 
-      toast.error(message);
+      if (error?.response) {
+        toast.error(message);
+      } else {
+        // No answer from the server (weak network): a calm hint, not a red error
+        toast('Connection is slow. Please tap the switch once more.');
+      }
 
       if (String(message).toLowerCase().includes('selfie')) {
         setShowOnlineSelfiePrompt(true);
