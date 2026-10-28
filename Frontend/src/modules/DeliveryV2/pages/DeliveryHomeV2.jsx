@@ -84,6 +84,13 @@ const getTodaySelfieKey = () => new Date().toISOString().slice(0, 10);
 
 const SELFIE_MAX_AGE_MS = 60 * 60 * 1000; // 1 Hour Interval
 
+// Only a normal link is worth sending with a request. A selfie kept as inline base64 (upload fallback) is huge and the
+// server already holds the verified selfie, so sending it only risks the whole request failing.
+const sendableSelfieUrl = (url) => {
+  const value = String(url || '').trim();
+  return /^https?:\/\//i.test(value) && value.length < 2000 ? value : '';
+};
+
 const hasSelfieForToday = (onlineSelfie = null) => {
   if (!onlineSelfie || !String(onlineSelfie.imageUrl || '').trim()) return false;
   if (String(onlineSelfie.forDate || '').trim() !== getTodaySelfieKey()) return false;
@@ -423,8 +430,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       heading: heading || 0,
       speed: speed || 0,
       accuracy,
-      ...(onlineSelfieRef.current?.imageUrl
-        ? { selfieImageUrl: onlineSelfieRef.current.imageUrl }
+      ...(sendableSelfieUrl(onlineSelfieRef.current?.imageUrl)
+        ? { selfieImageUrl: sendableSelfieUrl(onlineSelfieRef.current.imageUrl) }
         : {}),
     }).catch(() => { });
 
@@ -733,7 +740,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       }
 
       const { latitude, longitude } = position.coords;
-      const cachedSelfieUrl = selfieImageUrl || onlineSelfieRef.current?.imageUrl || '';
+      const cachedSelfieUrl = sendableSelfieUrl(selfieImageUrl || onlineSelfieRef.current?.imageUrl);
       const response = cachedSelfieUrl
         ? await deliveryAPI.updateLocation(latitude, longitude, true, { selfieImageUrl: cachedSelfieUrl })
         : await deliveryAPI.updateLocation(latitude, longitude, true);

@@ -64,8 +64,12 @@ export const SelfieVerificationModal = ({ isOpen, onClose, onSuccess }) => {
 
     try {
       const video = videoRef.current;
-      const width = video.videoWidth || 720;
-      const height = video.videoHeight || 1280;
+      const srcWidth = video.videoWidth || 720;
+      const srcHeight = video.videoHeight || 1280;
+      // A face check does not need full camera resolution; a small photo uploads reliably on a weak mobile network
+      const scale = Math.min(1, 640 / Math.max(srcWidth, srcHeight));
+      const width = Math.round(srcWidth * scale);
+      const height = Math.round(srcHeight * scale);
 
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -75,9 +79,19 @@ export const SelfieVerificationModal = ({ isOpen, onClose, onSuccess }) => {
       if (!ctx) throw new Error('Canvas rendering failed');
 
       ctx.drawImage(video, 0, 0, width, height);
-      const base64Data = canvas.toDataURL('image/jpeg', 0.85);
+      const base64Data = canvas.toDataURL('image/jpeg', 0.7);
 
-      const response = await deliveryAPI.verifySelfie({ base64: base64Data });
+      // A dropped connection (no response at all) is retried quietly before the rider ever sees a message
+      let response;
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          response = await deliveryAPI.verifySelfie({ base64: base64Data });
+          break;
+        } catch (netErr) {
+          if (netErr?.response || attempt >= 2) throw netErr;
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
       const data = response.data?.data;
 
       if (data?.verified) {
@@ -92,7 +106,8 @@ export const SelfieVerificationModal = ({ isOpen, onClose, onSuccess }) => {
         setErrorMsg(data?.message || 'Selfie verification failed');
       }
     } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Verification error';
+      const msg = err.response?.data?.message
+        || (err.response ? 'Verification error' : 'Connection is slow. Please tap "Take Live Selfie" once more.');
       setErrorMsg(msg);
     } finally {
       setIsVerifying(false);
@@ -167,8 +182,8 @@ export const SelfieVerificationModal = ({ isOpen, onClose, onSuccess }) => {
 
           {/* Error Message */}
           {errorMsg && (
-            <div className="w-full my-3 p-3 rounded-2xl bg-rose-950/60 border border-rose-800/60 text-rose-300 text-xs font-bold flex items-center gap-2 text-left">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+            <div className="w-full my-3 p-3 rounded-2xl bg-amber-950/40 border border-amber-700/40 text-amber-200 text-xs font-bold flex items-center gap-2 text-left">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
               <span>{errorMsg}</span>
             </div>
           )}

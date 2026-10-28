@@ -168,13 +168,13 @@ export default function DeliveryOTP() {
           if (window.flutter_inappwebview) {
             platform = "mobile";
             const hN = ["getFcmToken", "getFCMToken", "getPushToken", "getFirebaseToken"];
-            for (const n of hN) {
-              try {
-                const t = await window.flutter_inappwebview.callHandler(n, { module: "delivery" });
-                const normalized = typeof t === "string" ? t.trim() : String(t?.token || t?.fcmToken || "").trim();
-                if (normalized.length > 20) { fcmToken = normalized; break; }
-              } catch (e) {}
-            }
+            // Ask every handler at once, each with a short deadline: a missing handler used to be tried one after another
+            const askHandler = (n) => Promise.race([
+              window.flutter_inappwebview.callHandler(n, { module: "delivery" }),
+              new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
+            ]).then((t) => (typeof t === "string" ? t.trim() : String(t?.token || t?.fcmToken || "").trim())).catch(() => "");
+            const tokens = await Promise.all(hN.map(askHandler));
+            fcmToken = tokens.find((t) => t.length > 20) || null;
           } else {
             fcmToken = localStorage.getItem("fcm_web_registered_token_delivery") || null;
           }
@@ -200,7 +200,7 @@ export default function DeliveryOTP() {
       if (accessToken && user) {
         storeAuthData("delivery", accessToken, user, refreshToken)
         window.dispatchEvent(new Event("deliveryAuthChanged"))
-        setTimeout(() => navigate("/food/delivery", { replace: true }), 500)
+        navigate("/food/delivery", { replace: true })
       }
     } catch (err) {
       setError(err?.response?.data?.message || err?.response?.data?.error || "Invalid OTP. Please try again.")

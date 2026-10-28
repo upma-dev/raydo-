@@ -473,12 +473,11 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
     return { needsRegistration: true, phone };
   }
 
-  const deliveryPartner = await FoodDeliveryPartner.findOne({
-    $or: [
-      { phone: normalized },
-      { phone: { $regex: new RegExp(normalized + "$") } },
-    ],
-  });
+  // Exact match uses the unique phone index; the suffix regex (e.g. numbers saved with +91) cannot, so it only runs as a fallback
+  let deliveryPartner = await FoodDeliveryPartner.findOne({ phone: normalized });
+  if (!deliveryPartner) {
+    deliveryPartner = await FoodDeliveryPartner.findOne({ phone: { $regex: new RegExp(normalized + "$") } });
+  }
 
   if (!deliveryPartner) {
     return { needsRegistration: true, phone };
@@ -487,22 +486,12 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
   // Update FCM token if provided - CRITICAL: do this BEFORE returning pendingApproval
   // so we can notify them when approved.
   if (fcmToken) {
-    let isModified = false;
-    if (platform === "mobile") {
-      if (!deliveryPartner.fcmTokenMobile) deliveryPartner.fcmTokenMobile = [];
-      if (!deliveryPartner.fcmTokenMobile.includes(fcmToken)) {
-        deliveryPartner.fcmTokenMobile.push(fcmToken);
-        isModified = true;
-      }
-    } else {
-      if (!deliveryPartner.fcmTokens) deliveryPartner.fcmTokens = [];
-      if (!deliveryPartner.fcmTokens.includes(fcmToken)) {
-        deliveryPartner.fcmTokens.push(fcmToken);
-        isModified = true;
-      }
-    }
-    if (isModified) {
-      await deliveryPartner.save();
+    // Targeted $addToSet instead of saving the whole partner document (which can carry large selfie data)
+    const field = platform === "mobile" ? "fcmTokenMobile" : "fcmTokens";
+    const known = deliveryPartner[field] || [];
+    if (!known.includes(fcmToken)) {
+      await FoodDeliveryPartner.updateOne({ _id: deliveryPartner._id }, { $addToSet: { [field]: fcmToken } });
+      deliveryPartner[field] = [...known, fcmToken];
     }
   }
 
