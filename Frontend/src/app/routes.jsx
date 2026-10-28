@@ -9,6 +9,7 @@ import {
 import lazyWithRetry from '../shared/utils/lazyWithRetry.js'
 import { homeForPath, isInstalledApp } from '../shared/utils/appHome.js'
 import { isRideModePartner, recoverRideSession } from '@/modules/DeliveryV2/utils/rideModeSession'
+import { isModuleAuthenticated } from '@food/utils/auth'
 
 // Lazy load the Food service module (Quick-spicy app)
 const FoodApp = lazyWithRetry(() => import('../modules/Food/routes'))
@@ -174,6 +175,12 @@ const AppRoutes = () => {
         ['driver', 'owner'].includes(role) &&
         (window.location.pathname.startsWith('/food/delivery') || Date.now() - loggedOutAt < 15000)
       ) {
+        // Only the ride-side session went stale (e.g. a photo upload or chat call got a 401) while the partner is still signed
+        // in to the delivery app: renew the ride session quietly instead of throwing them out to the login page
+        if (Date.now() - loggedOutAt >= 15000 && isModuleAuthenticated('delivery')) {
+          recoverRideSession()
+          return
+        }
         navigate('/food/delivery/login', { replace: true })
         return
       }
