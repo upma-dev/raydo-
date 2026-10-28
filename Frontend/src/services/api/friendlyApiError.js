@@ -22,9 +22,14 @@ export const getFriendlyApiMessage = (error) => {
   return "";
 };
 
+// Calls the app makes by itself while a screen loads or runs (location pings, push-token sync, presence). Nobody tapped
+// anything, so a toast would only flash a scary error; the screens that need the result handle it themselves.
+const BACKGROUND_REQUEST = /\/availability(\?|$)|\/fcm-tokens?\/|\/heartbeat|\/ping(\?|$)/i;
+
 export const notifyApiError = (error, config = error?.config) => {
   try {
     if (config?.silentError) return;
+    if (BACKGROUND_REQUEST.test(String(config?.url || ""))) return;
     const method = String(config?.method || "get").toLowerCase();
     if (method === "get" || method === "head") return;
     const message = getFriendlyApiMessage(error);
