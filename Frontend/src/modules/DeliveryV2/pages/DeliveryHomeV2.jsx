@@ -1862,12 +1862,16 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
         onClose={() => setShowSelfieVerificationModal(false)}
         onSuccess={async (result) => {
           setShowSelfieVerificationModal(false);
-          setOnlineSelfie({
+          const verifiedSelfie = {
             imageUrl: result?.imageUrl || '',
             capturedAt: new Date().toISOString(),
             forDate: getTodaySelfieKey(),
-          });
-          await goOnline();
+            verifiedStatus: 'verified',
+          };
+          // The ref only follows state after the next render, so hand the fresh selfie to goOnline directly
+          onlineSelfieRef.current = verifiedSelfie;
+          setOnlineSelfie(verifiedSelfie);
+          await goOnline(verifiedSelfie.imageUrl);
         }}
       />
 

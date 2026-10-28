@@ -301,7 +301,10 @@ const buildMessagePayload = (payload = {}, token, ownerType = null) => {
 
     message.android = {
         priority: 'high',
+        // A ring is an offer that lasts ~30s; a late delivery must not ring for an order that moved on
+        ...(ring ? { ttl: '30s' } : {}),
         notification: {
+            ...(ring ? { notification_priority: 'PRIORITY_MAX', visibility: 'PUBLIC' } : {}),
             channel_id: ring ? 'default' : 'silent_channel',
             ...(ring ? { sound: payload.sound || 'default' } : {}),
             default_vibrate_timings: ring,
@@ -312,12 +315,15 @@ const buildMessagePayload = (payload = {}, token, ownerType = null) => {
 
     message.webpush = {
         headers: {
-            Urgency: 'high'
+            Urgency: 'high',
+            ...(ring ? { TTL: '30' } : {})
         },
         notification: {
             title: notification.title,
             body: notification.body,
-            icon: image || payload.icon || '/favicon.ico'
+            icon: image || payload.icon || '/favicon.ico',
+            // Shown by the browser itself when the app is closed: keep it on screen and buzz until the rider reacts
+            ...(ring ? { requireInteraction: true, vibrate: [400, 200, 400, 200, 400, 200, 400] } : {})
         },
         ...(targetLink ? { fcm_options: { link: targetLink } } : {})
     };
