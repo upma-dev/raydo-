@@ -126,6 +126,7 @@ export const ProfileV2 = () => {
     try { revoke = deliveryAPI.logout(refreshToken) } catch (error) {}
     clearModuleAuth("delivery")
     localStorage.removeItem("app:isOnline")
+    localStorage.removeItem("delivery_ride_mode_food_toggle")
     toast.success("Logged out successfully")
     navigate("/food/delivery/login", { replace: true })
     setLogoutSubmitting(false)

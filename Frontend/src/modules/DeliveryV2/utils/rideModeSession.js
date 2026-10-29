@@ -87,21 +87,41 @@ export const openRideApp = async (navigate, path = '/taxi/driver/home') => {
  * A partner who accepted a ride / parcel and then lost the screen (app restart, crash, refresh) is taken back to it.
  * Only for partners with a ride profile; returns true when a running ride was found and opened.
  */
-export const restoreActiveRide = async (navigate) => {
+const requestActiveRide = (token) => taxiApi.get('/rides/active/me', {
+  headers: token ? { Authorization: `Bearer ${token}` } : {},
+  params: { t: Date.now() },
+});
+
+/**
+ * The running ride / parcel of this partner: the ride object, null when there is none, or undefined when it could not be
+ * checked (no connection, no ride profile) - callers keep what they show in that case.
+ */
+export const fetchActiveRide = async () => {
   try {
-    if (!(await ensureRideToken())) return false;
-    const token = getLocalDriverToken();
-    const response = await taxiApi.get('/rides/active/me', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      params: { t: Date.now() },
-    });
+    if (!getLocalDriverToken() && !(await ensureRideToken())) return undefined;
+    let response;
+    try {
+      response = await requestActiveRide(getLocalDriverToken());
+    } catch (error) {
+      // The stored ride session expired: get a fresh one once and ask again
+      if (error?.response?.status !== 401 || !(await ensureRideToken())) throw error;
+      response = await requestActiveRide(getLocalDriverToken());
+    }
     const ride = response?.data?.data;
-    if (!ride?.rideId) return false;
-    navigate('/taxi/driver/active-trip', { state: { rideId: ride.rideId, type: ride.serviceType || 'ride' } });
-    return true;
+    return ride?.rideId ? ride : null;
   } catch {
-    return false;
+    return undefined;
   }
+};
+
+export const openActiveRide = (navigate, ride) =>
+  navigate('/taxi/driver/active-trip', { state: { rideId: ride.rideId, type: ride.serviceType || 'ride' } });
+
+export const restoreActiveRide = async (navigate) => {
+  const ride = await fetchActiveRide();
+  if (!ride) return false;
+  openActiveRide(navigate, ride);
+  return true;
 };
 
 /**

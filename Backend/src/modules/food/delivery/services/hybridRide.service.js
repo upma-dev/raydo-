@@ -378,7 +378,10 @@ export const listRideModeVehicleTypes = async () => {
 };
 
 export const getRideModeStatus = async (partnerId, { reconcile = true } = {}) => {
-    const partner = await loadPartner(partnerId);
+    // Only status and rideMode are used here: skip the photos and documents of the partner document (they can be huge)
+    if (!mongoose.Types.ObjectId.isValid(String(partnerId || ''))) throw new ValidationError('Delivery partner not found');
+    const partner = await FoodDeliveryPartner.findById(partnerId).select('status rideMode').lean();
+    if (!partner) throw new ValidationError('Delivery partner not found');
     let driver = await loadLinkedDriver(partner);
 
     if (driver && reconcile) {

@@ -8,15 +8,35 @@ import { apiErrorOf, unwrap } from '@/modules/DeliveryV2/utils/rideModeSession';
  * One panel: going online gives food orders AND ride / parcel requests. This switch lets the partner stop food orders and
  * keep only rides and parcels (and back). Hidden for partners who can not take rides.
  */
+// The last answer is kept on the device: on a slow or dropped connection the switch still shows (and keeps working) instead
+// of disappearing until the next successful request
+const CACHE_KEY = 'delivery_ride_mode_food_toggle';
+const readCache = () => {
+  try {
+    const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    return cached && cached.eligible ? cached : null;
+  } catch {
+    return null;
+  }
+};
+
 const FoodOrdersToggle = ({ hasActiveOrder }) => {
-  const [state, setState] = useState(null);
+  const [state, setState] = useState(readCache);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    try {
-      setState(unwrap(await deliveryAPI.getRideMode()));
-    } catch {
-      /* keep what is on screen */
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const fresh = unwrap(await deliveryAPI.getRideMode());
+        setState(fresh);
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify({ eligible: Boolean(fresh?.eligible), foodOrdersEnabled: fresh?.foodOrdersEnabled !== false }));
+        } catch { /* storage unavailable */ }
+        return;
+      } catch {
+        // a slow connection fails the first try now and then: try again before giving up
+        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+      }
     }
   }, []);
 
@@ -36,6 +56,9 @@ const FoodOrdersToggle = ({ hasActiveOrder }) => {
     try {
       const result = unwrap(await deliveryAPI.setFoodOrders(!foodOn));
       setState((prev) => ({ ...prev, foodOrdersEnabled: result?.foodOrdersEnabled !== false }));
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ eligible: true, foodOrdersEnabled: result?.foodOrdersEnabled !== false }));
+      } catch { /* storage unavailable */ }
       toast.success(result?.foodOrdersEnabled === false ? 'Food orders off. You will get rides and parcels only.' : 'Food orders on.');
     } catch (error) {
       toast.error(apiErrorOf(error).message);

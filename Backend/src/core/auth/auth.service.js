@@ -464,6 +464,12 @@ const normalizePhoneForDelivery = (phone) => {
 
 // Older uploads that could not reach the image host were kept inline as base64 (data: URLs, often 100s of KB each).
 // The login response does not need them, and sending them made a phone on mobile data wait on "Verifying PIN".
+const INLINE_IMAGE_FIELDS = [
+  "profilePhoto", "aadharPhoto", "aadharPhotoBack", "panPhoto", "panPhotoBack",
+  "drivingLicensePhoto", "drivingLicensePhotoBack", "bankPassbookPhoto", "upiQrCode",
+];
+const isInlineImage = (value) => typeof value === "string" && value.startsWith("data:") && value.length > 2000;
+
 const withoutInlineImages = (value) => {
   if (typeof value === "string") {
     return value.startsWith("data:") && value.length > 2000 ? "" : value;
@@ -654,8 +660,15 @@ export const getProfile = async (userId, role) => {
       }
       break;
     case ROLES.DELIVERY_PARTNER: {
-      const partner = await FoodDeliveryPartner.findById(id).lean();
-      if (!partner) break;
+      const storedPartner = await FoodDeliveryPartner.findById(id).lean();
+      if (!storedPartner) break;
+      // Photos still stored inline as base64 made this response megabytes (4.5 MB / 26 s on mobile data); they are left
+      // out until scripts/migrateInlineImages.js turns them into normal image files
+      const partner = { ...storedPartner, onlineSelfie: storedPartner.onlineSelfie ? { ...storedPartner.onlineSelfie } : storedPartner.onlineSelfie };
+      for (const field of INLINE_IMAGE_FIELDS) {
+        if (isInlineImage(partner[field])) partner[field] = "";
+      }
+      if (isInlineImage(partner.onlineSelfie?.imageUrl)) partner.onlineSelfie.imageUrl = "";
       const deliveryId = partner._id
         ? `DP-${partner._id.toString().slice(-8).toUpperCase()}`
         : null;
