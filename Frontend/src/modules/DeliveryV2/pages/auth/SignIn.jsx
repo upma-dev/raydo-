@@ -97,6 +97,10 @@ export default function DeliverySignIn() {
     if (error) setError(validatePhone(value))
   }
 
+  // Signed in already (Back from the feed): the effect above is sending the partner to the feed, so the login form is
+  // never drawn, not even for a moment
+  if (isModuleAuthenticated("delivery")) return null
+
   return (
     <div className="min-h-[100dvh] bg-white dark:bg-[#0A0A0B] flex flex-col font-sans overflow-hidden">
       {/* Top Branding Section - 40% height */}

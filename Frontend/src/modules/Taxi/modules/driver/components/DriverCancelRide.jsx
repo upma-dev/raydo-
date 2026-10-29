@@ -17,7 +17,7 @@ const REASONS = [
  * (Set Prices > Cancellation policy > Allow driver to cancel the ride): the backend answers per ride, so turning the
  * switch off hides the button without an app update. A weak connection never shows it by mistake.
  */
-const DriverCancelRide = ({ rideId, phase, onCancelled }) => {
+const DriverCancelRide = ({ rideId, phase, onCancelled, inline = false }) => {
     const [policy, setPolicy] = useState(null);
     const [open, setOpen] = useState(false);
     const [reason, setReason] = useState(REASONS[0]);
@@ -60,8 +60,10 @@ const DriverCancelRide = ({ rideId, phase, onCancelled }) => {
             <button
                 type="button"
                 onClick={() => setOpen(true)}
-                className="fixed left-3 z-[60] flex items-center gap-1.5 rounded-full border border-rose-100 bg-white px-3.5 py-2 text-[11px] font-black uppercase tracking-wider text-rose-600 shadow-lg active:scale-95 transition-transform"
-                style={{ top: 'calc(env(safe-area-inset-top, 0px) + 64px)' }}
+                className={inline
+                    ? 'flex shrink-0 items-center gap-1 rounded-full bg-black/85 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-rose-300 active:scale-95 transition-transform'
+                    : 'fixed left-3 z-[60] flex items-center gap-1.5 rounded-full border border-rose-100 bg-white px-3.5 py-2 text-[11px] font-black uppercase tracking-wider text-rose-600 shadow-lg active:scale-95 transition-transform'}
+                style={inline ? undefined : { top: 'calc(env(safe-area-inset-top, 0px) + 64px)' }}
             >
                 <X size={13} strokeWidth={3} /> Cancel ride
             </button>

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bike, ChevronRight, Package } from 'lucide-react';
 import { fetchActiveRide, openActiveRide } from '@/modules/DeliveryV2/utils/rideModeSession';
+import DriverCancelRide from '@/modules/Taxi/modules/driver/components/DriverCancelRide';
 
 const POLL_MS = 15000;
 
@@ -41,10 +42,11 @@ const ActiveRideCard = () => {
 
   return (
     <div className="px-4 pt-2">
+      <div className="flex items-center gap-2 rounded-2xl bg-[#FFC107] pr-3 shadow-xl shadow-black/20">
       <button
         type="button"
         onClick={() => openActiveRide(navigate, ride)}
-        className="w-full flex items-center gap-3 rounded-2xl bg-[#FFC107] px-3.5 py-3 text-left text-black shadow-xl shadow-black/20 active:scale-[0.99] transition-transform"
+        className="min-w-0 flex-1 flex items-center gap-3 px-3.5 py-3 text-left text-black active:scale-[0.99] transition-transform"
       >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/85 text-[#FFC107]">
           <Icon size={17} strokeWidth={2.5} />
@@ -59,6 +61,9 @@ const ActiveRideCard = () => {
         </span>
         <ChevronRight size={18} strokeWidth={3} className="shrink-0" />
       </button>
+      {/* Shown only when the admin allows the driver to cancel (Set Prices > Cancellation policy) */}
+      <DriverCancelRide inline rideId={ride.rideId} phase={ride.status} onCancelled={() => { setRide(null); check(); }} />
+      </div>
     </div>
   );
 };

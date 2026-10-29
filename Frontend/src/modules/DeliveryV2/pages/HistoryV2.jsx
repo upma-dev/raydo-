@@ -347,8 +347,8 @@ export const HistoryV2 = () => {
                       trip.earningAmount ||
                       0
                    );
-                   const collection = trip.source === 'ride' ? 0 : Number(trip.codCollectedAmount || trip.orderTotal || 0);
                    const isCOD = (trip.paymentMethod || '').toLowerCase() === 'cash' || (trip.paymentMethod || '').toLowerCase() === 'cod';
+                   const collection = trip.source === 'ride' ? Number(trip.orderTotal || trip.totalAmount || 0) : Number(trip.codCollectedAmount || trip.orderTotal || 0);
                    const breakdown = getEarningBreakdown(trip);
                    const tripKey = trip.orderId || trip._id || idx;
                    const isBreakdownOpen = expandedTripId === tripKey;
@@ -378,7 +378,7 @@ export const HistoryV2 = () => {
                                 <p className="text-sm font-bold text-gray-950">{trip.time || '--:--'}</p>
                              </div>
                              <div className="text-center">
-                                <p className="text-[11px] font-medium text-gray-400 mb-1">COD</p>
+                                <p className="text-[11px] font-medium text-gray-400 mb-1">{trip.source === 'ride' ? (isCOD ? 'Cash' : 'Online') : 'COD'}</p>
                                 <p className="text-sm font-bold text-gray-950">{formatCurrency(collection)}</p>
                              </div>
                              <div className="text-right">
