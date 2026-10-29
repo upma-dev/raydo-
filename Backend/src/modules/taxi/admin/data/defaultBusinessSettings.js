@@ -94,6 +94,7 @@ export const createDefaultBusinessSettings = () => ({
       max_cancellation_fee: 150,
       charge_after_driver_accepted: true,
       charge_after_driver_arrived: true,
+      allow_driver_cancellation: true,
       driver_cancellation_penalty: 30,
       driver_compensation_percentage: 0,
       cancellation_grace_period_driver_arrived: 5,

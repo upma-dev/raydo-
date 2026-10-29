@@ -143,6 +143,8 @@ const initialFormState = {
   charge_after_driver_arrived: true,
   driver_compensation_percentage: 0,
   cancellation_grace_period_driver_arrived: 5,
+  allow_driver_cancellation: true,
+  driver_cancellation_penalty: 30,
   status: 'active',
   active: 1
 };
@@ -206,7 +208,7 @@ const SetPrices = ({ mode }) => {
         'airport_surge', 'support_airport_fee', 'outstation_base_price', 'outstation_base_distance',
         'outstation_price_per_distance', 'outstation_time_price', 'fixed_cancellation_charge',
         'max_cancellation_fee', 'free_cancellation_time_mins', 'cancellation_grace_period_driver_arrived',
-        'driver_compensation_percentage', 'user_cancellation_fee', 'driver_cancellation_fee'
+        'driver_compensation_percentage', 'user_cancellation_fee', 'driver_cancellation_fee', 'driver_cancellation_penalty'
       ];
       const sanitized = { ...next };
       for (const field of fieldsToClamp) {
@@ -259,6 +261,8 @@ const SetPrices = ({ mode }) => {
           charge_after_driver_arrived: pData.cancellation_policy?.charge_after_driver_arrived ?? pData.charge_after_driver_arrived ?? true,
           driver_compensation_percentage: pData.cancellation_policy?.driver_compensation_percentage ?? pData.driver_compensation_percentage ?? 0,
           cancellation_grace_period_driver_arrived: pData.cancellation_policy?.cancellation_grace_period_driver_arrived ?? pData.cancellation_grace_period_driver_arrived ?? 5,
+          allow_driver_cancellation: pData.cancellation_policy?.allow_driver_cancellation ?? true,
+          driver_cancellation_penalty: pData.cancellation_policy?.driver_cancellation_penalty ?? 30,
         });
       }
     } else if (mode === 'create') {
@@ -326,6 +330,8 @@ const SetPrices = ({ mode }) => {
           charge_after_driver_arrived: Boolean(formData.charge_after_driver_arrived),
           driver_compensation_percentage: Number(formData.driver_compensation_percentage ?? 0),
           cancellation_grace_period_driver_arrived: Number(formData.cancellation_grace_period_driver_arrived ?? 5),
+          allow_driver_cancellation: formData.allow_driver_cancellation !== false,
+          driver_cancellation_penalty: Number(formData.driver_cancellation_penalty ?? 30),
         },
       };
 
@@ -843,6 +849,25 @@ const SetPrices = ({ mode }) => {
                          </div>
                        </>
                      )}
+
+                     {/* Driver cancellation: when on, the driver sees a Cancel ride button from accepting until the trip ends */}
+                     <div className="rounded-xl bg-rose-50 border border-rose-100 p-4 space-y-3">
+                       <p className="text-[11px] font-black uppercase tracking-widest text-rose-700">Driver Cancellation</p>
+                       <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-gray-200 bg-white p-3 hover:border-indigo-300 transition-all">
+                         <input type="checkbox" className="mt-0.5 w-4 h-4 accent-indigo-600" checked={formData.allow_driver_cancellation !== false} onChange={e => setFormData(p => ({...p, allow_driver_cancellation: e.target.checked}))} />
+                         <div>
+                           <p className="text-[13px] font-bold text-slate-800">Allow driver to cancel the ride</p>
+                           <p className="text-[10px] font-medium text-slate-400">Shows a Cancel ride button in the driver app, from accepting the ride until the trip ends</p>
+                         </div>
+                       </label>
+                       {formData.allow_driver_cancellation !== false && (
+                         <div>
+                           <label className={labelClass}>Driver Cancellation Penalty (Rs)</label>
+                           <input type="number" min="0" className={inputClass} placeholder="e.g. 30" value={formData.driver_cancellation_penalty} onChange={e => setFormData(p => ({...p, driver_cancellation_penalty: e.target.value}))} />
+                           <p className="mt-1 text-[10px] font-medium text-slate-400">Deducted from the driver's wallet when they cancel (0 = no penalty)</p>
+                         </div>
+                       )}
+                     </div>
 
                      {/* Legacy fee fields */}
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8 pt-2 border-t border-gray-100">

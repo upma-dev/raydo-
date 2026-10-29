@@ -33,6 +33,7 @@ import carIcon from '@/assets/hero_sedan.png';
 import bikeIcon from '@/assets/hero_bike.png';
 import { getLocalDriverToken } from '../services/registrationService';
 import CancellationReceiptModal from '../../shared/components/CancellationReceiptModal';
+import DriverCancelRide from '../components/DriverCancelRide';
 import { showChatNotification } from '@/shared/utils/chatNotificationSound';
 
 const resolveAssetUrl = (value = '') => {
@@ -3134,6 +3135,20 @@ const ActiveTrip = () => {
                     )}
                 </AnimatePresence>
             </div>
+
+            {/* Cancel button for the driver: shown when the admin allows it, until the trip ends */}
+            <DriverCancelRide
+                rideId={rideId}
+                phase={phase}
+                onCancelled={(bill) => {
+                    if (bill) {
+                        setCancellationBillReceipt(bill);
+                        setShowReceiptModal(true);
+                    } else {
+                        exitToDriverHome('Ride cancelled.');
+                    }
+                }}
+            />
 
             <CancellationReceiptModal
                 isOpen={showReceiptModal}

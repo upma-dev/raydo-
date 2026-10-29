@@ -37,7 +37,7 @@ import {
   signAccessToken,
 } from "../services/authService.js";
 import { cancelScheduledRideByDriver, emitToDriver, emitToAdmins } from "../../services/dispatchService.js";
-import { calculateCancellationBill } from "../../services/cancellationService.js";
+import { calculateCancellationBill, getCancellationPolicy } from "../../services/cancellationService.js";
 import { notifyLateAvailableDriver, getActivePendingDispatchForDriver } from "../../services/dispatchService.js";
 import { findZoneByPickup } from "../services/locationService.js";
 import { listDriverServiceLocations } from "../services/serviceLocationService.js";
@@ -2846,6 +2846,56 @@ export const cancelDriverScheduledRide = async (req, res) => {
     reason,
   });
 
+  res.json({
+    success: true,
+    message: "Ride cancelled successfully",
+    data: {
+      rideId: String(ride._id || ""),
+      status: ride.status || RIDE_STATUS.CANCELLED,
+      liveStatus: ride.liveStatus || RIDE_LIVE_STATUS.CANCELLED,
+      cancellationBill,
+    },
+  });
+};
+
+const driverCancelState = async (rideId, driverId) => {
+  const ride = await Ride.findOne({ _id: rideId, driverId })
+    .select("vehicleTypeId service_location_id serviceType status liveStatus")
+    .lean();
+  if (!ride) return null;
+  const open = ride.status !== RIDE_STATUS.COMPLETED && ride.status !== RIDE_STATUS.CANCELLED
+    && ride.liveStatus !== RIDE_LIVE_STATUS.COMPLETED && ride.liveStatus !== RIDE_LIVE_STATUS.CANCELLED;
+  const policy = await getCancellationPolicy(ride);
+  return {
+    // The admin switch (Set Prices > Cancellation policy) decides whether the driver gets the Cancel button
+    allowed: open && policy.allow_driver_cancellation !== false,
+    penalty: Number(policy.driver_cancellation_penalty || 0),
+  };
+};
+
+// Whether the driver may cancel this running ride (admin switch) and what it costs: drives the Cancel button
+export const getDriverRideCancelPolicy = async (req, res) => {
+  const rideId = toCleanString(req.params?.rideId);
+  if (!rideId) throw new ApiError(400, "Ride id is required");
+  const state = await driverCancelState(rideId, req.auth.sub);
+  if (!state) throw new ApiError(404, "Ride not found for this driver");
+  res.json({ success: true, data: state });
+};
+
+// The driver cancels a ride they accepted, up to the end of the trip, when the admin allows it
+export const cancelDriverRide = async (req, res) => {
+  const rideId = toCleanString(req.params?.rideId);
+  const reason = String(req.body?.reason || req.query?.reason || "").trim();
+  if (!rideId) throw new ApiError(400, "Ride id is required");
+
+  const state = await driverCancelState(rideId, req.auth.sub);
+  if (!state) throw new ApiError(404, "Ride not found for this driver");
+  if (!state.allowed) throw new ApiError(403, "Cancelling this ride is not allowed");
+
+  const ride = await cancelScheduledRideByDriver({ rideId, driverId: req.auth.sub, reason });
+  if (!ride) throw new ApiError(404, "Ride not found for this driver");
+
+  const cancellationBill = await calculateCancellationBill({ ride, cancelledBy: "driver", reason });
   res.json({
     success: true,
     message: "Ride cancelled successfully",
