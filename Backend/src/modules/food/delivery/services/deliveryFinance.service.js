@@ -47,12 +47,14 @@ export const rideWalletTransferTotals = async (partnerId) => {
  * What the partner earned from completed rides / parcels on the linked ride profile, straight from the rides (the same
  * figure the driver app shows). The wallet merge only moves money around, so it is not used for this.
  */
-export const getRideEarningsTotals = async (deliveryPartnerId) => {
+export const getRideEarningsTotals = async (deliveryPartnerId, range = null) => {
     const partner = await FoodDeliveryPartner.findById(deliveryPartnerId).select('rideMode.taxiDriverId').lean();
     const driverId = partner?.rideMode?.taxiDriverId;
     if (!driverId) return { rideEarnings: 0, rideTrips: 0, rideGrossFare: 0 };
+    const rideMatch = { driverId: new mongoose.Types.ObjectId(String(driverId)), status: 'completed' };
+    if (range) rideMatch.completedAt = { $gte: range.start, $lte: range.end };
     const rows = await Ride.aggregate([
-        { $match: { driverId: new mongoose.Types.ObjectId(String(driverId)), status: 'completed' } },
+        { $match: rideMatch },
         {
             $group: {
                 _id: null,

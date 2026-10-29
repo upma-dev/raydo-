@@ -9573,12 +9573,20 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
     return Object.keys(filter).length > 0 ? filter : null;
   };
 
+  const formatReportDate = (value) => {
+    const date = value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime())
+      ? date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+      : '';
+  };
+
   export const buildUserReport = async (query = {}) => {
     const { status, date_option, from_date, to_date } = query;
     const filter = { deletedAt: null };
-    
-    if (status === 'active') filter.active = true;
-    else if (status === 'inactive') filter.active = false;
+
+    // Main-app customers have `isActive` but no `active` field (taxi users have both): count a user as active unless one says false
+    if (status === 'active') Object.assign(filter, { active: { $ne: false }, isActive: { $ne: false } });
+    else if (status === 'inactive') filter.$or = [{ active: false }, { isActive: false }];
 
     const dateFilter = buildDateFilter(date_option, from_date, to_date);
     if (dateFilter) filter.createdAt = dateFilter;
@@ -9590,8 +9598,8 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
         name: item.name || '',
         email: item.email || '',
         mobile: item.phone || item.mobile || '',
-        active: item.active !== false && !item.deletedAt,
-        createdAt: item.createdAt ? new Date(item.createdAt).toLocaleString() : ''
+        active: item.active !== false && item.isActive !== false && !item.deletedAt,
+        createdAt: item.createdAt ? formatReportDate(item.createdAt) : ''
       }))
     };
   };
@@ -9622,7 +9630,7 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
         transport_type: item.registerFor,
         vehicle_type: item.vehicleType,
         status: item.status,
-        createdAt: item.createdAt ? new Date(item.createdAt).toLocaleString() : ''
+        createdAt: item.createdAt ? formatReportDate(item.createdAt) : ''
       }))
     };
   };
@@ -9704,7 +9712,7 @@ export const buildDriverDutyReport = async (query = {}) => {
           payment_method: ride.paymentMethod || '',
           fare: Number(ride.fare || 0),
           status: ride.status || '',
-          ride_time: ride.createdAt ? new Date(ride.createdAt).toLocaleString() : '',
+          ride_time: ride.createdAt ? formatReportDate(ride.createdAt) : '',
         };
       }),
     };
@@ -9730,7 +9738,7 @@ export const buildDriverDutyReport = async (query = {}) => {
         email: item.email,
         transport_type: item.transport_type,
         active: item.active,
-        createdAt: item.createdAt ? new Date(item.createdAt).toLocaleString() : ''
+        createdAt: item.createdAt ? formatReportDate(item.createdAt) : ''
       }))
     };
   };
@@ -9802,7 +9810,7 @@ export const buildDriverDutyReport = async (query = {}) => {
           admin_commission: Number(commission.toFixed(2)),
           driver_earnings: Number(Math.max(fare - commission, 0).toFixed(2)),
           status: item.status || '',
-          createdAt: item.createdAt ? new Date(item.createdAt).toLocaleString() : '',
+          createdAt: item.createdAt ? formatReportDate(item.createdAt) : '',
         };
       })
       .filter((item) => {

@@ -73,13 +73,15 @@ export const PocketV2 = () => {
         const isFilled = !!(bankDetails?.accountNumber);
 
         setWalletState({
-          // Same amount as the ride wallet (Pocket + ride wallet); earnings below stay food-only
+          // Same amount as the ride wallet (Pocket + ride wallet); the weekly earnings below are food + bike rides / parcels
           totalBalance: Number(wallet.unifiedBalance ?? wallet.pocketBalance) || 0,
           rideEarningsMerged: Number(wallet.rideEarnings) || 0,
           cashInHand: Number(wallet.cashInHand) || 0,
           availableCashLimit: Number(wallet.availableCashLimit) || 0,
           totalCashLimit: Number(wallet.totalCashLimit) || 0,
           weeklyEarnings: Number(summary.totalEarnings) || 0,
+          weeklyFoodEarnings: Number(summary.foodEarnings) || 0,
+          weeklyRideEarnings: Number(summary.rideEarnings) || 0,
           weeklyOrders: Number(summary.totalOrders) || 0,
           payoutAmount: Number(wallet.lastPayout?.amount || wallet.totalWithdrawn || 0),
           payoutPeriod: wallet.lastPayout ? new Date(wallet.lastPayout.date).toLocaleDateString() : 'No recent payout',
@@ -235,6 +237,11 @@ export const PocketV2 = () => {
              <h2 className="text-4xl font-black text-black tracking-tighter">
                 ₹{walletState.weeklyEarnings.toFixed(0)}
              </h2>
+             {(walletState.weeklyRideEarnings ?? 0) > 0 && (
+               <p className="mt-2 text-[11px] font-bold text-gray-500">
+                 Food ₹{(walletState.weeklyFoodEarnings ?? 0).toFixed(0)} + Rides ₹{walletState.weeklyRideEarnings.toFixed(0)}
+               </p>
+             )}
           </div>
 
           {/* 3. EARNINGS GUARANTEE - API DRIVEN (NO STATIC VALUES) */}

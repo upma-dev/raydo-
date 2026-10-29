@@ -11,6 +11,7 @@ import { useSettings } from '../../../shared/context/SettingsContext';
 import { getSupportConversations, markSupportMessagesRead } from '../../shared/chat/chatApi';
 import { adminService } from '../services/adminService';
 import { adminSupportService } from '../../shared/services/supportTicketService';
+import GlobalLanguageSelector from '@/shared/components/GlobalLanguageSelector';
 import { hasAdminPermission } from '../constants/adminAccess';
 import {
   clearUnifiedAdminSession,
@@ -782,7 +783,9 @@ const AdminLayout = () => {
                   ]
                 : []),
               { label: 'Set Price', path: '/taxi/admin/pricing/set-price', permission: 'set_prices.view' },
-              { label: 'Goods Types', path: '/taxi/admin/pricing/goods-types', permission: 'goods_types.view' },
+              // Hidden by request. Parcel booking still reads the existing goods types; they just can not be edited from the admin
+              // until this item is turned back on.
+              // { label: 'Goods Types', path: '/taxi/admin/pricing/goods-types', permission: 'goods_types.view' },
             ],
           },
           {
@@ -813,8 +816,10 @@ const AdminLayout = () => {
             icon: MapPin,
             label: 'Geofencing',
             subItems: [
-              { label: 'Heat Map', path: '/taxi/admin/geo/heatmap', permission: 'geofencing.view' },
-              { label: "God's Eye", path: '/taxi/admin/geo/gods-eye', permission: 'geofencing.view' },
+              // Hidden: not working with real data. Heat Map opens the same zone map as Peak Zone (HeatMap.jsx is not wired and uses
+              // random points); God's Eye draws mock drivers and requests around each zone. Turn on after live driver data is added.
+              // { label: 'Heat Map', path: '/taxi/admin/geo/heatmap', permission: 'geofencing.view' },
+              // { label: "God's Eye", path: '/taxi/admin/geo/gods-eye', permission: 'geofencing.view' },
               { label: 'Peak Zone', path: '/taxi/admin/geo/peak-zone', permission: 'geofencing.view' },
             ],
           },
@@ -878,9 +883,10 @@ const AdminLayout = () => {
               { label: 'User Report', path: '/taxi/admin/reports/user', permission: 'reports.view' },
               { label: 'Driver Report', path: '/taxi/admin/reports/driver', permission: 'reports.view' },
               { label: 'Driver Duty Report', path: '/taxi/admin/reports/driver-duty', permission: 'reports.view' },
-              { label: 'Owner Report', path: '/taxi/admin/reports/owner', permission: 'reports.view' },
+              // Hidden: Owner Report and Fleet Finance Report only list fleet owners (no finance figures); fleet owners are not used.
+              // { label: 'Owner Report', path: '/taxi/admin/reports/owner', permission: 'reports.view' },
               { label: 'Finance Report', path: '/taxi/admin/reports/finance', permission: 'reports.view' },
-              { label: 'Fleet Finance Report', path: '/taxi/admin/reports/fleet-finance', permission: 'reports.view' },
+              // { label: 'Fleet Finance Report', path: '/taxi/admin/reports/fleet-finance', permission: 'reports.view' },
             ],
           },
           {
@@ -893,14 +899,15 @@ const AdminLayout = () => {
           },
         ],
       },
-      {
-        title: 'Masters',
-        items: [
-          { icon: Globe, label: 'Language', path: '/taxi/admin/masters/languages', permission: 'settings.view' },
-          // { icon: Star, label: 'Preferences', path: '/taxi/admin/masters/preferences' },
-          // { icon: ShieldCheck, label: 'Roles', path: '/taxi/admin/masters/roles' },
-        ],
-      },
+      // Hidden: Masters only held the Language page; the language of the admin is chosen with the globe in the header.
+      // {
+      //   title: 'Masters',
+      //   items: [
+      //     { icon: Globe, label: 'Language', path: '/taxi/admin/masters/languages', permission: 'settings.view' },
+      //     // { icon: Star, label: 'Preferences', path: '/taxi/admin/masters/preferences' },
+      //     // { icon: ShieldCheck, label: 'Roles', path: '/taxi/admin/masters/roles' },
+      //   ],
+      // },
       {
         title: 'Settings',
         items: [
@@ -925,15 +932,17 @@ const AdminLayout = () => {
               { label: 'Mobile App Landing/Onboard Screens Settings', path: '/taxi/admin/settings/app/onboard', permission: 'settings.view' },
             ],
           },
-          {
-            icon: Settings2,
-            label: 'Third-party Settings',
-            permission: 'settings.view',
-            subItems: [
-              { label: 'Payment Gateway Settings', path: '/taxi/admin/settings/third-party/payment', permission: 'settings.view' },
-              // { label: 'Notification Channel', path: '/taxi/admin/settings/third-party/notification-channel' },
-            ],
-          },
+          // Hidden: Payment Gateway Settings is saved in the database but no payment code reads it. Payments use RAZORPAY_KEY_ID /
+          // RAZORPAY_KEY_SECRET from the server .env, so editing this page changes nothing.
+          // {
+          //   icon: Settings2,
+          //   label: 'Third-party Settings',
+          //   permission: 'settings.view',
+          //   subItems: [
+          //     { label: 'Payment Gateway Settings', path: '/taxi/admin/settings/third-party/payment', permission: 'settings.view' },
+          //     // { label: 'Notification Channel', path: '/taxi/admin/settings/third-party/notification-channel' },
+          //   ],
+          // },
           // {
           //   icon: PlusCircle,
           //   label: 'Addons',
@@ -1641,6 +1650,9 @@ const AdminLayout = () => {
             {adminProfile?.admin_type !== 'subadmin' && adminProfile?.adminLevel !== 'subadmin' && (
               <ModeSwitcher mode={mode} setMode={setMode} />
             )}
+
+            {/* Language of the whole admin (same switch as the Food admin) */}
+            <GlobalLanguageSelector variant="light" />
 
             <div className="mr-1 flex items-center gap-1 border-r border-gray-100 pr-4 leading-none">
               <button

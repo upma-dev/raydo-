@@ -370,7 +370,9 @@ const Home = ({ embedded = false }) => {
           }
         }
 
-        if (rideData?._id || rideData?.rideId) {
+        const rideIsOver = ['completed', 'cancelled', 'canceled'].includes(String(rideData?.status || '').toLowerCase());
+
+        if ((rideData?._id || rideData?.rideId) && !rideIsOver) {
           const normalizedRide = {
             rideId: rideData._id || rideData.rideId,
             pickup: rideData.pickupAddress || rideData.pickup,

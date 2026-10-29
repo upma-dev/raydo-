@@ -6,6 +6,7 @@ import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransa
 import { FoodEarningAddon } from '../../admin/models/earningAddon.model.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
 import { Ride } from '../../../taxi/user/models/Ride.js';
+import { getRideEarningsTotals } from './deliveryFinance.service.js';
 import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
@@ -712,15 +713,21 @@ export const getDeliveryPartnerEarnings = async (deliveryPartnerId, query = {}) 
         ])
     ]);
 
-    const totalEarnings = Number(agg?.[0]?.totalEarnings) || 0;
+    const foodEarnings = Number(agg?.[0]?.totalEarnings) || 0;
+    // One panel: the earnings of a period are food deliveries plus the bike rides / parcels done in the same period
+    const rideTotals = await getRideEarningsTotals(deliveryPartnerId, range).catch(() => ({ rideEarnings: 0, rideTrips: 0 }));
+    const totalEarnings = Math.round((foodEarnings + rideTotals.rideEarnings) * 100) / 100;
 
     // Frontend only strongly relies on totalEarnings + totalOrders.
     const summary = {
         totalEarnings,
-        totalOrders,
+        totalOrders: totalOrders + rideTotals.rideTrips,
+        foodEarnings,
+        rideEarnings: rideTotals.rideEarnings,
+        rideTrips: rideTotals.rideTrips,
         totalHours: 0,
         totalMinutes: 0,
-        orderEarning: totalEarnings,
+        orderEarning: foodEarnings,
         incentive: 0,
         otherEarnings: 0
     };

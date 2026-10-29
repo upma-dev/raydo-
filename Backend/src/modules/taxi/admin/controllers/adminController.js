@@ -293,38 +293,83 @@ const buildAdminBusMonthWindow = (value) => {
   };
 };
 
+// Column titles people can read ("createdAt" -> "Created At"); unknown keys are split on _ and camelCase
+const REPORT_HEADER_LABELS = {
+  name: 'Name',
+  email: 'Email',
+  mobile: 'Mobile',
+  active: 'Active',
+  createdAt: 'Created At',
+  transport_type: 'Transport Type',
+  vehicle_type: 'Vehicle Type',
+  company_name: 'Company Name',
+};
+const reportHeaderLabel = (key) =>
+  REPORT_HEADER_LABELS[key] ||
+  String(key)
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/(^| )([a-z])/g, (_m, lead, c) => lead + c.toUpperCase());
+
+// Phone numbers and ids must stay text: a spreadsheet turns 9812345678 into 9.81E+09
+const isTextColumn = (key) => /mobile|phone|number|id$/i.test(String(key));
+const reportCellValue = (key, value) => {
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (value === null || value === undefined) return '';
+  return isTextColumn(key) ? String(value) : value;
+};
+
 const sendFile = async (res, filename, reportData, format) => {
   const { headers, rows } = reportData;
+  const labels = headers.map(reportHeaderLabel);
 
   if (format === 'csv') {
-    const content = adminService.csvFromRows(headers, rows);
+    const escape = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const lines = [
+      labels.map(escape).join(','),
+      ...rows.map((row) => headers.map((h) => escape(reportCellValue(h, row[h]))).join(',')),
+    ];
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
-    res.send(content);
+    // The BOM makes Excel read the file as UTF-8 (Hindi names would otherwise turn into garbage)
+    res.send(String.fromCharCode(0xFEFF) + lines.join(String.fromCharCode(13, 10)));
   } else {
     // Generate real Excel file
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Report');
 
-    // Add headers
-    worksheet.addRow(headers.map(h => String(h).toUpperCase()));
-    
-    // Add rows
-    rows.forEach(row => {
-      worksheet.addRow(headers.map(h => row[h]));
+    worksheet.addRow(labels);
+    rows.forEach((row) => {
+      worksheet.addRow(headers.map((h) => reportCellValue(h, row[h])));
     });
 
-    // Style the header row
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFE0E0E0' }
-    };
+    // Column width follows the longest value, so nothing shows as ##### or gets cut off
+    headers.forEach((h, index) => {
+      const longest = Math.max(
+        labels[index].length,
+        ...rows.map((row) => String(reportCellValue(h, row[h])).length),
+      );
+      const column = worksheet.getColumn(index + 1);
+      column.width = Math.min(Math.max(longest + 3, 10), 50);
+      if (isTextColumn(h)) column.numFmt = '@';
+    });
+
+    // Header row: bold, filled, frozen while scrolling, with filter arrows
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 22;
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'left' };
+    });
+    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+    if (headers.length > 0) {
+      worksheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
+    }
 
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
-    
+
     await workbook.xlsx.write(res);
     res.end();
   }

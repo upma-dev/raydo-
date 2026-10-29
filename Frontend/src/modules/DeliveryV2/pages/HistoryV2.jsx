@@ -6,7 +6,9 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { deliveryAPI } from '@food/api';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 import useDeliveryBackNavigation from '../hooks/useDeliveryBackNavigation';
+import { fetchActiveRide, openActiveRide } from '@/modules/DeliveryV2/utils/rideModeSession';
 
 /**
  * HistoryV2 - EXACT 1:1 Match with User Screenshot.
@@ -16,6 +18,22 @@ import useDeliveryBackNavigation from '../hooks/useDeliveryBackNavigation';
  */
 export const HistoryV2 = () => {
   const goBack = useDeliveryBackNavigation();
+  const navigate = useNavigate();
+  const [continuingRide, setContinuingRide] = useState(false);
+
+  // A ride that was accepted but not finished (app closed, phone call, Back) is picked up again from here
+  const continueRide = async () => {
+    if (continuingRide) return;
+    setContinuingRide(true);
+    try {
+      const ride = await fetchActiveRide();
+      if (ride) openActiveRide(navigate, ride);
+      else if (ride === null) toast.info('This ride is no longer active.');
+      else toast.error('Could not open the ride. Check your connection and try again.');
+    } finally {
+      setContinuingRide(false);
+    }
+  };
   const [activeTab, setActiveTab] = useState("daily");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedTripType, setSelectedTripType] = useState("ALL TRIPS");
@@ -394,6 +412,16 @@ export const HistoryV2 = () => {
                                 </button>
                              </div>
                          </div>
+                         {trip.source === 'ride' && isPending && (
+                            <button
+                              type="button"
+                              onClick={continueRide}
+                              disabled={continuingRide}
+                              className="mt-4 h-11 w-full rounded-xl bg-[#FFC107] text-[12px] font-black uppercase tracking-wider text-black shadow-md active:scale-95 transition-transform disabled:opacity-60"
+                            >
+                              {continuingRide ? 'Opening…' : 'Continue ride'}
+                            </button>
+                         )}
                          <AnimatePresence initial={false}>
                             {isBreakdownOpen && (
                                <motion.div

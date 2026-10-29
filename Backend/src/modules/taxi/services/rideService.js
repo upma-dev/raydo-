@@ -1529,7 +1529,16 @@ export const getActiveRideForIdentity = async ({ role, entityId }) => {
       return null;
     }
 
-    return populateRideRealtime(user.currentRideId);
+    const currentRide = await populateRideRealtime(user.currentRideId);
+
+    // The pointer is stale when the ride is gone or already finished / cancelled (a path that closed the ride did not clear it):
+    // clear it, or the passenger keeps seeing an old booking as their running ride
+    if (!currentRide || [RIDE_STATUS.COMPLETED, RIDE_STATUS.CANCELLED].includes(currentRide.status)) {
+      await User.updateOne({ _id: entityId, currentRideId: user.currentRideId }, { $set: { currentRideId: null } });
+      return null;
+    }
+
+    return currentRide;
   }
 
   if (role === 'driver') {
