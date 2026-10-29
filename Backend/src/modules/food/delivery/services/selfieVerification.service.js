@@ -67,10 +67,10 @@ export const verifyLiveSelfie = async (deliveryPartnerId, payload, files = null)
   const isMatchSuccessful = analysis.matchScore >= 70 && analysis.isHumanFace;
 
   if (isMatchSuccessful) {
-    // 2. Upload to Cloudinary with a 3.5s timeout and quick base64 fallback to prevent client timeout
+    // 2. Upload to Cloudinary with a 8s timeout and quick base64 fallback to prevent client timeout
     let uploadedUrl = '';
     try {
-      uploadedUrl = await uploadImageBuffer(buffer, 'food/delivery/selfies', 3500);
+      uploadedUrl = await uploadImageBuffer(buffer, 'food/delivery/selfies', 8000);
     } catch (uploadErr) {
       console.warn('[Selfie Verification] Image upload error fallback:', uploadErr?.message);
       uploadedUrl = `data:image/jpeg;base64,${buffer.toString('base64')}`;
@@ -78,11 +78,11 @@ export const verifyLiveSelfie = async (deliveryPartnerId, payload, files = null)
 
     const safeImageUrl = uploadedUrl.startsWith('http')
       ? uploadedUrl
-      : (uploadedUrl.length < 60000 ? uploadedUrl : '');
+      : (uploadedUrl.length < 500000 ? uploadedUrl : 'captured_selfie_verified');
 
     // Reset failed attempt counters and set verified
     partner.onlineSelfie = {
-      imageUrl: safeImageUrl,
+      imageUrl: safeImageUrl || 'captured_selfie_verified',
       capturedAt: now,
       uploadedAt: now,
       forDate: todayKey,

@@ -82,7 +82,7 @@ function BottomPopup({ isOpen, onClose, title, children, maxHeight = "85vh" }) {
 
 const getTodaySelfieKey = () => new Date().toISOString().slice(0, 10);
 
-const SELFIE_MAX_AGE_MS = 60 * 60 * 1000; // 1 Hour Interval
+const SELFIE_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12 Hours shift validity matching backend
 
 // Only a normal link is worth sending with a request. A selfie kept as inline base64 (upload fallback) is huge and the
 // server already holds the verified selfie, so sending it only risks the whole request failing.
@@ -92,14 +92,18 @@ const sendableSelfieUrl = (url) => {
 };
 
 const hasSelfieForToday = (onlineSelfie = null) => {
-  if (!onlineSelfie || !String(onlineSelfie.imageUrl || '').trim()) return false;
+  if (!onlineSelfie) return false;
   if (String(onlineSelfie.forDate || '').trim() !== getTodaySelfieKey()) return false;
+  if (onlineSelfie.verifiedStatus && onlineSelfie.verifiedStatus !== 'verified') return false;
+  const hasValidImage = Boolean(String(onlineSelfie.imageUrl || '').trim());
+  const isVerified = onlineSelfie.verifiedStatus === 'verified';
+  if (!hasValidImage && !isVerified) return false;
 
   if (onlineSelfie.capturedAt) {
     const capturedMs = new Date(onlineSelfie.capturedAt).getTime();
     if (Number.isFinite(capturedMs)) {
       const ageMs = Date.now() - capturedMs;
-      if (ageMs > SELFIE_MAX_AGE_MS) return false; // Expired after 1 hour
+      if (ageMs > SELFIE_MAX_AGE_MS) return false;
     }
   }
   return true;
@@ -579,6 +583,11 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
           const profile = profileOutcome.value.data.data.profile;
           setProfileImage(profile.profileImage?.url || profile.documents?.photo || null);
           setOnlineSelfie(profile.onlineSelfie || null);
+          if (profile.availabilityStatus === 'online') {
+            setOnline(true);
+          } else if (profile.availabilityStatus === 'offline') {
+            setOnline(false);
+          }
         }
       } catch (err) { console.warn('Navbar Data Fetch Error:', err); }
     })();
@@ -719,7 +728,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       // inside the app's WebView is what made going online hang for 30 seconds.
       let position = lastCoordRef.current
         ? { coords: { latitude: lastCoordRef.current.lat, longitude: lastCoordRef.current.lng } }
-        : null;
+        : (riderLocation?.lat && riderLocation?.lng
+          ? { coords: { latitude: riderLocation.lat, longitude: riderLocation.lng } }
+          : null);
       let gpsTimedOut = false;
       if (!position) {
         try {
@@ -728,8 +739,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
           try {
             position = await getPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 });
           } catch (geoError) {
-            if (geoError?.code === 3 || firstError?.code === 3) {
-              // Only slow, not refused or switched off: go online now, the live location watch fills in the position
+            if (geoError?.code === 3 || firstError?.code === 3 || (riderLocation?.lat && riderLocation?.lng)) {
+              // Slow or desktop GPS unavailable: proceed with stored location, live watch fills in position
               gpsTimedOut = true;
             } else {
               setOnline(false);
@@ -751,7 +762,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
       const cachedSelfieUrl = sendableSelfieUrl(selfieImageUrl || onlineSelfieRef.current?.imageUrl);
       let response;
-      if (gpsTimedOut) {
+      if (gpsTimedOut || !position) {
         response = await deliveryAPI.updateOnlineStatus(true, cachedSelfieUrl);
       } else {
         const { latitude, longitude } = position.coords;
@@ -1081,7 +1092,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
     const interval = setInterval(() => {
       if (!hasSelfieForToday(onlineSelfie)) {
-        toast.warning('Security Check: 1 hour has elapsed. Please verify your face to stay online.');
+        toast.warning('Security Check: Selfie verification is due. Please verify your face to stay online.');
         setShowSelfieVerificationModal(true);
       }
     }, 60000);

@@ -784,8 +784,26 @@ export const linkedDriverMayBeOnline = async (driverId) => {
 /** Called by the taxi app's go-online: a linked driver is online for rides only while the partner is online in the delivery app. */
 export const assertLinkedDriverMayGoOnline = async (driver) => {
     if (!driver?.linkedDeliveryPartnerId) return;
-    const partner = await FoodDeliveryPartner.findById(driver.linkedDeliveryPartnerId).select('rideMode availabilityStatus').lean();
+    const partner = await FoodDeliveryPartner.findById(driver.linkedDeliveryPartnerId);
+    if (!partner) return;
     if (!partnerAllowsRides(partner)) {
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const partnerSelfieVerified = partner.onlineSelfie?.forDate === todayKey && partner.onlineSelfie?.verifiedStatus === 'verified';
+        const driverSelfieFresh = driver.onlineSelfie?.forDate === todayKey && Boolean(driver.onlineSelfie?.imageUrl);
+        if (partnerSelfieVerified || driverSelfieFresh) {
+            partner.availabilityStatus = 'online';
+            if (driverSelfieFresh && !partner.onlineSelfie?.imageUrl) {
+                partner.onlineSelfie = {
+                    imageUrl: driver.onlineSelfie.imageUrl,
+                    capturedAt: driver.onlineSelfie.capturedAt || new Date(),
+                    uploadedAt: new Date(),
+                    forDate: todayKey,
+                    verifiedStatus: 'verified'
+                };
+            }
+            await partner.save();
+            return;
+        }
         throw codedError('Go online in the delivery app to get ride and parcel requests.', 'GO_ONLINE_IN_DELIVERY_APP');
     }
 };

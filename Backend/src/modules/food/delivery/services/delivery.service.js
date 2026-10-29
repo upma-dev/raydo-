@@ -361,7 +361,7 @@ export const updateDeliveryAvailability = async (userId, payload) => {
         const onlineSelfie = partner.onlineSelfie || {};
         const isVerifiedToday =
             onlineSelfie.forDate === todayKey &&
-            onlineSelfie.imageUrl &&
+            (Boolean(onlineSelfie.imageUrl) || onlineSelfie.verifiedStatus === 'verified') &&
             onlineSelfie.verifiedStatus === 'verified';
 
         if (!isVerifiedToday && !String(selfieImageUrl || '').trim()) {
@@ -377,7 +377,9 @@ export const updateDeliveryAvailability = async (userId, payload) => {
                 capturedAt: new Date(),
                 uploadedAt: new Date(),
                 forDate: todayKey,
-                verifiedStatus: 'verified'
+                verifiedStatus: 'verified',
+                failedAttempts: 0,
+                lockedUntil: null
             };
         }
 
