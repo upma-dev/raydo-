@@ -93,19 +93,16 @@ const sendableSelfieUrl = (url) => {
 
 const hasSelfieForToday = (onlineSelfie = null) => {
   if (!onlineSelfie) return false;
-  if (String(onlineSelfie.forDate || '').trim() !== getTodaySelfieKey()) return false;
+  const isToday = String(onlineSelfie.forDate || '').trim() === getTodaySelfieKey();
+  const capturedMs = onlineSelfie.capturedAt ? new Date(onlineSelfie.capturedAt).getTime() : 0;
+  const isWithinShift = Number.isFinite(capturedMs) && capturedMs > 0 && (Date.now() - capturedMs) < SELFIE_MAX_AGE_MS;
+  if (!isToday && !isWithinShift) return false;
+
   if (onlineSelfie.verifiedStatus && onlineSelfie.verifiedStatus !== 'verified') return false;
   const hasValidImage = Boolean(String(onlineSelfie.imageUrl || '').trim());
   const isVerified = onlineSelfie.verifiedStatus === 'verified';
   if (!hasValidImage && !isVerified) return false;
 
-  if (onlineSelfie.capturedAt) {
-    const capturedMs = new Date(onlineSelfie.capturedAt).getTime();
-    if (Number.isFinite(capturedMs)) {
-      const ageMs = Date.now() - capturedMs;
-      if (ageMs > SELFIE_MAX_AGE_MS) return false;
-    }
-  }
   return true;
 };
 
@@ -306,7 +303,22 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   const [showSelfieCameraCapture, setShowSelfieCameraCapture] = useState(false);
   const [selfieUploading, setSelfieUploading] = useState(false);
   const [selfieError, setSelfieError] = useState('');
-  const [onlineSelfie, setOnlineSelfie] = useState(null);
+  const [onlineSelfie, setOnlineSelfieState] = useState(() => {
+    try {
+      const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('delivery_online_selfie') : null;
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const setOnlineSelfie = useCallback((val) => {
+    setOnlineSelfieState(val);
+    try {
+      if (val) localStorage.setItem('delivery_online_selfie', JSON.stringify(val));
+      else localStorage.removeItem('delivery_online_selfie');
+    } catch {}
+  }, []);
   const [showEmergencyOfflineModal, setShowEmergencyOfflineModal] = useState(false);
   const [emergencyOfflineReason, setEmergencyOfflineReason] = useState('');
   const [isSubmittingEmergencyOffline, setIsSubmittingEmergencyOffline] = useState(false);
@@ -795,8 +807,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
         toast('Connection is slow. Please tap the switch once more.');
       }
 
-      if (String(message).toLowerCase().includes('selfie')) {
-        setShowOnlineSelfiePrompt(true);
+      if (String(message).toLowerCase().includes('selfie') || errCode === 'SELFIE_REQUIRED') {
+        setShowSelfieVerificationModal(true);
       }
     } finally {
       setIsTogglingDuty(false);
@@ -806,7 +818,11 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
   const goOffline = useCallback(async () => {
     setIsTogglingDuty(true);
     try {
-      await deliveryAPI.updateOnlineStatus(false);
+      const response = await deliveryAPI.updateOnlineStatus(false);
+      const data = response?.data?.data || response?.data || {};
+      if (data.onlineSelfie && (data.onlineSelfie.verifiedStatus || data.onlineSelfie.imageUrl)) {
+        setOnlineSelfie(data.onlineSelfie);
+      }
       setOnline(false);
       toast('You are now offline');
     } catch (error) {
@@ -820,7 +836,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     } finally {
       setIsTogglingDuty(false);
     }
-  }, [setOnline]);
+  }, [setOnline, setOnlineSelfie]);
 
   const handleSubmitEmergencyOffline = async () => {
     if (!emergencyOfflineReason.trim()) {
@@ -859,7 +875,20 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     return () => window.removeEventListener('deliveryStatusChanged', handleStatusChanged);
   }, [setOnline]);
 
+  // A request that never answers must not leave the switch disabled for good
+  useEffect(() => {
+    if (!isTogglingDuty) return;
+    const unstick = setTimeout(() => setIsTogglingDuty(false), 35000);
+    return () => clearTimeout(unstick);
+  }, [isTogglingDuty]);
+
+  const lastDutyToggleAtRef = useRef(0);
+
   const handleDutyToggle = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastDutyToggleAtRef.current < 700) return;
+    lastDutyToggleAtRef.current = now;
+
     if (isTogglingDuty) return;
 
     if (isOnline) {
@@ -869,17 +898,6 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
     setIsTogglingDuty(true);
     try {
-      /* Step 1: Active gig check commented out for direct online mode (like taxi driver)
-      const gigRes = await deliveryAPI.getActiveGig();
-      const activeGig = gigRes.data?.data?.activeGig;
-      if (!activeGig) {
-        toast.error("You don't have an active gig. Please book a gig before going online.");
-        setShowBookGigModal(true);
-        setIsTogglingDuty(false);
-        return;
-      }
-      */
-
       // Step 2: Check Selfie Verification
       if (hasSelfieForToday(onlineSelfie)) {
         await goOnline();

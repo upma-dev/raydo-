@@ -85,7 +85,7 @@ const findActiveRide = (driverId) =>
             { scheduledAt: { $lte: new Date(Date.now() + SCHEDULED_RIDE_LOCK_MS) } },
         ],
     })
-        .select('_id status liveStatus serviceType scheduledAt')
+        .select('_id status liveStatus serviceType scheduledAt updatedAt')
         .lean();
 
 const findUpcomingScheduledRides = (driverId) =>
@@ -668,12 +668,12 @@ const assertRideWalletReady = async (partner, driver) => {
 const driverSyncUpdate = (partner, payload = {}) => {
     const update = {
         // The selfie the partner verified for food today also counts for rides (same person, same shift)
-        ...(partner.onlineSelfie?.verifiedStatus === 'verified' && partner.onlineSelfie?.forDate === todayKey() && partner.onlineSelfie?.imageUrl
+        ...(partner.onlineSelfie?.verifiedStatus === 'verified' && (partner.onlineSelfie?.forDate === todayKey() || (partner.onlineSelfie?.capturedAt && Date.now() - new Date(partner.onlineSelfie.capturedAt).getTime() < 12 * 60 * 60 * 1000)) && partner.onlineSelfie?.imageUrl
             ? { onlineSelfie: {
                 imageUrl: partner.onlineSelfie.imageUrl,
                 capturedAt: partner.onlineSelfie.capturedAt || new Date(),
                 uploadedAt: partner.onlineSelfie.uploadedAt || new Date(),
-                forDate: partner.onlineSelfie.forDate,
+                forDate: partner.onlineSelfie.forDate || todayKey(),
             } }
             : {}),
     };
@@ -727,8 +727,22 @@ export const switchRideMode = async (partnerId, payload = {}) => {
     }
 
     // mode === 'food'
-    const activeRide = await findActiveRide(driver._id);
-    if (activeRide || driver.isOnRide) {
+    let activeRide = await findActiveRide(driver._id);
+    let driverStillOnRide = Boolean(driver.isOnRide);
+    // An abandoned ride (no update for 12h) or a leftover isOnRide flag must not keep the partner from going online
+    const staleCutoff = Date.now() - 12 * 60 * 60 * 1000;
+    if (activeRide && new Date(activeRide.updatedAt || 0).getTime() < staleCutoff) {
+        await Ride.updateOne(
+            { _id: activeRide._id },
+            { $set: { status: RIDE_STATUS.CANCELLED, liveStatus: 'cancelled', cancellationReason: 'Stale ride auto-cleanup' } }
+        ).catch(() => {});
+        activeRide = null;
+    }
+    if (!activeRide && driverStillOnRide) {
+        await Driver.updateOne({ _id: driver._id }, { $set: { isOnRide: false, currentRideId: null } }).catch(() => {});
+        driverStillOnRide = false;
+    }
+    if (activeRide || driverStillOnRide) {
         throw codedError('Finish your current ride before switching to Food delivery.', 'ACTIVE_RIDE_IN_PROGRESS', {
             rideId: activeRide ? String(activeRide._id) : null,
         });
@@ -788,8 +802,12 @@ export const assertLinkedDriverMayGoOnline = async (driver) => {
     if (!partner) return;
     if (!partnerAllowsRides(partner)) {
         const todayKey = new Date().toISOString().slice(0, 10);
-        const partnerSelfieVerified = partner.onlineSelfie?.forDate === todayKey && partner.onlineSelfie?.verifiedStatus === 'verified';
-        const driverSelfieFresh = driver.onlineSelfie?.forDate === todayKey && Boolean(driver.onlineSelfie?.imageUrl);
+        const partnerCapturedAt = partner.onlineSelfie?.capturedAt ? new Date(partner.onlineSelfie.capturedAt).getTime() : 0;
+        const partnerWithinShift = Number.isFinite(partnerCapturedAt) && partnerCapturedAt > 0 && (Date.now() - partnerCapturedAt) < 12 * 60 * 60 * 1000;
+        const partnerSelfieVerified = (partner.onlineSelfie?.forDate === todayKey || partnerWithinShift) && partner.onlineSelfie?.verifiedStatus === 'verified';
+        const driverCapturedAt = driver.onlineSelfie?.capturedAt ? new Date(driver.onlineSelfie.capturedAt).getTime() : 0;
+        const driverWithinShift = Number.isFinite(driverCapturedAt) && driverCapturedAt > 0 && (Date.now() - driverCapturedAt) < 12 * 60 * 60 * 1000;
+        const driverSelfieFresh = (driver.onlineSelfie?.forDate === todayKey || driverWithinShift) && Boolean(driver.onlineSelfie?.imageUrl);
         if (partnerSelfieVerified || driverSelfieFresh) {
             partner.availabilityStatus = 'online';
             if (driverSelfieFresh && !partner.onlineSelfie?.imageUrl) {

@@ -357,10 +357,12 @@ export const updateDeliveryAvailability = async (userId, payload) => {
         }
         */
 
-        // Step 2: Enforce Verified Selfie Check for Today
+        // Step 2: Enforce Verified Selfie Check for Today (valid for shift / 12 hours)
         const onlineSelfie = partner.onlineSelfie || {};
+        const capturedAtMs = onlineSelfie.capturedAt ? new Date(onlineSelfie.capturedAt).getTime() : 0;
+        const isWithinShiftHours = Number.isFinite(capturedAtMs) && capturedAtMs > 0 && (Date.now() - capturedAtMs) < 12 * 60 * 60 * 1000;
         const isVerifiedToday =
-            onlineSelfie.forDate === todayKey &&
+            (onlineSelfie.forDate === todayKey || isWithinShiftHours) &&
             (Boolean(onlineSelfie.imageUrl) || onlineSelfie.verifiedStatus === 'verified') &&
             onlineSelfie.verifiedStatus === 'verified';
 
@@ -396,11 +398,13 @@ export const updateDeliveryAvailability = async (userId, payload) => {
     if (validStatus === 'offline') {
         // Guard 1: Active Order Running Check
         const { FoodOrder } = await import('../../orders/models/order.model.js');
+        const recentOrderCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const activeRunningOrder = await FoodOrder.findOne({
             'dispatch.deliveryPartnerId': partner._id,
             orderStatus: {
                 $in: ['confirmed', 'preparing', 'ready_for_pickup', 'reached_pickup', 'picked_up', 'reached_drop']
-            }
+            },
+            updatedAt: { $gte: recentOrderCutoff }
         }).select('orderId _id order_id').lean();
 
         if (activeRunningOrder) {
@@ -415,11 +419,35 @@ export const updateDeliveryAvailability = async (userId, payload) => {
         // Guard 1b: a ride / parcel trip on the linked ride profile counts as work in progress too
         if (partner.rideMode?.taxiDriverId) {
             const { Driver } = await import('../../../taxi/driver/models/Driver.js');
-            const onRide = await Driver.exists({ _id: partner.rideMode.taxiDriverId, isOnRide: true });
-            if (onRide) {
+            const { Ride } = await import('../../../taxi/user/models/Ride.js');
+            const { RIDE_STATUS } = await import('../../../taxi/constants/index.js');
+
+            const recentCutoff = new Date(Date.now() - 12 * 60 * 60 * 1000);
+            const activeRide = await Ride.findOne({
+                driverId: partner.rideMode.taxiDriverId,
+                status: { $in: [RIDE_STATUS.ACCEPTED, RIDE_STATUS.ONGOING] },
+                updatedAt: { $gte: recentCutoff }
+            }).select('_id status').lean();
+
+            if (activeRide) {
                 const err = new ValidationError('You cannot go offline while you have a ride or parcel trip in progress.');
                 err.code = 'ACTIVE_RIDE_IN_PROGRESS';
                 throw err;
+            } else {
+                // Self-healing: auto-cancel abandoned stale rides (>12 hrs) and reset driver.isOnRide
+                await Ride.updateMany(
+                    {
+                        driverId: partner.rideMode.taxiDriverId,
+                        status: { $in: [RIDE_STATUS.ACCEPTED, RIDE_STATUS.ONGOING] },
+                        updatedAt: { $lt: recentCutoff }
+                    },
+                    { $set: { status: RIDE_STATUS.CANCELLED, liveStatus: 'cancelled', cancellationReason: 'Stale ride auto-cleanup' } }
+                ).catch(() => {});
+
+                await Driver.updateOne(
+                    { _id: partner.rideMode.taxiDriverId, isOnRide: true },
+                    { $set: { isOnRide: false, currentRideId: null } }
+                ).catch(() => {});
             }
         }
 
