@@ -27,6 +27,10 @@ export const homeAfterTrip = () => (isRideModePartner() ? '/food/delivery/feed' 
 
 export const unwrap = (response) => response?.data?.data ?? response?.data ?? null;
 
+// The Taxi axios instance hands back the response BODY ({ success, data }), unlike the food one: `response.data.data` is always
+// undefined there. This reads both shapes.
+const unwrapTaxi = (response) => response?.data?.data ?? response?.data ?? response;
+
 export const apiErrorOf = (error) => ({
   code: error?.response?.data?.code || '',
   message: error?.response?.data?.message || error?.message || 'Something went wrong',
@@ -110,10 +114,10 @@ export const fetchActiveRide = async () => {
       response = await requestActiveRide(getLocalDriverToken());
     } catch (error) {
       // The stored ride session expired: get a fresh one once and ask again
-      if (error?.response?.status !== 401 || !(await ensureRideToken())) throw error;
+      if ((error?.status ?? error?.response?.status) !== 401 || !(await ensureRideToken())) throw error;
       response = await requestActiveRide(getLocalDriverToken());
     }
-    const ride = response?.data?.data;
+    const ride = unwrapTaxi(response);
     return ride?.rideId ? ride : null;
   } catch {
     return undefined;

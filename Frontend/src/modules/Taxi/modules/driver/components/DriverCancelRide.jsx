@@ -4,6 +4,9 @@ import toast from 'react-hot-toast';
 import { cancelDriverRide, getDriverRideCancelPolicy } from '../services/registrationService';
 
 // "Passenger no-show" is matched by the backend (no-show rule), keep the wording
+// The Taxi axios instance returns the response body ({ success, data }): read the data from either shape
+const unwrapData = (response) => response?.data?.data ?? response?.data ?? null;
+
 const REASONS = [
     'Passenger no-show',
     'Passenger asked me to cancel',
@@ -27,7 +30,7 @@ const DriverCancelRide = ({ rideId, phase, onCancelled, inline = false }) => {
         if (!rideId) return;
         try {
             const response = await getDriverRideCancelPolicy(rideId);
-            setPolicy(response?.data?.data || null);
+            setPolicy(unwrapData(response));
         } catch {
             setPolicy(null);
         }
@@ -47,9 +50,9 @@ const DriverCancelRide = ({ rideId, phase, onCancelled, inline = false }) => {
             const response = await cancelDriverRide(rideId, { reason });
             setOpen(false);
             toast.success('Ride cancelled');
-            onCancelled?.(response?.data?.data?.cancellationBill || null);
+            onCancelled?.(unwrapData(response)?.cancellationBill || null);
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Could not cancel the ride. Please try again.');
+            toast.error(error?.message || error?.response?.data?.message || 'Could not cancel the ride. Please try again.');
         } finally {
             setBusy(false);
         }
