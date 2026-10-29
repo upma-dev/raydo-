@@ -2,6 +2,7 @@ import { Server } from 'socket.io';
 import { env } from '../../../config/env.js';
 import { normalizePoint, toPoint } from '../../../utils/geo.js';
 import { Driver } from '../driver/models/Driver.js';
+import { FoodDeliveryPartner } from '../../food/delivery/models/deliveryPartner.model.js';
 import {
   broadcastSupportMessage,
   createSupportMessage,
@@ -343,7 +344,19 @@ const registerTaxiSocketConnectionHandlers = (io) => {
       }
 
       // A short network drop must not log the driver out of duty: go offline only if no new socket came back in time
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
+        try {
+          // A driver that is also a delivery partner stays on duty for as long as the partner is online in the delivery
+          // app, even with the app closed: the ride request then reaches the phone as a push notification. Duty ends when
+          // the partner taps Offline (that switches the ride profile off too).
+          const linked = await Driver.findById(identity.sub).select('linkedDeliveryPartnerId').lean();
+          if (linked?.linkedDeliveryPartnerId) {
+            const partner = await FoodDeliveryPartner.findById(linked.linkedDeliveryPartnerId).select('availabilityStatus').lean();
+            if (partner?.availabilityStatus === 'online') return;
+          }
+        } catch (_) {
+          // could not check: fall through to the normal offline rule
+        }
         Driver.updateOne(
           { _id: identity.sub, socketId: null, isOnline: true, isOnRide: { $ne: true } },
           { isOnline: false },
