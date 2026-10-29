@@ -310,9 +310,14 @@ const rideResyncAt = new Map();
 const RIDE_RESYNC_INTERVAL_MS = 60000;
 
 export const updateDeliveryAvailability = async (userId, payload) => {
-    let partner = await FoodDeliveryPartner.findById(userId);
+    // Location pings arrive every few seconds per online partner: read only the two fields they use. The full document
+    // (photos / documents, megabytes while images are still inline base64) on every ping slowed down the whole server.
+    const loadForPing = (query) => query.select('availabilityStatus rideMode.taxiDriverId').lean();
+    const pingOnly = payload?.locationOnly === true;
+    let partner = await (pingOnly ? loadForPing(FoodDeliveryPartner.findById(userId)) : FoodDeliveryPartner.findById(userId));
     if (!partner && mongoose.Types.ObjectId.isValid(userId)) {
-        partner = await FoodDeliveryPartner.findOne({ userId: new mongoose.Types.ObjectId(userId) });
+        const byUserId = FoodDeliveryPartner.findOne({ userId: new mongoose.Types.ObjectId(userId) });
+        partner = await (pingOnly ? loadForPing(byUserId) : byUserId);
     }
     if (!partner) {
         throw new ValidationError('Delivery partner not found');
