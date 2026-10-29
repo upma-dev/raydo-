@@ -174,6 +174,8 @@ const sendPushToTargets = async ({
 
   let deliveredCount = 0;
   let failedCount = 0;
+  const failureCodes = {};
+  let firstFailureMessage = '';
   const invalidTargets = [];
   const safeData = Object.fromEntries(
     Object.entries(data || {}).map(([key, value]) => [key, String(value ?? '')]),
@@ -235,10 +237,23 @@ const sendPushToTargets = async ({
       }
 
       failedCount += 1;
-      if (INVALID_TOKEN_CODES.has(item.error?.code)) {
+      const code = item.error?.code || 'unknown';
+      failureCodes[code] = (failureCodes[code] || 0) + 1;
+      if (!firstFailureMessage) firstFailureMessage = String(item.error?.message || '').slice(0, 160);
+
+      // "invalid-argument" is also what FCM answers for a badly built message, which says nothing about the token: only
+      // drop the token when the error is really about the registration token
+      const tokenIsBad = code === 'messaging/invalid-registration-token'
+        || code === 'messaging/registration-token-not-registered'
+        || (code === 'messaging/invalid-argument' && /registration token/i.test(String(item.error?.message || '')));
+      if (tokenIsBad) {
         invalidTargets.push(batch[index]);
       }
     });
+  }
+
+  if (failedCount > 0) {
+    console.warn(`[Push] ${failedCount}/${dedupedTargets.length} failed: ${JSON.stringify(failureCodes)} first="${firstFailureMessage}"`);
   }
 
   const invalidTokenCount = await removeInvalidTokens(invalidTargets);

@@ -38,6 +38,13 @@ const DATA_URL = /^data:([^;,]+);base64,(.*)$/s;
 const readPath = (doc, dotted) => dotted.split('.').reduce((value, key) => (value == null ? value : value[key]), doc);
 const kb = (bytes) => `${Math.round(bytes / 1024)} KB`;
 
+// The server process gets UPLOAD_PATH from pm2 (ecosystem.config.cjs); a shell does not. Without it the files would land
+// in ./uploads, which nginx does not serve, and every migrated image would look broken.
+if (!path.isAbsolute(String(process.env.UPLOAD_PATH || ''))) {
+  console.error('Set UPLOAD_PATH to the real upload folder, e.g.: UPLOAD_PATH=/var/www/uploads/ node scripts/migrateInlineImages.js');
+  process.exit(1);
+}
+
 if (!process.env.UPLOAD_PUBLIC_URL) {
   console.error('UPLOAD_PUBLIC_URL is not set in .env: the new image URLs would be relative. Set it and run again.');
   process.exit(1);
