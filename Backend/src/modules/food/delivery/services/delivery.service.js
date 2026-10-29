@@ -321,6 +321,33 @@ export const updateDeliveryAvailability = async (userId, payload) => {
 
     const todayKey = new Date().toISOString().slice(0, 10);
 
+    // Live location pings (every few seconds while online) only carry coordinates: one small atomic write, no duty change.
+    // A late ping that reaches the server after the partner tapped Offline must not switch them back online.
+    if (payload?.locationOnly === true) {
+        const pingLat = Number(latitude);
+        const pingLng = Number(longitude);
+        const pingHasCoords = Number.isFinite(pingLat) && Number.isFinite(pingLng) && Math.abs(pingLat) <= 90 && Math.abs(pingLng) <= 180;
+        if (partner.availabilityStatus === 'online' && pingHasCoords) {
+            await FoodDeliveryPartner.updateOne(
+                { _id: partner._id },
+                { $set: {
+                    lastLocation: { type: 'Point', coordinates: [pingLng, pingLat] },
+                    lastLat: pingLat,
+                    lastLng: pingLng,
+                    lastLocationAt: new Date()
+                } }
+            );
+            if (partner.rideMode?.taxiDriverId && (pingLat || pingLng)) {
+                const { Driver } = await import('../../../taxi/driver/models/Driver.js');
+                await Driver.updateOne(
+                    { _id: partner.rideMode.taxiDriverId, isOnline: true },
+                    { $set: { location: { type: 'Point', coordinates: [pingLng, pingLat] } } }
+                ).catch(() => {});
+            }
+        }
+        return { availabilityStatus: partner.availabilityStatus };
+    }
+
     // One panel: a partner left in the older Ride & Parcel mode is moved back to the normal mode, which now takes food
     // orders and rides together
     if (validStatus === 'online' && partner.rideMode?.activeMode === 'taxi') {

@@ -1,18 +1,11 @@
 import ExcelJS from 'exceljs';
 import mongoose from 'mongoose';
 import axios from 'axios';
-import { v2 as cloudinary } from 'cloudinary';
+import { saveImageBuffer, isStoredUrl } from '../../../../services/storage.service.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
-import { config } from '../../../../config/env.js';
-
-cloudinary.config({
-    cloud_name: config.cloudinaryCloudName,
-    api_key: config.cloudinaryApiKey,
-    api_secret: config.cloudinaryApiSecret
-});
 
 const PREP_TIME_OPTIONS = [
     '5-10 mins', '10-15 mins', '15-20 mins', '20-25 mins', 
@@ -256,16 +249,23 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer) {
                 let finalImageUrl = '';
                 if (data.imageUrl) {
                     const trimmedUrl = data.imageUrl.trim();
-                    // If already a Cloudinary URL, don't re-upload
-                    if (trimmedUrl.includes('cloudinary.com')) {
+                    // Already one of our images (server disk or an older Cloudinary one): don't copy it again
+                    if (trimmedUrl.includes('cloudinary.com') || isStoredUrl(trimmedUrl)) {
                         finalImageUrl = trimmedUrl;
                     } else if (trimmedUrl.startsWith('http') || trimmedUrl.startsWith('//')) {
                         try {
                             const urlToUpload = trimmedUrl.startsWith('//') ? `https:${trimmedUrl}` : trimmedUrl;
-                            const uploadRes = await cloudinary.uploader.upload(urlToUpload, {
-                                folder: `restaurants/${restaurantId}/food`
+                            const downloaded = await axios.get(urlToUpload, {
+                                responseType: 'arraybuffer',
+                                timeout: 15000,
+                                maxContentLength: 10 * 1024 * 1024,
                             });
-                            finalImageUrl = uploadRes.secure_url;
+                            const saved = await saveImageBuffer(
+                                Buffer.from(downloaded.data),
+                                `restaurants/${restaurantId}/food`,
+                                downloaded.headers?.['content-type']
+                            );
+                            finalImageUrl = saved.url;
                         } catch (imgErr) {
                             console.error(`Row ${rowNumber}: Image upload failed [${trimmedUrl}]:`, imgErr.message);
                         }

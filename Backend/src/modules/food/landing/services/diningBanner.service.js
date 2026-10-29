@@ -1,5 +1,6 @@
 import { FoodDiningBanner } from '../models/diningBanner.model.js';
-import { v2 as cloudinary } from 'cloudinary';
+import { saveImageBuffer } from '../../../../services/storage.service.js';
+import { destroyImage } from '../../../../services/cloudinary.service.js';
 
 export const listDiningBanners = async () => {
     return FoodDiningBanner.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
@@ -14,30 +15,9 @@ export const createDiningBannersFromFiles = async (files, meta = {}) => {
 
     for (const file of files) {
         try {
-            let imageUrl = '';
-            let publicId = `dining_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
-            try {
-                const uploadResult = await new Promise((resolve, reject) => {
-                    const stream = cloudinary.uploader.upload_stream(
-                        { folder: 'food/dining-banners', resource_type: 'image' },
-                        (error, result) => {
-                            if (error) return reject(error);
-                            return resolve(result);
-                        }
-                    );
-                    stream.end(file.buffer);
-                });
-                imageUrl = uploadResult.secure_url;
-                publicId = uploadResult.public_id;
-            } catch (cloudErr) {
-                if (file.buffer) {
-                    const mime = file.mimetype || 'image/jpeg';
-                    imageUrl = `data:${mime};base64,${file.buffer.toString('base64')}`;
-                } else {
-                    throw cloudErr;
-                }
-            }
+            const saved = await saveImageBuffer(file.buffer, 'food/dining-banners', file.mimetype);
+            const imageUrl = saved.url;
+            const publicId = saved.publicId;
 
             const banner = await FoodDiningBanner.create({
                 imageUrl,
@@ -67,7 +47,7 @@ export const deleteDiningBanner = async (id) => {
 
     if (doc.publicId) {
         try {
-            await cloudinary.uploader.destroy(doc.publicId);
+            await destroyImage(doc.publicId);
         } catch {
             // ignore cloudinary deletion errors
         }

@@ -61,6 +61,8 @@ export const config = {
 
     // Uploads
     uploadPath: process.env.UPLOAD_PATH || 'uploads/',
+    // Public address of the API (no trailing slash): stored images are saved in the database as <this>/uploads/<file>
+    uploadPublicUrl: String(process.env.UPLOAD_PUBLIC_URL || '').trim().replace(/\/+$/, ''),
     requestJsonLimit: process.env.REQUEST_JSON_LIMIT || '2mb',
     requestUrlencodedLimit: process.env.REQUEST_URLENCODED_LIMIT || '2mb',
 

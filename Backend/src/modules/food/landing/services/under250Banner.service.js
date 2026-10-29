@@ -1,5 +1,6 @@
 import { FoodUnder250Banner } from '../models/under250Banner.model.js';
-import { v2 as cloudinary } from 'cloudinary';
+import { saveImageBuffer } from '../../../../services/storage.service.js';
+import { destroyImage } from '../../../../services/cloudinary.service.js';
 
 export const listUnder250Banners = async () => {
     return FoodUnder250Banner.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
@@ -14,20 +15,11 @@ export const createUnder250BannersFromFiles = async (files, meta = {}) => {
 
     for (const file of files) {
         try {
-            const uploadResult = await new Promise((resolve, reject) => {
-                const stream = cloudinary.uploader.upload_stream(
-                    { folder: 'food/under-250-banners', resource_type: 'image' },
-                    (error, result) => {
-                        if (error) return reject(error);
-                        return resolve(result);
-                    }
-                );
-                stream.end(file.buffer);
-            });
+            const saved = await saveImageBuffer(file.buffer, 'food/under-250-banners', file.mimetype);
 
             const banner = await FoodUnder250Banner.create({
-                imageUrl: uploadResult.secure_url,
-                publicId: uploadResult.public_id,
+                imageUrl: saved.url,
+                publicId: saved.publicId,
                 title: meta.title,
                 ctaText: meta.ctaText,
                 ctaLink: meta.ctaLink,
@@ -53,7 +45,7 @@ export const deleteUnder250Banner = async (id) => {
 
     if (doc.publicId) {
         try {
-            await cloudinary.uploader.destroy(doc.publicId);
+            await destroyImage(doc.publicId);
         } catch {
             // ignore cloudinary deletion errors
         }

@@ -11,6 +11,7 @@ import { responseTimeLogger } from './middleware/responseTimeLogger.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { healthCheck } from './config/health.js';
 import { config } from './config/env.js';
+import { getUploadRoot, UPLOAD_URL_PREFIX } from './services/storage.service.js';
 
 const getCorsOrigins = () => {
     const parsed = String(config.socketCorsOrigin || '')
@@ -92,6 +93,15 @@ app.use((req, _res, next) => {
     next();
 });
 app.use(xssClean());
+
+// Images saved on this server (before the rate limiter: a page can load many images at once)
+app.use(UPLOAD_URL_PREFIX, express.static(getUploadRoot(), {
+    fallthrough: true,
+    index: false,
+    dotfiles: 'ignore',
+    maxAge: '30d',
+    immutable: true,
+}));
 
 // Global rate limiting for API routes
 app.use('/api', apiRateLimiter);

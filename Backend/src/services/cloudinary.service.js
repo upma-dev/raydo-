@@ -1,98 +1,34 @@
 import { v2 as cloudinary } from 'cloudinary';
 import { config } from '../config/env.js';
+import { saveImageBuffer, deleteStoredImage, STORED_ID_PREFIX } from './storage.service.js';
 
+// Cloudinary is only kept so images uploaded there earlier can still be deleted. All new images are stored on the
+// server disk (see storage.service.js); the function names below stay so every existing caller moves over unchanged.
 cloudinary.config({
     cloud_name: config.cloudinaryCloudName,
     api_key: config.cloudinaryApiKey,
     api_secret: config.cloudinaryApiSecret
 });
 
-export const uploadImageBuffer = async (buffer, folder = 'uploads', timeoutMs = 4000) => {
-    if (!buffer) {
-        throw new Error('File buffer is required');
-    }
-
-    if (!config.cloudinaryCloudName || !config.cloudinaryApiKey || !config.cloudinaryApiSecret) {
-        // Fallback if Cloudinary is not configured in env
-        return `data:image/jpeg;base64,${buffer.toString('base64')}`;
-    }
-
-    return new Promise((resolve) => {
-        let settled = false;
-        const timer = setTimeout(() => {
-            if (!settled) {
-                settled = true;
-                console.warn(`[Cloudinary Service] Upload timed out after ${timeoutMs}ms, using base64 fallback`);
-                resolve("data:image/jpeg;base64," + buffer.toString("base64"));
-            }
-        }, timeoutMs);
-
-        const stream = cloudinary.uploader.upload_stream(
-            { folder, resource_type: 'image' },
-            (error, result) => {
-                if (settled) return;
-                settled = true;
-                clearTimeout(timer);
-                if (error || !result?.secure_url) {
-                    console.warn('[Cloudinary Service] Upload stream failed, using base64 fallback:', error?.message || error);
-                    return resolve(`data:image/jpeg;base64,${buffer.toString('base64')}`);
-                }
-                return resolve(result.secure_url);
-            }
-        );
-
-        stream.on('error', (err) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            console.warn('[Cloudinary Service] Stream error, using base64 fallback:', err?.message || err);
-            return resolve(`data:image/jpeg;base64,${buffer.toString('base64')}`);
-        });
-
-        stream.end(buffer);
-    });
+/** Saves the image on this server and returns its public URL. */
+export const uploadImageBuffer = async (buffer, folder = 'uploads') => {
+    const saved = await saveImageBuffer(buffer, folder);
+    return saved.url;
 };
 
+/** Deletes an image by its publicId: a file on this server, or (for older records) the Cloudinary copy. */
+export const destroyImage = async (publicId) => {
+    const id = String(publicId || '');
+    if (!id) return;
+    if (id.startsWith(STORED_ID_PREFIX)) {
+        await deleteStoredImage(id);
+        return;
+    }
+    await cloudinary.uploader.destroy(id);
+};
+
+/** Same as uploadImageBuffer, in the { secure_url, public_id } shape the admin settings code expects. */
 export const uploadImageBufferDetailed = async (buffer, folder = 'uploads', mimetype = 'image/png') => {
-    if (!buffer) {
-        throw new Error('File buffer is required');
-    }
-
-    if (!config.cloudinaryCloudName || !config.cloudinaryApiKey || !config.cloudinaryApiSecret) {
-        const mime = mimetype || 'image/png';
-        return {
-            secure_url: `data:${mime};base64,${buffer.toString('base64')}`,
-            public_id: ''
-        };
-    }
-
-    const uploadPromise = new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-            { folder, resource_type: 'image' },
-            (error, result) => {
-                if (error || !result?.secure_url) {
-                    return reject(error || new Error('Upload stream returned invalid result'));
-                }
-                return resolve(result);
-            }
-        );
-
-        stream.end(buffer);
-    });
-
-    const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Cloudinary upload timed out after 10s')), 10000);
-    });
-
-    try {
-        return await Promise.race([uploadPromise, timeoutPromise]);
-    } catch (err) {
-        console.warn('[Cloudinary Service] Detailed upload stream failed/timed out, using base64 fallback:', err?.message || err);
-        const mime = mimetype || 'image/png';
-        return {
-            secure_url: `data:${mime};base64,${buffer.toString('base64')}`,
-            public_id: ''
-        };
-    }
+    const saved = await saveImageBuffer(buffer, folder, mimetype);
+    return { secure_url: saved.url, public_id: saved.publicId };
 };
-

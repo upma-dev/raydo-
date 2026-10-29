@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { DeliverySelfieLog } from '../models/deliverySelfieLog.model.js';
 import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
+import { isStoredUrl } from '../../../../services/storage.service.js';
 import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js';
 
 /**
@@ -67,21 +68,22 @@ export const verifyLiveSelfie = async (deliveryPartnerId, payload, files = null)
   const isMatchSuccessful = analysis.matchScore >= 70 && analysis.isHumanFace;
 
   if (isMatchSuccessful) {
-    // 2. Upload to Cloudinary with a 8s timeout and quick base64 fallback to prevent client timeout
+    // 2. Save the selfie on the server disk (fast local write); base64 only if the disk write fails
     let uploadedUrl = '';
     try {
-      uploadedUrl = await uploadImageBuffer(buffer, 'food/delivery/selfies', 8000);
+      uploadedUrl = await uploadImageBuffer(buffer, 'food/delivery/selfies');
     } catch (uploadErr) {
       console.warn('[Selfie Verification] Image upload error fallback:', uploadErr?.message);
       uploadedUrl = `data:image/jpeg;base64,${buffer.toString('base64')}`;
     }
 
-    const safeImageUrl = uploadedUrl.startsWith('http')
+    const isRealUrl = uploadedUrl.startsWith('http') || isStoredUrl(uploadedUrl);
+    const safeImageUrl = isRealUrl
       ? uploadedUrl
       : (uploadedUrl.length < 500000 ? uploadedUrl : 'captured_selfie_verified');
 
     // Reset failed attempt counters and set verified
-    partner.onlineSelfie = {
+    const verifiedSelfie = {
       imageUrl: safeImageUrl || 'captured_selfie_verified',
       capturedAt: now,
       uploadedAt: now,
@@ -90,23 +92,26 @@ export const verifyLiveSelfie = async (deliveryPartnerId, payload, files = null)
       failedAttempts: 0,
       lockedUntil: null
     };
+    const partnerSet = { onlineSelfie: verifiedSelfie };
 
     // Auto-update profile photo if missing and is a valid URL
-    if (!partner.profilePhoto && uploadedUrl.startsWith("http")) {
-      partner.profilePhoto = uploadedUrl;
+    if (!partner.profilePhoto && isRealUrl) {
+      partnerSet.profilePhoto = uploadedUrl;
     }
 
-    await partner.save();
-
-    const log = await DeliverySelfieLog.create({
-      deliveryPartnerId: partner._id,
-      selfieUrl: safeImageUrl || 'captured_selfie_verified',
-      profilePhotoUrl: partner.profilePhoto || '',
-      matchScore: analysis.matchScore,
-      status: 'verified',
-      failureReason: '',
-      capturedAt: now
-    });
+    // Small targeted write plus the log in parallel (a full document save is slow on a busy server)
+    const [, log] = await Promise.all([
+      FoodDeliveryPartner.updateOne({ _id: partner._id }, { $set: partnerSet }),
+      DeliverySelfieLog.create({
+        deliveryPartnerId: partner._id,
+        selfieUrl: safeImageUrl || 'captured_selfie_verified',
+        profilePhotoUrl: partnerSet.profilePhoto || partner.profilePhoto || '',
+        matchScore: analysis.matchScore,
+        status: 'verified',
+        failureReason: '',
+        capturedAt: now
+      })
+    ]);
 
     return {
       verified: true,

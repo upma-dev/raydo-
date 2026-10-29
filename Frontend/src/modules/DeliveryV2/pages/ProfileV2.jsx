@@ -40,18 +40,29 @@ export const ProfileV2 = () => {
 
   // Fetch profile data
   useEffect(() => {
+    let cancelled = false
     const fetchProfile = async () => {
-      try {
-        setLoading(true)
-        const response = await deliveryAPI.getProfile()
-        if (response?.data?.success && response?.data?.data?.profile) {
-          setProfile(response.data.data.profile)
+      setLoading(true)
+      // A slow network or a token refresh in the middle can fail the first try; retry quietly and only complain if no
+      // attempt gave any data
+      let loaded = false
+      for (let attempt = 0; attempt < 3 && !cancelled; attempt += 1) {
+        try {
+          const response = await deliveryAPI.getProfile()
+          const data = response?.data?.data?.profile
+          if (data) {
+            if (!cancelled) setProfile(data)
+            loaded = true
+            break
+          }
+        } catch (error) {
+          // retried below
         }
-      } catch (error) {
-        toast.error("Failed to load profile data")
-      } finally {
-        setLoading(false)
+        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 900 * (attempt + 1)))
       }
+      if (cancelled) return
+      if (!loaded) toast("Could not load your profile. Please check your connection and reopen this page.")
+      setLoading(false)
     }
     fetchProfile()
     deliveryAPI.getWallet().then(res => {
@@ -64,6 +75,8 @@ export const ProfileV2 = () => {
         setReviewsData(res.data.data);
       }
     }).catch(() => {});
+
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {

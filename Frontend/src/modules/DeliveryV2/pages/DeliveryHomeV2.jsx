@@ -446,9 +446,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       heading: heading || 0,
       speed: speed || 0,
       accuracy,
-      ...(sendableSelfieUrl(onlineSelfieRef.current?.imageUrl)
-        ? { selfieImageUrl: sendableSelfieUrl(onlineSelfieRef.current.imageUrl) }
-        : {}),
+      locationOnly: true,
     }).catch(() => { });
 
     if (!orderId) return;
@@ -715,6 +713,18 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     }
   }, []);
 
+  // After a request that got no answer, the server is the truth about whether the partner is online
+  const syncDutyFromServer = useCallback(async () => {
+    try {
+      const res = await deliveryAPI.getProfile();
+      const status = res?.data?.data?.profile?.availabilityStatus;
+      if (status === 'online') setOnline(true);
+      else if (status === 'offline') setOnline(false);
+    } catch {
+      // still no connection: leave the switch as it is
+    }
+  }, [setOnline]);
+
   const goOnline = useCallback(async (selfieImageUrl = '') => {
     setIsTogglingDuty(true);
     try {
@@ -794,17 +804,18 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
         toast.info(`Ride & Parcel requests are off: ${data.rides.reason}`, { duration: 7000 });
       }
     } catch (error) {
-      setOnline(false);
       const data = error?.response?.data;
       const errCode = data?.code || error?.code;
       const details = data?.details;
       const message = data?.message || data?.error || error?.message || 'Failed to go online';
 
       if (error?.response) {
+        setOnline(false);
         toast.error(message);
       } else {
-        // No answer from the server (weak network): a calm hint, not a red error
-        toast('Connection is slow. Please tap the switch once more.');
+        // No answer from the server (weak network): the request may still have gone through, so show what the server says
+        await syncDutyFromServer();
+        toast('Connection is slow. Please check the switch and tap once more if needed.');
       }
 
       if (String(message).toLowerCase().includes('selfie') || errCode === 'SELFIE_REQUIRED') {
@@ -813,7 +824,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     } finally {
       setIsTogglingDuty(false);
     }
-  }, [setOnline]);
+  }, [setOnline, syncDutyFromServer]);
 
   const goOffline = useCallback(async () => {
     setIsTogglingDuty(true);
@@ -830,13 +841,16 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       const errMsg = error?.response?.data?.message || error?.message || 'Failed to go offline';
       if (errCode === 'EMERGENCY_OFFLINE_REQUIRED' || error?.response?.data?.canRequestEmergency) {
         setShowEmergencyOfflineModal(true);
+      } else if (!error?.response) {
+        await syncDutyFromServer();
+        toast('Connection is slow. Please check the switch and tap once more if needed.');
       } else {
         toast.error(errMsg);
       }
     } finally {
       setIsTogglingDuty(false);
     }
-  }, [setOnline, setOnlineSelfie]);
+  }, [setOnline, setOnlineSelfie, syncDutyFromServer]);
 
   const handleSubmitEmergencyOffline = async () => {
     if (!emergencyOfflineReason.trim()) {
@@ -1147,9 +1161,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 heading: 0,
                 speed: 0,
                 accuracy: null,
-                ...(sendableSelfieUrl(onlineSelfieRef.current?.imageUrl)
-                  ? { selfieImageUrl: sendableSelfieUrl(onlineSelfieRef.current.imageUrl) }
-                  : {}),
+                locationOnly: true,
               }
             ).catch(() => { });
           }
