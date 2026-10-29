@@ -21,8 +21,8 @@ export const SelfieVerificationModal = ({ isOpen, onClose, onSuccess }) => {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: { ideal: 640 },
+          height: { ideal: 480 }
         },
         audio: false
       });
@@ -64,12 +64,18 @@ export const SelfieVerificationModal = ({ isOpen, onClose, onSuccess }) => {
 
     try {
       const video = videoRef.current;
-      const srcWidth = video.videoWidth || 720;
-      const srcHeight = video.videoHeight || 1280;
-      // A face check does not need full camera resolution; a small photo uploads reliably on a weak mobile network
-      const scale = Math.min(1, 640 / Math.max(srcWidth, srcHeight));
-      const width = Math.round(srcWidth * scale);
-      const height = Math.round(srcHeight * scale);
+      if (!video || (video.readyState < 2 && video.readyState !== undefined)) {
+        throw new Error('Camera stream is still starting. Please wait a moment and tap again.');
+      }
+
+      const srcWidth = video.videoWidth || 640;
+      const srcHeight = video.videoHeight || 480;
+
+      // Keep aspect ratio but cap longest edge to 480px for super-fast upload and instant processing
+      const maxDim = 480;
+      const scale = Math.min(1, maxDim / Math.max(srcWidth, srcHeight));
+      const width = Math.max(320, Math.round(srcWidth * scale));
+      const height = Math.max(240, Math.round(srcHeight * scale));
 
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -78,21 +84,26 @@ export const SelfieVerificationModal = ({ isOpen, onClose, onSuccess }) => {
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Canvas rendering failed');
 
+      // Mirror horizontally because front camera is mirrored in user preview
+      ctx.translate(width, 0);
+      ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, width, height);
-      const base64Data = canvas.toDataURL('image/jpeg', 0.7);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-      // A dropped connection (no response at all) is retried quietly before the rider ever sees a message
+      const base64Data = canvas.toDataURL('image/jpeg', 0.65);
+
+      // A dropped connection (no response at all) is retried once quietly before showing an error
       let response;
-      for (let attempt = 0; ; attempt += 1) {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
           response = await deliveryAPI.verifySelfie({ base64: base64Data });
           break;
         } catch (netErr) {
-          if (netErr?.response || attempt >= 2) throw netErr;
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          if (netErr?.response || attempt >= 1) throw netErr;
+          await new Promise((resolve) => setTimeout(resolve, 800));
         }
       }
-      const data = response.data?.data;
+      const data = response?.data?.data;
 
       if (data?.verified) {
         setVerificationResult(data);
@@ -103,11 +114,25 @@ export const SelfieVerificationModal = ({ isOpen, onClose, onSuccess }) => {
         }, 1200);
       } else {
         setVerificationResult(data);
-        setErrorMsg(data?.message || 'Selfie verification failed');
+        setErrorMsg(data?.message || 'Selfie verification failed. Please try again.');
       }
     } catch (err) {
-      const msg = err.response?.data?.message
-        || (err.response ? 'Verification error' : 'Connection is slow. Please tap "Take Live Selfie" once more.');
+      const serverMsg = err.response?.data?.message || err.response?.data?.error;
+      const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '');
+      const isNetwork = !err.response && (err.code === 'ERR_NETWORK' || err.message === 'Network Error' || (typeof navigator !== 'undefined' && !navigator.onLine));
+
+      let msg = serverMsg;
+      if (!msg) {
+        if (isTimeout) {
+          msg = 'Verification timed out. Please tap "Take Live Selfie" once more.';
+        } else if (isNetwork) {
+          msg = 'Network connection error. Please check your internet connection.';
+        } else if (err.message && !err.message.includes('object Object')) {
+          msg = err.message;
+        } else {
+          msg = 'Verification error. Please tap "Take Live Selfie" once more.';
+        }
+      }
       setErrorMsg(msg);
     } finally {
       setIsVerifying(false);

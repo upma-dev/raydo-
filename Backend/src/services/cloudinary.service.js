@@ -7,7 +7,7 @@ cloudinary.config({
     api_secret: config.cloudinaryApiSecret
 });
 
-export const uploadImageBuffer = async (buffer, folder = 'uploads') => {
+export const uploadImageBuffer = async (buffer, folder = 'uploads', timeoutMs = 4000) => {
     if (!buffer) {
         throw new Error('File buffer is required');
     }
@@ -22,10 +22,10 @@ export const uploadImageBuffer = async (buffer, folder = 'uploads') => {
         const timer = setTimeout(() => {
             if (!settled) {
                 settled = true;
-                console.warn("[Cloudinary Service] Upload timed out after 8s, using base64 fallback");
+                console.warn(`[Cloudinary Service] Upload timed out after ${timeoutMs}ms, using base64 fallback`);
                 resolve("data:image/jpeg;base64," + buffer.toString("base64"));
             }
-        }, 8000);
+        }, timeoutMs);
 
         const stream = cloudinary.uploader.upload_stream(
             { folder, resource_type: 'image' },
@@ -40,6 +40,14 @@ export const uploadImageBuffer = async (buffer, folder = 'uploads') => {
                 return resolve(result.secure_url);
             }
         );
+
+        stream.on('error', (err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            console.warn('[Cloudinary Service] Stream error, using base64 fallback:', err?.message || err);
+            return resolve(`data:image/jpeg;base64,${buffer.toString('base64')}`);
+        });
 
         stream.end(buffer);
     });

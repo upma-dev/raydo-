@@ -61,25 +61,28 @@ export const verifyLiveSelfie = async (deliveryPartnerId, payload, files = null)
     throw new ValidationError('Selfie image file size is too large (max 10MB)');
   }
 
-  // Upload to Cloudinary with base64 fallback on error
-  let uploadedUrl = '';
-  try {
-    uploadedUrl = await uploadImageBuffer(buffer, 'food/delivery/selfies');
-  } catch (uploadErr) {
-    console.warn('[Selfie Verification] Image upload error fallback:', uploadErr?.message);
-    uploadedUrl = `data:image/jpeg;base64,${buffer.toString('base64')}`;
-  }
-
-  // Verify face match against registered profile photo
+  // 1. Instant algorithmic face match check against registered profile photo
   const analysis = calculateSimulatedFaceMatch(buffer, partner.profilePhoto);
-
   const todayKey = now.toISOString().slice(0, 10);
   const isMatchSuccessful = analysis.matchScore >= 70 && analysis.isHumanFace;
 
   if (isMatchSuccessful) {
+    // 2. Upload to Cloudinary with a 3.5s timeout and quick base64 fallback to prevent client timeout
+    let uploadedUrl = '';
+    try {
+      uploadedUrl = await uploadImageBuffer(buffer, 'food/delivery/selfies', 3500);
+    } catch (uploadErr) {
+      console.warn('[Selfie Verification] Image upload error fallback:', uploadErr?.message);
+      uploadedUrl = `data:image/jpeg;base64,${buffer.toString('base64')}`;
+    }
+
+    const safeImageUrl = uploadedUrl.startsWith('http')
+      ? uploadedUrl
+      : (uploadedUrl.length < 60000 ? uploadedUrl : '');
+
     // Reset failed attempt counters and set verified
     partner.onlineSelfie = {
-      imageUrl: uploadedUrl,
+      imageUrl: safeImageUrl,
       capturedAt: now,
       uploadedAt: now,
       forDate: todayKey,
@@ -88,8 +91,8 @@ export const verifyLiveSelfie = async (deliveryPartnerId, payload, files = null)
       lockedUntil: null
     };
 
-    // Auto-update profile photo if missing and is a valid URL (prevent saving multi-MB base64)
-    if (!partner.profilePhoto && (uploadedUrl.startsWith("http") || uploadedUrl.length < 50000)) {
+    // Auto-update profile photo if missing and is a valid URL
+    if (!partner.profilePhoto && uploadedUrl.startsWith("http")) {
       partner.profilePhoto = uploadedUrl;
     }
 
@@ -97,7 +100,7 @@ export const verifyLiveSelfie = async (deliveryPartnerId, payload, files = null)
 
     const log = await DeliverySelfieLog.create({
       deliveryPartnerId: partner._id,
-      selfieUrl: uploadedUrl,
+      selfieUrl: safeImageUrl || 'captured_selfie_verified',
       profilePhotoUrl: partner.profilePhoto || '',
       matchScore: analysis.matchScore,
       status: 'verified',
@@ -108,12 +111,12 @@ export const verifyLiveSelfie = async (deliveryPartnerId, payload, files = null)
     return {
       verified: true,
       matchScore: analysis.matchScore,
-      imageUrl: uploadedUrl,
+      imageUrl: safeImageUrl,
       message: 'Identity verified successfully',
       logId: log._id
     };
   } else {
-    // Handle verification failure
+    // Handle verification failure immediately without uploading to external CDN
     const currentFailed = (onlineSelfie.failedAttempts || 0) + 1;
     let lockTime = null;
 
@@ -132,7 +135,7 @@ export const verifyLiveSelfie = async (deliveryPartnerId, payload, files = null)
 
     const log = await DeliverySelfieLog.create({
       deliveryPartnerId: partner._id,
-      selfieUrl: uploadedUrl,
+      selfieUrl: 'failed_verification_attempt',
       profilePhotoUrl: partner.profilePhoto || '',
       matchScore: analysis.matchScore,
       status: 'failed',

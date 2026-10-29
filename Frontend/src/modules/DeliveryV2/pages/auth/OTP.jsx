@@ -14,6 +14,7 @@ export default function DeliveryOTP() {
   const navigate = useNavigate()
   const [otp, setOtp] = useState(["", "", "", ""])
   const [isLoading, setIsLoading] = useState(false)
+  const [isNavigating, setIsNavigating] = useState(false)
   const [error, setError] = useState("")
   const [resendTimer, setResendTimer] = useState(0)
   const [authData, setAuthData] = useState(null)
@@ -198,6 +199,7 @@ export default function DeliveryOTP() {
       }
       const { accessToken, refreshToken, user } = data
       if (accessToken && user) {
+        setIsNavigating(true)
         storeAuthData("delivery", accessToken, user, refreshToken)
         window.dispatchEvent(new Event("deliveryAuthChanged"))
         navigate("/food/delivery", { replace: true })
@@ -206,6 +208,7 @@ export default function DeliveryOTP() {
       setError(err?.response?.data?.message || err?.response?.data?.error || "Invalid OTP. Please try again.")
       setOtp(["", "", "", ""])
       setIsLoading(false)
+      setIsNavigating(false)
       setTimeout(() => inputRefs.current[0]?.focus(), 100)
     }
   }
@@ -216,11 +219,12 @@ export default function DeliveryOTP() {
       const response = await deliveryAPI.verifyOTP(authData?.phone, verifiedOtp, authData?.purpose || "login", name.trim(), deviceToken, activePlatform)
       const { accessToken, refreshToken, user } = response?.data?.data || response?.data || {}
       if (accessToken && user) {
+        setIsNavigating(true)
         storeAuthData("delivery", accessToken, user, refreshToken)
         window.dispatchEvent(new Event("deliveryAuthChanged"))
         navigate("/food/delivery", { replace: true })
       }
-    } catch (err) { setError("Failed to complete setup."); } finally { setIsLoading(false); }
+    } catch (err) { setError("Failed to complete setup."); setIsLoading(false); setIsNavigating(false); }
   }
 
   const handleResend = async () => {
@@ -268,9 +272,53 @@ export default function DeliveryOTP() {
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
         transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-        className="flex-1 bg-white dark:bg-[#0A0A0B] rounded-t-[2.5rem] -mt-8 relative z-20 shadow-[0_-20px_40px_rgba(0,0,0,0.05)] px-6 pt-12 pb-6 flex flex-col"
+        className="flex-1 bg-white dark:bg-[#0A0A0B] rounded-t-[2.5rem] -mt-8 relative z-20 shadow-[0_-20px_40px_rgba(0,0,0,0.05)] px-6 pt-12 pb-6 flex flex-col overflow-hidden"
         style={{ marginBottom: keyboardOffset > 0 ? `${keyboardOffset}px` : 0 }}
       >
+        {/* Full-coverage Loading State - provides immediate visual feedback after entering OTP */}
+        <AnimatePresence>
+          {(isLoading || isNavigating) && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 bg-white/95 dark:bg-[#0A0A0B]/95 backdrop-blur-md z-30 flex flex-col items-center justify-center gap-5 px-6 text-center"
+            >
+              <div className="relative">
+                <div className="w-16 h-16 rounded-2xl bg-[#F38F24]/10 border border-[#F38F24]/30 flex items-center justify-center shadow-xl shadow-[#F38F24]/20">
+                  <Loader2 className="w-8 h-8 text-[#F38F24] animate-spin" />
+                </div>
+                <div className="absolute -inset-1 rounded-2xl bg-[#F38F24]/20 blur-md -z-10 animate-pulse" />
+              </div>
+
+              <div className="space-y-1.5 max-w-xs">
+                <h3 className="text-base font-black text-[#1A1A1A] dark:text-white uppercase tracking-wider">
+                  {isNavigating ? "Entering Partner Dashboard..." : "Verifying PIN..."}
+                </h3>
+                <p className="text-xs font-semibold text-gray-500 dark:text-zinc-400">
+                  {isNavigating ? "Please hold on, preparing your active workspace" : "Please hold on while we verify your credentials"}
+                </p>
+              </div>
+
+              <div className="w-44 h-1.5 bg-gray-100 dark:bg-zinc-800 rounded-full overflow-hidden mt-1">
+                <motion.div
+                  className="h-full bg-[#F38F24] rounded-full"
+                  animate={{
+                    x: ["-100%", "100%"]
+                  }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: 1.2,
+                    ease: "easeInOut"
+                  }}
+                  style={{ width: "50%" }}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="max-w-md mx-auto w-full flex flex-col h-full">
           <AnimatePresence mode="wait">
             {!pendingMessage ? (

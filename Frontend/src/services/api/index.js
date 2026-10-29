@@ -2371,7 +2371,7 @@ export const deliveryAPI = {
     apiClient.post("/food/gigs/partner/gigs/verify-selfie", payload ?? {}, {
       contextModule: "delivery",
       silentError: true,
-      timeout: 15000,
+      timeout: 30000,
     }),
 };
 
