@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { homeAfterTrip } from '@/modules/DeliveryV2/utils/rideModeSession';
 import { GoogleMap, MarkerF, OverlayView, OverlayViewF, PolylineF } from '@react-google-maps/api';
 import { HAS_VALID_GOOGLE_MAPS_KEY, useAppGoogleMapsLoader } from '../../admin/utils/googleMaps';
 import { socketService } from '../../../shared/api/socket';
@@ -751,7 +752,7 @@ const ActiveTrip = () => {
         }
         clearStoredActiveTripSnapshot();
 
-        navigate('/taxi/driver/home', {
+        navigate(homeAfterTrip(), {
             replace: true,
             state: statusMessage ? { statusMessage } : undefined,
         });
@@ -1825,7 +1826,7 @@ const ActiveTrip = () => {
         publishRideStatus('completed', paymentMode);
         clearStoredTripPhase(rideId);
         clearStoredTripUiState(rideId);
-        navigate('/taxi/driver/home');
+        navigate(homeAfterTrip());
     };
 
     const completeRideForUserSync = async (paymentMode = '') => {

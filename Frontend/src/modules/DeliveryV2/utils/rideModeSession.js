@@ -19,6 +19,12 @@ export const isRideModePartner = () => {
   }
 };
 
+/**
+ * Where a driver lands when a trip is over: a delivery partner goes straight back to the delivery home (food on / off
+ * switch included) instead of the ride home, which would need a tap on "Back to Delivery".
+ */
+export const homeAfterTrip = () => (isRideModePartner() ? '/food/delivery/feed' : '/taxi/driver/home');
+
 export const unwrap = (response) => response?.data?.data ?? response?.data ?? null;
 
 export const apiErrorOf = (error) => ({
