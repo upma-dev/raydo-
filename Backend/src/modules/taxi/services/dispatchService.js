@@ -277,6 +277,9 @@ const emitRideRequestToDrivers = async ({
       targetUrl: `/taxi/driver/home?rideId=${String(ride._id)}`,
       link: `/taxi/driver/home?rideId=${String(ride._id)}`,
     },
+  }).then((result) => {
+    // One line per request, so "no notification on a closed app" can be traced to tokens (targets) or delivery (delivered)
+    console.log(`[RidePush] ride=${String(ride._id)} drivers=${targetDrivers.length} targets=${result?.targetCount ?? 0} delivered=${result?.deliveredCount ?? 0} failed=${result?.failedCount ?? 0}${result?.reason ? ` reason=${result.reason}` : ''}`);
   }).catch((error) => {
     console.error('Failed to send driver ride-request push notification', error);
   });

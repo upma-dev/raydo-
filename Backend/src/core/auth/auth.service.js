@@ -462,6 +462,19 @@ const normalizePhoneForDelivery = (phone) => {
   return digits.slice(-10) || null;
 };
 
+// Older uploads that could not reach the image host were kept inline as base64 (data: URLs, often 100s of KB each).
+// The login response does not need them, and sending them made a phone on mobile data wait on "Verifying PIN".
+const withoutInlineImages = (value) => {
+  if (typeof value === "string") {
+    return value.startsWith("data:") && value.length > 2000 ? "" : value;
+  }
+  if (Array.isArray(value)) return value.map(withoutInlineImages);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withoutInlineImages(item)]));
+  }
+  return value;
+};
+
 export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) => {
   const result = await verifyOtp(phone, otp, "delivery");
   if (!result.valid) {
@@ -528,7 +541,7 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
   return {
     accessToken,
     refreshToken,
-    user: deliveryPartner,
+    user: withoutInlineImages(JSON.parse(JSON.stringify(deliveryPartner))),
     needsRegistration: false,
   };
 };

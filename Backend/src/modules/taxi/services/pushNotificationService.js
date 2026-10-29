@@ -2,6 +2,7 @@ import { getFirebaseMessaging } from '../../../config/firebase.js';
 import { Driver } from '../driver/models/Driver.js';
 import { User } from '../user/models/User.js';
 import { Ride } from '../user/models/Ride.js';
+import { FoodDeliveryPartner } from '../../food/delivery/models/deliveryPartner.model.js';
 import { listEntityPushTokens } from './pushTokenService.js';
 
 const INVALID_TOKEN_CODES = new Set([
@@ -87,6 +88,17 @@ const removeInvalidTokens = async (invalidTargets = []) => {
   const userIdsByField = { fcmTokens: new Set(), fcmTokenMobile: new Set() };
   const driverIdsByField = { fcmTokenWeb: new Set(), fcmTokenMobile: new Set() };
 
+  // Tokens that came from a delivery partner linked to a driver live on the partner, not on the driver
+  const partnerTargets = invalidTargets.filter((target) => target.role === 'partner');
+  const partnerOperations = ['fcmTokens', 'fcmTokenMobile'].flatMap((field) => {
+    const fieldTargets = partnerTargets.filter((target) => target.field === field);
+    if (fieldTargets.length === 0) return [];
+    return [FoodDeliveryPartner.updateMany(
+      { _id: { $in: [...new Set(fieldTargets.map((target) => target.entityId))] } },
+      { $pull: { [field]: { $in: fieldTargets.map((target) => target.token) } } },
+    )];
+  });
+
   invalidTargets.forEach((target) => {
     if (target.role === 'user') {
       userIdsByField[target.field]?.add(target.entityId);
@@ -97,7 +109,7 @@ const removeInvalidTokens = async (invalidTargets = []) => {
     }
   });
 
-  const operations = [];
+  const operations = [...partnerOperations];
 
   Object.entries(userIdsByField).forEach(([field, ids]) => {
     if (ids.size > 0) {
@@ -167,6 +179,9 @@ const sendPushToTargets = async ({
     Object.entries(data || {}).map(([key, value]) => [key, String(value ?? '')]),
   );
 
+  // A ride request is only worth answering for about a minute: deliver it at once with sound and drop it when stale
+  const isRing = safeData.ring === 'true';
+
   for (const batch of chunk(dedupedTargets, 500)) {
     const response = await messaging.sendEachForMulticast({
       tokens: batch.map((target) => target.token),
@@ -181,9 +196,30 @@ const sendPushToTargets = async ({
       },
       android: {
         priority: 'high',
-        notification: image ? { imageUrl: image } : undefined,
+        ...(isRing ? { ttl: 60000 } : {}),
+        notification: {
+          ...(image ? { imageUrl: image } : {}),
+          ...(isRing
+            ? {
+                sound: 'default',
+                defaultSound: true,
+                defaultVibrateTimings: true,
+                notificationPriority: 'PRIORITY_MAX',
+                visibility: 'PUBLIC',
+              }
+            : {}),
+        },
       },
+      ...(isRing
+        ? {
+            apns: {
+              headers: { 'apns-priority': '10', 'apns-expiration': String(Math.floor(Date.now() / 1000) + 60) },
+              payload: { aps: { sound: 'default' } },
+            },
+          }
+        : {}),
       webpush: {
+        ...(isRing ? { headers: { Urgency: 'high', TTL: '60' } } : {}),
         notification: {
           title,
           body,
@@ -239,16 +275,36 @@ const collectDirectTargets = async ({ userIds = [], driverIds = [] }) => {
 
   if (normalizedDriverIds.length) {
     const drivers = await Driver.find({ _id: { $in: normalizedDriverIds } })
-      .select('_id fcmTokenWeb fcmTokenMobile')
+      .select('_id fcmTokenWeb fcmTokenMobile linkedDeliveryPartnerId')
       .lean();
 
+    // A driver that is also a delivery partner: the partner's own tokens are always the freshest (the copy on the
+    // driver is only refreshed when the partner goes online), so a ride request still reaches a closed app
+    const linkedPartnerIds = [...new Set(drivers.map((driver) => String(driver.linkedDeliveryPartnerId || '')).filter(Boolean))];
+    const linkedPartners = linkedPartnerIds.length
+      ? await FoodDeliveryPartner.find({ _id: { $in: linkedPartnerIds } }).select('_id fcmTokens fcmTokenMobile').lean()
+      : [];
+    const partnerById = new Map(linkedPartners.map((partner) => [String(partner._id), partner]));
+
     drivers.forEach((driver) => {
-      listEntityPushTokens(driver, 'driver').forEach((tokenEntry) => {
+      // The driver keeps its web token in fcmTokenWeb; the token list helper reads it as fcmTokens
+      listEntityPushTokens({ fcmTokens: driver.fcmTokenWeb, fcmTokenMobile: driver.fcmTokenMobile }, 'driver').forEach((tokenEntry) => {
         targets.push({
           ...tokenEntry,
+          field: tokenEntry.field === 'fcmTokens' ? 'fcmTokenWeb' : tokenEntry.field,
           entityId: String(driver._id),
         });
       });
+
+      const partner = partnerById.get(String(driver.linkedDeliveryPartnerId || ''));
+      if (partner) {
+        listEntityPushTokens(partner, 'partner').forEach((tokenEntry) => {
+          targets.push({
+            ...tokenEntry,
+            entityId: String(partner._id),
+          });
+        });
+      }
     });
   }
 
