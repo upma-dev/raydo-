@@ -306,6 +306,9 @@ export const getSupportTicketByIdAndPartner = async (ticketId, deliveryPartnerId
     return ticket;
 };
 
+const rideResyncAt = new Map();
+const RIDE_RESYNC_INTERVAL_MS = 60000;
+
 export const updateDeliveryAvailability = async (userId, payload) => {
     let partner = await FoodDeliveryPartner.findById(userId);
     if (!partner && mongoose.Types.ObjectId.isValid(userId)) {
@@ -339,10 +342,24 @@ export const updateDeliveryAvailability = async (userId, payload) => {
             );
             if (partner.rideMode?.taxiDriverId && (pingLat || pingLng)) {
                 const { Driver } = await import('../../../taxi/driver/models/Driver.js');
-                await Driver.updateOne(
+                const driverUpdate = await Driver.updateOne(
                     { _id: partner.rideMode.taxiDriverId, isOnline: true },
                     { $set: { location: { type: 'Point', coordinates: [pingLng, pingLat] } } }
-                ).catch(() => {});
+                ).catch(() => null);
+
+                // The partner is online but the ride profile is not (the switch-on failed once, e.g. a busy wallet lock):
+                // ride requests are matched on the ride profile, so none would ever arrive. Try the switch-on again, at
+                // most once a minute per partner.
+                if (driverUpdate && driverUpdate.matchedCount === 0) {
+                    const key = String(partner._id);
+                    const lastTry = rideResyncAt.get(key) || 0;
+                    if (Date.now() - lastTry > RIDE_RESYNC_INTERVAL_MS) {
+                        if (rideResyncAt.size > 5000) rideResyncAt.clear();
+                        rideResyncAt.set(key, Date.now());
+                        const { syncRidesWithOnline } = await import('./hybridRide.service.js');
+                        syncRidesWithOnline(partner._id, true, { latitude: pingLat, longitude: pingLng }).catch(() => {});
+                    }
+                }
             }
         }
         return { availabilityStatus: partner.availabilityStatus };
