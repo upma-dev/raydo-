@@ -737,6 +737,9 @@ const dispatchAttempt = async (rideId, attemptIndex = 0) => {
       ? searchRadiusMeters
       : radius;
 
+    // One line per attempt so "request not reaching the driver" can be traced to matching (matched=0) or to delivery
+    console.log(`[DispatchMatch] ride=${String(ride._id)} service=${ride.serviceType || 'ride'} vehicleTypeIds=${dispatchVehicleTypeIds.join(',')} zone=${zone?.name || 'none'} radius=${effectiveRadius} attempt=${attemptIndex + 1} matched=${drivers.map((d) => `${d.name}(${d._id})`).join('|') || 0}`);
+
     const now = Date.now();
     // Skip drivers who rejected recently and drivers whose previous request window is still open.
     const availableDrivers = drivers

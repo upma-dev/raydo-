@@ -73,6 +73,12 @@ const buildServiceCategoryFilter = (serviceType = 'ride') => {
   }
 
   if (norm === 'parcel' || norm === 'delivery') {
+    // Hardcoded: every approved driver who takes rides also gets parcel requests, without the admin having to tick
+    // Delivery on the driver. Vehicle type / two-wheeler vs truck rules are still applied by the other filters.
+    return {};
+  }
+
+  if (norm === 'parcel_admin_categories') {
     const deliveryKeys = [
       'delivery', 'Delivery', 'DELIVERY',
       'parcel', 'Parcel', 'PARCEL',
