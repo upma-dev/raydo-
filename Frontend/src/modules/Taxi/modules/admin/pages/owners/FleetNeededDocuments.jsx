@@ -7,8 +7,11 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
 
-const BASE = globalThis.__LEGACY_BACKEND_ORIGIN__ + '/api/v1/taxi/admin/owner-management';
+// The shared axios instance unwraps the HTTP response, so every call resolves to the API body: { success, data }
+const BASE = '/admin/owner-management';
 const MotionDiv = motion.div;
 
 const FleetNeededDocuments = () => {
@@ -31,24 +34,20 @@ const FleetNeededDocuments = () => {
     active: true
   });
 
-  const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken')) || '';
 
   const fetchDocuments = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${BASE}/driver-needed-document`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
+      const data = await api.get(`${BASE}/driver-needed-document`);
+      if (data?.success) {
         setDocuments(Array.isArray(data.data) ? data.data : (data.data?.results || []));
       }
     } catch (err) {
-      console.error("Failed to fetch documents:", err);
+      toast.error(err?.message || "Could not load documents");
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     fetchDocuments();
@@ -83,28 +82,21 @@ const FleetNeededDocuments = () => {
     const url = isEditing ? `${BASE}/driver-needed-document/${editingId}` : `${BASE}/driver-needed-document`;
     
     try {
-      const res = await fetch(url, {
-        method: isEditing ? 'PATCH' : 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            ...formData,
-            has_expiry_date: formData.has_expiry_date === '1' ? true : false,
-            has_identify_number: formData.has_identify_number === '1' ? true : false
-        })
-      });
-      const json = await res.json();
-      if (json.success) {
+      const payload = {
+        ...formData,
+        has_expiry_date: formData.has_expiry_date === '1' ? true : false,
+        has_identify_number: formData.has_identify_number === '1' ? true : false,
+      };
+      const json = isEditing ? await api.patch(url, payload) : await api.post(url, payload);
+      if (json?.success) {
         setView('list');
         fetchDocuments();
         resetForm();
       } else {
         alert(json.message || "Operation failed");
       }
-    } catch {
-      alert("Network error");
+    } catch (err) {
+      alert(err?.message || "Operation failed");
     } finally {
       setSubmitting(false);
     }
@@ -113,16 +105,12 @@ const FleetNeededDocuments = () => {
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this document requirement?")) return;
     try {
-      const res = await fetch(`${BASE}/driver-needed-document/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const json = await res.json();
-      if (json.success) {
+      const json = await api.delete(`${BASE}/driver-needed-document/${id}`);
+      if (json?.success) {
         fetchDocuments();
       }
-    } catch {
-      alert("Error deleting document");
+    } catch (err) {
+      alert(err?.message || "Error deleting document");
     }
   };
 

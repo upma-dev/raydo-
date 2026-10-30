@@ -106,8 +106,10 @@ export const adminService = {
   getSubscriptionPlans: () => api.get('/admin/driver-subscriptions/plans/list'),
   createSubscriptionPlan: (planData) => api.post('/admin/driver-subscriptions/plans/create', planData),
   getSubscriptionSettings: () => api.get('/admin/driver-subscriptions/settings'),
+  getDriverSubscribers: (params = {}) => api.get('/admin/driver-subscriptions/subscribers', { params }),
   updateSubscriptionSettings: (data) => api.post('/admin/driver-subscriptions/settings', data),
   getUserSubscriptionPlans: () => api.get('/admin/user-subscriptions/plans/list'),
+  setSubscriptionPlanActive: (id, active) => api.patch(`/admin/subscription-plans/${id}/active`, { active }),
   createUserSubscriptionPlan: (planData) => api.post('/admin/user-subscriptions/plans/create', planData),
   getUserSubscriptionsByUserId: (id) => api.get(`/admin/users/${id}/subscriptions`),
   

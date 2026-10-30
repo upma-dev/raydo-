@@ -477,6 +477,12 @@ const rideSchema = new mongoose.Schema(
         default: 0,
         min: 0,
       },
+      waiting_max_charge: { type: Number, default: 0, min: 0 },
+      long_pickup_free_km: { type: Number, default: 0, min: 0 },
+      long_pickup_price_per_km: { type: Number, default: 0, min: 0 },
+      long_pickup_max_charge: { type: Number, default: 0, min: 0 },
+      gst_percent: { type: Number, default: 0, min: 0 },
+      platform_fee: { type: Number, default: 0, min: 0 },
       ride_surge_enabled: {
         type: Boolean,
         default: false,
@@ -509,6 +515,14 @@ const rideSchema = new mongoose.Schema(
         type: Date,
         default: null,
       },
+    },
+    // Tax (GST) included in the fare, stamped when the ride completes (see services/taxiTaxService.js)
+    tax: {
+      rate: { type: Number, default: 0, min: 0 },
+      label: { type: String, default: '' },
+      amount: { type: Number, default: 0, min: 0 },
+      mode: { type: String, default: 'included' },
+      calculatedAt: { type: Date, default: null },
     },
     commissionAmount: {
       type: Number,
@@ -689,6 +703,17 @@ const rideSchema = new mongoose.Schema(
       freeMinutes: { type: Number, default: 0, min: 0 },
       ratePerMinute: { type: Number, default: 0, min: 0 },
       amount: { type: Number, default: 0, min: 0 },
+    },
+    // Extra charged when the driver accepted from far away (zone "long pickup" rule); already added into fare
+    longPickupCharge: {
+      km: { type: Number, default: 0, min: 0 },
+      amount: { type: Number, default: 0, min: 0 },
+    },
+    // "Government taxes and other charges" shown on the bill; already included in fare
+    taxBreakdown: {
+      gst: { type: Number, default: 0, min: 0 },
+      platformFee: { type: Number, default: 0, min: 0 },
+      total: { type: Number, default: 0, min: 0 },
     },
     baseRideFare: {
       type: Number,

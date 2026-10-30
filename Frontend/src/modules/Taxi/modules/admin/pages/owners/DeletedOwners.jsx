@@ -10,8 +10,9 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import AdminPageHeader from "../../components/ui/AdminPageHeader";
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
 
-const BASE = `${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin`;
 
 const getOwnerName = (owner) =>
   owner?.name || owner?.user_id?.name || owner?.company_name || "-";
@@ -21,7 +22,6 @@ const getOwnerMobile = (owner) =>
 
 const DeletedOwners = () => {
   const navigate = useNavigate();
-  const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken')) || "";
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,16 +34,14 @@ const DeletedOwners = () => {
   const fetchDeletedOwners = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${BASE}/owners/deleted?page=1&limit=200`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const json = await res.json();
+      // The shared axios instance unwraps the HTTP response, so every call resolves to the API body: { success, data }
+      const json = await api.get('/admin/owners/deleted', { params: { page: 1, limit: 200 } });
       if (json?.success) {
         const list = json?.data?.results || json?.data || [];
         setOwners(Array.isArray(list) ? list : []);
       }
     } catch (e) {
-      console.error("Fetch deleted owners error:", e);
+      toast.error(e?.message || "Could not load deleted owners");
     } finally {
       setIsLoading(false);
     }
@@ -58,16 +56,11 @@ const DeletedOwners = () => {
     if (!window.confirm("Restore this owner account?")) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`${BASE}/owners/deleted/${id}/restore`, {
-        method: "PATCH",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const json = await res.json();
+      const json = await api.patch(`/admin/owners/deleted/${id}/restore`);
       if (json?.success) fetchDeletedOwners();
       else alert(json?.message || "Restore failed");
     } catch (e) {
-      console.error("Restore owner failed:", e);
-      alert("Restore failed");
+      alert(e?.message || "Restore failed");
     } finally {
       setIsSubmitting(false);
     }
@@ -77,16 +70,11 @@ const DeletedOwners = () => {
     if (!window.confirm("PERMANENT DELETE? This cannot be undone.")) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`${BASE}/owners/deleted/${id}`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const json = await res.json();
+      const json = await api.delete(`/admin/owners/deleted/${id}`);
       if (json?.success) fetchDeletedOwners();
       else alert(json?.message || "Delete failed");
     } catch (e) {
-      console.error("Permanent delete failed:", e);
-      alert("Delete failed");
+      alert(e?.message || "Delete failed");
     } finally {
       setIsSubmitting(false);
     }

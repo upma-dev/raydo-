@@ -1,39 +1,44 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronRight, Eye, Loader2, MoreVertical, Search, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import api from '../../../../shared/api/axiosInstance';
 
 const DriverRatings = () => {
   const navigate = useNavigate();
   const [drivers, setDrivers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMenu, setActiveMenu] = useState(null);
 
-  useEffect(() => {
-    const fetchRatings = async () => {
-      setIsLoading(true);
-      try {
-        const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken'));
-        const res = await fetch(`${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/driver-ratings`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          const list = data.data?.results || [];
-          setDrivers(list.map((d) => ({
-            id: d._id,
-            name: d.name || 'Unknown',
-            transport: d.transport_type || 'Taxi',
-            mobile: d.mobile || '',
-            rating: d.rating || 0,
-          })));
-        }
-      } catch (err) {
-        console.error('Ratings fetch error:', err);
-      } finally {
-        setIsLoading(false);
+  const fetchRatings = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      // The shared axios instance unwraps the HTTP response, so this is the API body: { success, data }.
+      // It also attaches the admin token the same way every other admin page does and surfaces real errors.
+      const body = await api.get('/admin/driver-ratings', { params: { limit: 500 } });
+      if (!body?.success) {
+        throw new Error(body?.message || 'Unexpected response from server');
       }
-    };
+      const list = body.data?.results || [];
+      setDrivers(list.map((d) => ({
+        id: d._id,
+        name: d.name || 'Unknown',
+        transport: d.transport_type || 'Taxi',
+        mobile: d.mobile || '',
+        rating: d.rating || 0,
+        ratingCount: d.rating_count || 0,
+      })));
+    } catch (err) {
+      setDrivers([]);
+      setError(err?.message || 'Could not load driver ratings');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchRatings();
   }, []);
 
@@ -94,6 +99,15 @@ const DriverRatings = () => {
                     <Loader2 className="w-6 h-6 animate-spin text-indigo-600 mx-auto" />
                   </td>
                 </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan="5" className="py-10 text-center">
+                    <p className="text-rose-600 text-sm font-semibold">{error}</p>
+                    <button onClick={fetchRatings} className="mt-3 px-4 py-2 text-xs text-white bg-indigo-600 rounded-lg">
+                      Try again
+                    </button>
+                  </td>
+                </tr>
               ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="py-10 text-center text-gray-400">No data found.</td>
@@ -107,8 +121,11 @@ const DriverRatings = () => {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         {[1, 2, 3, 4, 5].map((s) => (
-                          <Star key={s} size={14} className={s <= Math.round(driver.rating) ? 'text-amber-400' : 'text-gray-200'} />
+                          <Star key={s} size={14} className={s <= Math.round(driver.rating) ? 'text-amber-400 fill-current' : 'text-gray-200'} />
                         ))}
+                        <span className="ml-2 text-xs text-gray-500">
+                          {driver.ratingCount > 0 ? `${Number(driver.rating).toFixed(1)} (${driver.ratingCount})` : 'No ratings yet'}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">

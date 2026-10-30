@@ -3,8 +3,11 @@ import { ChevronDown, ChevronRight, Loader2, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTaxiTransportTypes } from '../../../../shared/hooks/useTaxiTransportTypes';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
 
-const BASE = `${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin`;
+// The shared axios instance unwraps the HTTP response, so every call resolves to the API body: { success, data }
+const BASE = '/admin';
 
 const inputClass =
   'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-800 bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors';
@@ -16,8 +19,6 @@ const getVehicleTypeLabel = (vt) => vt?.name || vt?.type_name || vt?.title || vt
 
 const ManageFleetCreate = () => {
   const navigate = useNavigate();
-  const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken')) || '';
-  const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const { transportTypes } = useTaxiTransportTypes();
 
   const [isBootLoading, setIsBootLoading] = useState(true);
@@ -43,13 +44,10 @@ const ManageFleetCreate = () => {
     const boot = async () => {
       setIsBootLoading(true);
       try {
-        const [ownersRes, locationsRes] = await Promise.all([
-          fetch(`${BASE}/owner-management/manage-owners`, { headers: authHeaders }),
-          fetch(`${BASE}/service-locations`, { headers: authHeaders }),
+        const [oJson, lJson] = await Promise.all([
+          api.get(`${BASE}/owner-management/manage-owners`),
+          api.get(`${BASE}/service-locations`),
         ]);
-
-        const oJson = await ownersRes.json();
-        const lJson = await locationsRes.json();
 
         const oList = oJson?.data?.results || oJson?.data || [];
         const locs = Array.isArray(lJson?.data) ? lJson.data : lJson?.data?.results || [];
@@ -66,23 +64,20 @@ const ManageFleetCreate = () => {
           service_location_id: prev.service_location_id || safeLocs?.[0]?._id || '',
         }));
       } catch (e) {
-        console.error('Failed to load create fleet dependencies:', e);
+        toast.error(e?.message || 'Could not load owners and service locations');
       } finally {
         setIsBootLoading(false);
       }
     };
 
     boot();
-  }, [authHeaders]);
+  }, []);
 
   useEffect(() => {
     const fetchTypes = async () => {
       try {
         const typeFilter = (formData.transport_type || 'taxi').toLowerCase();
-        const res = await fetch(`${BASE}/types/vehicle-types/list?transport_type=${encodeURIComponent(typeFilter)}`, {
-          headers: authHeaders,
-        });
-        const json = await res.json();
+        const json = await api.get(`${BASE}/types/vehicle-types/list`, { params: { transport_type: typeFilter } });
         if (json?.success) {
           const list = Array.isArray(json.data) ? json.data : json?.data?.results || [];
           const safe = Array.isArray(list) ? list : [];
@@ -90,12 +85,12 @@ const ManageFleetCreate = () => {
           setFormData((prev) => ({ ...prev, vehicle_type_id: prev.vehicle_type_id || safe?.[0]?._id || safe?.[0]?.id || '' }));
         }
       } catch (e) {
-        console.error('Failed to fetch vehicle types:', e);
+        toast.error(e?.message || 'Could not load vehicle types');
       }
     };
 
     fetchTypes();
-  }, [formData.transport_type, authHeaders]);
+  }, [formData.transport_type]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -114,30 +109,23 @@ const ManageFleetCreate = () => {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${BASE}/owner-management/manage-fleet`, {
-        method: 'POST',
-        headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          owner_id: formData.owner_id,
-          service_location_id: formData.service_location_id,
-          transport_type: formData.transport_type,
-          vehicle_type_id: formData.vehicle_type_id,
-          car_brand: formData.car_brand,
-          car_model: formData.car_model,
-          license_plate_number: formData.license_plate_number,
-          car_color: formData.car_color,
-        }),
+      const json = await api.post(`${BASE}/owner-management/manage-fleet`, {
+        owner_id: formData.owner_id,
+        service_location_id: formData.service_location_id,
+        transport_type: formData.transport_type,
+        vehicle_type_id: formData.vehicle_type_id,
+        car_brand: formData.car_brand,
+        car_model: formData.car_model,
+        license_plate_number: formData.license_plate_number,
+        car_color: formData.car_color,
       });
-
-      const json = await res.json();
       if (json?.success) {
         navigate('/taxi/admin/fleet/manage');
         return;
       }
       alert(json?.message || 'Operation failed');
     } catch (e) {
-      console.error('Failed to create fleet:', e);
-      alert('Network error');
+      alert(e?.message || 'Operation failed');
     } finally {
       setSubmitting(false);
     }

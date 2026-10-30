@@ -98,6 +98,9 @@ const RideComplete = () => {
   // The FINAL fare comes from the server (it includes the waiting charge added when the trip ended)
   const [serverFare, setServerFare] = useState(null);
   const [waitingInfo, setWaitingInfo] = useState(() => state.waitingCharge || null);
+  const [longPickupInfo, setLongPickupInfo] = useState(() => state.longPickupCharge || null);
+  const [taxInfo, setTaxInfo] = useState(() => state.taxBreakdown || null);
+  const [showTaxSheet, setShowTaxSheet] = useState(false);
   const [tipSettings, setTipSettings] = useState({
     enable_tips: '1',
     min_tip_amount: '10',
@@ -107,7 +110,11 @@ const RideComplete = () => {
   const rideId = state.rideId || '';
   const fare = serverFare !== null ? serverFare : Number(state.fare || 22);
   const waitingAmount = Math.max(0, Number(waitingInfo?.amount || 0));
-  const rideFareOnly = Math.max(0, fare - waitingAmount);
+  const longPickupAmount = Math.max(0, Number(longPickupInfo?.amount || 0));
+  const rideFareOnly = Math.max(0, fare - waitingAmount - longPickupAmount);
+  const taxGst = Math.max(0, Number(taxInfo?.gst || 0));
+  const taxPlatformFee = Math.max(0, Number(taxInfo?.platformFee || 0));
+  const taxTotal = Math.max(0, Number(taxInfo?.total || 0));
   const paymentMethod = state.paymentMethod || 'Cash';
   const paymentMethodLabel = PAYMENT_OPTIONS.find((option) => option.id === selectedPaymentMethod)?.label || paymentMethod;
   const pickup = state.pickup || 'Pickup';
@@ -185,6 +192,8 @@ const RideComplete = () => {
           setRideLiveStatus(nextLiveStatus);
           if (Number.isFinite(Number(payload?.fare)) && Number(payload.fare) > 0) setServerFare(Number(payload.fare));
           setWaitingInfo(payload?.waitingCharge || null);
+          setLongPickupInfo(payload?.longPickupCharge || null);
+          setTaxInfo(payload?.taxBreakdown || null);
         }
 
         if (!active || !feedback) {
@@ -661,6 +670,28 @@ const RideComplete = () => {
                   <span className="text-[13px] font-black text-amber-600">Rs {waitingAmount.toFixed(2)}</span>
                 </div>
               ) : null}
+              {longPickupAmount > 0 ? (
+                <div className="mt-2 flex items-start justify-between gap-3">
+                  <span className="text-[12px] font-bold text-amber-600">
+                    Long pickup charge
+                    <span className="block text-[10px] font-bold text-slate-400">
+                      Driver came {Number(longPickupInfo?.km || 0)} km to reach you
+                    </span>
+                  </span>
+                  <span className="text-[13px] font-black text-amber-600">Rs {longPickupAmount.toFixed(2)}</span>
+                </div>
+              ) : null}
+              {taxTotal > 0 ? (
+                <div className="mt-2 flex cursor-pointer items-start justify-between gap-3" role="button" tabIndex={0} onClick={() => setShowTaxSheet(true)}>
+                  <span className="text-[12px] font-bold text-slate-500">
+                    Govt. taxes &amp; other charges (tap for details)
+                    <span className="block text-[10px] font-bold text-slate-400">
+                      Included in fare: GST Rs {taxGst.toFixed(2)}{taxPlatformFee > 0 ? `, 3rd party fee Rs ${taxPlatformFee.toFixed(2)}` : ''}
+                    </span>
+                  </span>
+                  <span className="text-[13px] font-black text-slate-500">Rs {taxTotal.toFixed(2)}</span>
+                </div>
+              ) : null}
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-[12px] font-bold text-slate-500">Tip</span>
                 <span className="text-[13px] font-black text-slate-900">Rs {Number(selectedTip || 0).toFixed(2)}</span>
@@ -825,6 +856,45 @@ const RideComplete = () => {
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showTaxSheet ? (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-end bg-black/50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowTaxSheet(false)}
+          >
+            <motion.div
+              className="w-full rounded-t-[24px] bg-white px-5 pb-8 pt-5"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'tween', duration: 0.25 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-[16px] font-black text-slate-900">Government taxes &amp; other charges</h3>
+                <button type="button" onClick={() => setShowTaxSheet(false)} className="text-[18px] font-black text-slate-400">&times;</button>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-[13px] font-bold text-slate-600">
+                <span>GST paid to government</span>
+                <span>Rs {taxGst.toFixed(2)}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[13px] font-bold text-slate-600">
+                <span>3rd party fee</span>
+                <span>Rs {taxPlatformFee.toFixed(2)}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-dashed border-slate-200 pt-3 text-[15px] font-black text-slate-900">
+                <span>Total</span>
+                <span>Rs {taxTotal.toFixed(2)}</span>
+              </div>
+              <p className="mt-3 text-[11px] font-bold text-slate-400">Already included in your fare. Nothing extra is charged.</p>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 };

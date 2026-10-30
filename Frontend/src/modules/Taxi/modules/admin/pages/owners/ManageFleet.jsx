@@ -18,10 +18,14 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
+import { BACKEND_ORIGIN } from '../../../../shared/api/runtimeConfig';
 
-const BASE = globalThis.__LEGACY_BACKEND_ORIGIN__ + '/api/v1/taxi/admin';
+// The shared axios instance unwraps the HTTP response, so every call resolves to the API body: { success, data }
+const BASE = '/admin';
 const MotionDiv = motion.div;
-const FILE_BASE = globalThis.__LEGACY_BACKEND_ORIGIN__ || '';
+const FILE_BASE = BACKEND_ORIGIN || '';
 
 const resolveFleetDocumentUrl = (value = '') => {
   const raw = String(value || '').trim();
@@ -115,24 +119,18 @@ const ManageFleet = () => {
     car_color: ''
   });
 
-  const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken')) || '';
-  const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 
   /* -- Fetch initial data -- */
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [fleetRes, ownersRes, areasRes, rideRes] = await Promise.all([
-        fetch(`${BASE}/owner-management/manage-fleet`, { headers }),
-        fetch(`${BASE}/owner-management/manage-owners`, { headers }), // Fetching owners
-        fetch(`${BASE}/service-locations`, { headers }),
-        fetch(`${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/common/ride_modules`, { headers })
+      const [fData, oData, aData, rData] = await Promise.all([
+        api.get(`${BASE}/owner-management/manage-fleet`),
+        api.get(`${BASE}/owner-management/manage-owners`),
+        api.get(`${BASE}/service-locations`),
+        // The transport type list is optional; the page still works without it
+        api.get('/common/ride_modules').catch(() => ({ success: false })),
       ]);
-
-      const fData = await fleetRes.json();
-      const oData = await ownersRes.json();
-      const aData = await areasRes.json();
-      const rData = await rideRes.json();
 
       if (fData.success) {
         setFleet(Array.isArray(fData.data) ? fData.data : (fData.data?.results || []));
@@ -160,7 +158,7 @@ const ManageFleet = () => {
         setTransportTypes(mapped);
       }
     } catch (err) {
-      console.error('Failed to fetch initial data:', err);
+      toast.error(err?.message || 'Could not load fleet data');
     } finally {
       setIsLoading(false);
     }
@@ -170,9 +168,8 @@ const ManageFleet = () => {
   const fetchVehicleTypes = async () => {
     try {
       const typeFilter = (formData.transport_type || 'taxi').toLowerCase();
-      const res = await fetch(`${BASE}/types/vehicle-types/list?transport_type=${encodeURIComponent(typeFilter)}`, { headers });
-      const data = await res.json();
-      if (data.success) {
+      const data = await api.get(`${BASE}/types/vehicle-types/list`, { params: { transport_type: typeFilter } });
+      if (data?.success) {
         const list = Array.isArray(data.data) ? data.data : (data.data?.results || []);
         setVehicleTypes(list);
         if (list.length > 0 && !formData.vehicle_type_id) {
@@ -180,7 +177,7 @@ const ManageFleet = () => {
         }
       }
     } catch (err) {
-      console.error('Failed to fetch vehicle types:', err);
+      toast.error(err?.message || 'Could not load vehicle types');
     }
   };
 
@@ -238,21 +235,16 @@ const ManageFleet = () => {
       : `${BASE}/owner-management/manage-fleet`;
 
     try {
-      const res = await fetch(url, {
-        method: isEditing ? 'PATCH' : 'POST',
-        headers,
-        body: JSON.stringify(formData)
-      });
-      const json = await res.json();
-      if (json.success) {
+      const json = isEditing ? await api.patch(url, formData) : await api.post(url, formData);
+      if (json?.success) {
         setView('list');
         fetchData(); // Refresh everything
         resetForm();
       } else {
         alert(json.message || 'Operation failed');
       }
-    } catch {
-      alert('Network error');
+    } catch (err) {
+      alert(err?.message || 'Operation failed');
     } finally {
       setSubmitting(false);
     }
@@ -261,15 +253,11 @@ const ManageFleet = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this fleet vehicle?')) return;
     try {
-      const res = await fetch(`${BASE}/owner-management/manage-fleet/${id}`, {
-        method: 'DELETE',
-        headers
-      });
-      const json = await res.json();
-      if (json.success) fetchData();
-      else alert(json.message || 'Delete failed');
-    } catch {
-      alert('Delete failed');
+      const json = await api.delete(`${BASE}/owner-management/manage-fleet/${id}`);
+      if (json?.success) fetchData();
+      else alert(json?.message || 'Delete failed');
+    } catch (err) {
+      alert(err?.message || 'Delete failed');
     }
   };
 
@@ -288,18 +276,13 @@ const ManageFleet = () => {
 
     setUpdatingFleetId(fleetId);
     try {
-      const res = await fetch(`${BASE}/owner-management/manage-fleet/${fleetId}`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({
-          status: nextStatus,
-          reason: nextStatus === 'rejected' ? reason : '',
-        })
+      const json = await api.patch(`${BASE}/owner-management/manage-fleet/${fleetId}`, {
+        status: nextStatus,
+        reason: nextStatus === 'rejected' ? reason : '',
       });
-      const json = await res.json();
 
-      if (!json.success) {
-        window.alert(json.message || 'Status update failed');
+      if (!json?.success) {
+        window.alert(json?.message || 'Status update failed');
         return;
       }
 
@@ -316,8 +299,7 @@ const ManageFleet = () => {
         )
       );
     } catch (error) {
-      console.error('Failed to update fleet status:', error);
-      window.alert('Status update failed');
+      window.alert(error?.message || 'Status update failed');
     } finally {
       setUpdatingFleetId('');
     }

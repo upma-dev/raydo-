@@ -34,6 +34,7 @@ const normalizeVehicleTypeIds = (vehicleTypeIds = [], vehicleTypeId = null) => {
 
 import { TWO_WHEELER_KEYS, TRUCK_MOVER_KEYS, TWO_WHEELER_RE, TRUCK_MOVER_RE } from './vehicleClass.js';
 import { SELFIE_VALIDITY_MS } from './driverSelfiePolicy.js';
+import { filterDriversBySubscription } from '../driver/services/driverSubscriptionCore.js';
 // Cycle / electric scooter captains only take short trips; anything longer than this goes to bike / car / etc.
 export const SHORT_RANGE_MAX_METERS = 7000;
 const SHORT_RANGE_VEHICLE_RE = /cycle|bicycle|e-?scooter|electric|e-?bike|ev/i;
@@ -392,7 +393,9 @@ const findDriversForZone = async ({
   );
   // Delivery partners linked to a ride profile: only while online in the delivery app and not busy with a food order
   const { filterLinkedDriversForDispatch } = await import('../../food/delivery/services/hybridRide.service.js');
-  const eligibleDrivers = await filterLinkedDriversForDispatch(uniqueDrivers);
+  const linkedOk = await filterLinkedDriversForDispatch(uniqueDrivers);
+  // Subscription-only mode: only drivers with a live pass get requests
+  const eligibleDrivers = await filterDriversBySubscription(linkedOk);
 
   return sortDriversByDispatchAnchorDistance(eligibleDrivers, coordinates).slice(0, limit);
 };

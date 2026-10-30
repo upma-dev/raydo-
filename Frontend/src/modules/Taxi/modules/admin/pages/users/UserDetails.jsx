@@ -22,6 +22,7 @@ import {
   History as HistoryIcon
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import api from '../../../../shared/api/axiosInstance';
 
 const UserDetails = () => {
   const { id } = useParams();
@@ -40,17 +41,14 @@ const UserDetails = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
-  const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken'));
-
   const fetchData = async () => {
     try {
       setIsLoading(true);
       
       // Fetch User Info
-      const userRes = await fetch(`${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/users/${id}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const userData = await userRes.json();
+      // The shared axios instance unwraps the HTTP response, so every call resolves to the API body: { success, data }.
+      // The user itself must load; the extra sections (subscriptions, requests, wallet) degrade to empty if they fail.
+      const userData = await api.get(`/admin/users/${id}`);
       
       if (userData.success) {
         let u = userData.data;
@@ -95,19 +93,13 @@ const UserDetails = () => {
         );
       }
 
-      const subscriptionRes = await fetch(`${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/users/${id}/subscriptions`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const subscriptionData = await subscriptionRes.json();
+      const subscriptionData = await api.get(`/admin/users/${id}/subscriptions`).catch(() => ({ success: false }));
       if (subscriptionData.success) {
         setSubscriptions(Array.isArray(subscriptionData.data?.results) ? subscriptionData.data.results : []);
       }
 
       // Fetch Requests
-      const reqRes = await fetch(`${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/users/${id}/requests`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const reqData = await reqRes.json();
+      const reqData = await api.get(`/admin/users/${id}/requests`).catch(() => ({ success: false }));
       if (reqData.success) {
         const mappedRequests = (reqData.data?.results || []).map(r => ({
           id: r.request_id || 'N/A',
@@ -134,10 +126,7 @@ const UserDetails = () => {
       }
 
       // Fetch Wallet History
-      const walletRes = await fetch(`${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/users/${id}/wallet-history`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const walletData = await walletRes.json();
+      const walletData = await api.get(`/admin/users/${id}/wallet-history`).catch(() => ({ success: false }));
       if (walletData.success) {
         const history = (walletData.data?.results || []).map(w => {
           // Determine type from transaction_alias or amount sign
@@ -167,8 +156,7 @@ const UserDetails = () => {
       }
 
     } catch (err) {
-      setError('Failed to load user details');
-      console.error(err);
+      setError(err?.message || 'Failed to load user details');
     } finally {
       setIsLoading(false);
     }
@@ -176,26 +164,17 @@ const UserDetails = () => {
 
   useEffect(() => {
     fetchData();
-  }, [id, token]);
+  }, [id]);
 
   const handleWalletAction = async () => {
     if (!walletAmount || isSubmitting) return;
     try {
       setIsSubmitting(true);
-      const res = await fetch(`${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/wallet/users/${id}/adjust`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          amount: parseFloat(walletAmount),
-          payment_type: walletType,
-          remarks: `Admin ${walletType} action`
-        })
+      const data = await api.post(`/admin/wallet/users/${id}/adjust`, {
+        amount: parseFloat(walletAmount),
+        payment_type: walletType,
+        remarks: `Admin ${walletType} action`,
       });
-      
-      const data = await res.json();
       if (data.success) {
         setWalletModalOpen(false);
         setWalletAmount('');
@@ -205,8 +184,7 @@ const UserDetails = () => {
         alert(data.message || 'Failed to adjust wallet');
       }
     } catch (err) {
-      console.error(err);
-      alert('Network error');
+      alert(err?.message || 'Failed to adjust wallet');
     } finally {
       setIsSubmitting(false);
     }

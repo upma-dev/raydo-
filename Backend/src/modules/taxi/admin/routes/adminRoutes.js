@@ -213,6 +213,9 @@ import {
   getTransportTypes,
   deleteFleetVehicle,
   getTaxiCancellationAnalytics,
+  getTaxiTaxReportData,
+  updateSubscriptionPlanActive,
+  getDriverSubscribers,
 } from '../controllers/adminController.js';
 import {
   getPoolingVehicles,
@@ -301,8 +304,10 @@ adminRouter.get('/admin/driver-ratings/:id', authenticate(['admin']), getDriverR
 adminRouter.get('/admin/driver-subscriptions/plans/list', getSubscriptionPlans);
 adminRouter.post('/admin/driver-subscriptions/plans/create', createSubscriptionPlan);
 adminRouter.get('/admin/driver-subscriptions/settings', getSubscriptionSettings);
+adminRouter.get('/admin/driver-subscriptions/subscribers', getDriverSubscribers);
 adminRouter.post('/admin/driver-subscriptions/settings', updateSubscriptionSettings);
 adminRouter.get('/admin/user-subscriptions/plans/list', getCustomerSubscriptionPlans);
+adminRouter.patch('/admin/subscription-plans/:id/active', updateSubscriptionPlanActive);
 adminRouter.post('/admin/user-subscriptions/plans/create', createCustomerSubscriptionPlan);
 
 adminRouter.get('/countries', getCountries);
@@ -410,6 +415,7 @@ adminRouter.get('/admin/dashboard/overall-earnings', getOverallEarnings);
 adminRouter.get('/admin/dashboard/today-earnings', getTodayEarnings);
 adminRouter.get('/admin/dashboard/cancel-chart', getCancelChart);
 adminRouter.get('/admin/cancellation-analytics', getTaxiCancellationAnalytics);
+adminRouter.get('/admin/tax-report', getTaxiTaxReportData);
 adminRouter.get('/admin/safety/alerts', authenticate(['admin']), listSafetyAlerts);
 adminRouter.patch('/admin/safety/alerts/:id/resolve', authenticate(['admin']), resolveSafetyAlert);
 adminRouter.get('/admin/ongoing-rides', getOngoingRides);

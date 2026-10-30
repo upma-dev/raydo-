@@ -1631,6 +1631,10 @@ export const updateCurrentUser = async (req, res) => {
     user.email = email;
   }
 
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'gender')) {
+    user.gender = normalizeGender(req.body.gender);
+  }
+
   if (Object.prototype.hasOwnProperty.call(req.body || {}, 'profileImage')) {
     user.profileImage = toCleanString(req.body.profileImage);
   }

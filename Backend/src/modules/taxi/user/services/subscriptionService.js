@@ -195,14 +195,6 @@ export const purchaseUserSubscription = async ({ userId, planId, paymentSource =
     { $setOnInsert: { userId, balance: 0, refundWallet: 0, transactions: [] } },
     { upsert: true },
   );
-  const wallet = await UserWallet.findOne({ userId });
-  if (!wallet) {
-    throw new ApiError(404, 'User wallet not found');
-  }
-
-  if (Number(wallet.balance || 0) < amount) {
-    throw new ApiError(400, 'Insufficient wallet balance');
-  }
 
   const now = new Date();
   const durationDays = Math.max(0, Number(plan.duration || 0));
@@ -214,15 +206,29 @@ export const purchaseUserSubscription = async ({ userId, planId, paymentSource =
     ? new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000)
     : null;
 
-  wallet.balance = roundMoney(Number(wallet.balance || 0) - amount);
-  wallet.transactions.push({
-    kind: 'debit',
-    amount,
-    title: `Subscription purchase: ${plan.name || 'Plan'}`,
-    provider: 'user_subscription_wallet',
-    providerPaymentId: `sub_${Date.now().toString(36)}_${String(plan._id).slice(-6)}`,
-  });
-  wallet.transactions = wallet.transactions.slice(-50);
+  // Debit only if the balance still covers the price, in one step
+  const wallet = await UserWallet.findOneAndUpdate(
+    { userId, balance: { $gte: amount } },
+    {
+      $inc: { balance: -amount },
+      $push: {
+        transactions: {
+          $each: [{
+            kind: 'debit',
+            amount,
+            title: `Subscription purchase: ${plan.name || 'Plan'}`,
+            provider: 'user_subscription_wallet',
+            providerPaymentId: `sub_${Date.now().toString(36)}_${String(plan._id).slice(-6)}`,
+          }],
+          $slice: -50,
+        },
+      },
+    },
+    { returnDocument: 'after' },
+  );
+  if (!wallet) {
+    throw new ApiError(400, 'Insufficient wallet balance');
+  }
 
   const subscription = new UserSubscription({
     userId,
@@ -244,7 +250,13 @@ export const purchaseUserSubscription = async ({ userId, planId, paymentSource =
     expiresAt,
   });
 
-  await Promise.all([wallet.save(), subscription.save()]);
+  try {
+    await subscription.save();
+  } catch (error) {
+    // The pass could not be created, so give the money back instead of keeping it
+    await UserWallet.updateOne({ userId }, { $inc: { balance: amount } });
+    throw error;
+  }
 
   return {
     subscription: serializeUserSubscription({

@@ -17,16 +17,23 @@ import toast from 'react-hot-toast';
 export default function CancellationAnalytics() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/admin/cancellation-analytics');
-      if (response.data?.success) {
-        setData(response.data.data);
+      setError('');
+      // The shared axios instance already unwraps the HTTP response, so this is the API body: { success, data }
+      const body = await api.get('/admin/cancellation-analytics');
+      if (body?.success && body.data) {
+        setData(body.data);
+      } else {
+        throw new Error(body?.message || 'Unexpected response from server');
       }
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to fetch cancellation analytics');
+      const message = err?.message || err?.error || 'Failed to fetch cancellation analytics';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -46,6 +53,25 @@ export default function CancellationAnalytics() {
           ))}
         </div>
         <div className="h-64 bg-slate-200 rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="bg-white border border-red-200 rounded-2xl p-8 text-center space-y-3">
+          <Ban className="w-8 h-8 text-red-500 mx-auto" />
+          <p className="text-sm font-bold text-slate-900">Could not load cancellation analytics</p>
+          <p className="text-xs text-slate-500">{error}</p>
+          <button
+            onClick={fetchAnalytics}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Try again
+          </button>
+        </div>
       </div>
     );
   }

@@ -9,9 +9,11 @@ import {
   Loader2,
   ArrowLeft,
 } from 'lucide-react';
-import { getUnifiedAdminToken } from '../../services/adminSession';
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
 
-const BASE = () => `${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/payment-methods`;
+// The shared axios instance unwraps the HTTP response, so every call below resolves to the API body: { success, data }
+const PATH = '/admin/payment-methods';
 
 const inputClass =
   'w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-800 bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors';
@@ -42,16 +44,13 @@ const PaymentMethods = () => {
   const fetchMethods = async () => {
     setLoading(true);
     try {
-      const token = getUnifiedAdminToken();
-      const res = await fetch(BASE(), {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setMethods(data.data?.results || []);
+      const body = await api.get(PATH);
+      if (!body?.success) {
+        throw new Error(body?.message || 'Unexpected response from server');
       }
+      setMethods(body.data?.results || []);
     } catch (err) {
-      console.error('Payment methods fetch error:', err);
+      toast.error(err?.message || 'Could not load payment methods');
     } finally {
       setLoading(false);
     }
@@ -118,7 +117,6 @@ const PaymentMethods = () => {
     if (!formData.methodName.trim()) return;
     setSaving(true);
     try {
-      const token = getUnifiedAdminToken();
       const payload = {
         method_name: formData.methodName.trim(),
         fields: formData.fields
@@ -130,24 +128,17 @@ const PaymentMethods = () => {
           }))
           .filter((field) => field.name),
       };
-      const res = await fetch(
-        editingId ? `${BASE()}/${editingId}` : BASE(),
-        {
-          method: editingId ? 'PATCH' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(payload),
-        },
-      );
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setView('list');
-        await fetchMethods();
+      const body = editingId
+        ? await api.patch(`${PATH}/${editingId}`, payload)
+        : await api.post(PATH, payload);
+      if (!body?.success) {
+        throw new Error(body?.message || 'Could not save payment method');
       }
+      toast.success('Payment method saved');
+      setView('list');
+      await fetchMethods();
     } catch (err) {
-      console.error('Payment method save error:', err);
+      toast.error(err?.message || 'Could not save payment method');
     } finally {
       setSaving(false);
     }
@@ -155,31 +146,19 @@ const PaymentMethods = () => {
 
   const handleToggleStatus = async (method) => {
     try {
-      const token = getUnifiedAdminToken();
-      await fetch(`${BASE()}/${method._id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ active: !method.active }),
-      });
+      await api.patch(`${PATH}/${method._id}`, { active: !method.active });
       await fetchMethods();
     } catch (err) {
-      console.error('Status update error:', err);
+      toast.error(err?.message || 'Could not update status');
     }
   };
 
   const handleDelete = async (methodId) => {
     try {
-      const token = getUnifiedAdminToken();
-      await fetch(`${BASE()}/${methodId}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      await api.delete(`${PATH}/${methodId}`);
       await fetchMethods();
     } catch (err) {
-      console.error('Delete method error:', err);
+      toast.error(err?.message || 'Could not delete payment method');
     }
   };
 

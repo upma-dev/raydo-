@@ -16,8 +16,9 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
 
-const BASE = `${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin`;
 
 const isApproved = (driver) => driver?.approve === true || driver?.approve === 1 || driver?.status === 'approved';
 
@@ -57,19 +58,16 @@ const FleetDrivers = () => {
       setIsLoading(true);
 
       try {
-        const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken')) || '';
-        const response = await fetch(`${BASE}/drivers?page=1&limit=100`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const json = await response.json();
+        // The shared axios instance unwraps the HTTP response, so this is the API body: { success, data }
+        const json = await api.get('/admin/drivers', { params: { page: 1, limit: 100 } });
 
-        if (response.ok && json.success) {
+        if (json?.success) {
           const allDrivers = json.data?.results || [];
           const fleetDrivers = allDrivers.filter((driver) => isApproved(driver) && (driver.owner_id || driver.fleet_id));
           setDrivers(fleetDrivers);
         }
       } catch (error) {
-        console.error('Failed to fetch fleet drivers:', error);
+        toast.error(error?.message || 'Could not load fleet drivers');
       } finally {
         setIsLoading(false);
       }

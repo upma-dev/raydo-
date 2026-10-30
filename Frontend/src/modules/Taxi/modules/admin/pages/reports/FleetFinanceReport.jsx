@@ -213,7 +213,6 @@ const FleetFinanceReport = () => {
                   <option value="">Select File Format</option>
                   <option value="csv">CSV Spreadsheet</option>
                   <option value="xlsx">Excel File</option>
-                  <option value="pdf">PDF Report</option>
                 </select>
                 <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-gray-300">
                   <ChevronRight size={18} className="rotate-90" />

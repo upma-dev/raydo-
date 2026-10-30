@@ -2,8 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, Loader2, Save } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
 
-const BASE = `${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/owner-management`;
+// The shared axios instance unwraps the HTTP response, so every call resolves to the API body: { success, data }
+const BASE = '/admin/owner-management';
 
 const inputClass =
   'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-800 bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors';
@@ -21,7 +24,6 @@ const OwnerNeededDocumentsCreate = () => {
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
 
-  const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken')) || '';
   const [submitting, setSubmitting] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(Boolean(editId));
 
@@ -41,10 +43,7 @@ const OwnerNeededDocumentsCreate = () => {
     const load = async () => {
       setLoadingEdit(true);
       try {
-        const res = await fetch(`${BASE}/owner-needed-document/${editId}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const json = await res.json();
+        const json = await api.get(`${BASE}/owner-needed-document/${editId}`);
         const doc = json?.data || json?.data?.result || json?.data?.results || null;
 
         if (json?.success && doc) {
@@ -59,14 +58,14 @@ const OwnerNeededDocumentsCreate = () => {
           });
         }
       } catch (e) {
-        console.error('Failed to load owner needed document:', e);
+        toast.error(e?.message || 'Could not load the document');
       } finally {
         setLoadingEdit(false);
       }
     };
 
     load();
-  }, [editId, token]);
+  }, [editId]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -81,28 +80,19 @@ const OwnerNeededDocumentsCreate = () => {
       const url = editId ? `${BASE}/owner-needed-document/${editId}` : `${BASE}/owner-needed-document`;
       const method = editId ? 'PATCH' : 'POST';
 
-      const res = await fetch(url, {
-        method,
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...formData,
-          has_expiry_date: toBool(formData.has_expiry_date),
-          has_identify_number: toBool(formData.has_identify_number),
-        }),
-      });
-
-      const json = await res.json();
+      const payload = {
+        ...formData,
+        has_expiry_date: toBool(formData.has_expiry_date),
+        has_identify_number: toBool(formData.has_identify_number),
+      };
+      const json = method === 'PATCH' ? await api.patch(url, payload) : await api.post(url, payload);
       if (json?.success) {
         navigate('/taxi/admin/owners/documents');
         return;
       }
       alert(json?.message || 'Operation failed');
     } catch (e) {
-      console.error('Failed to save owner needed document:', e);
-      alert('Network error');
+      alert(e?.message || 'Operation failed');
     } finally {
       setSubmitting(false);
     }

@@ -2,8 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Edit2, FileSearch, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
 
-const BASE = `${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/owner-management`;
+// The shared axios instance unwraps the HTTP response, so every call resolves to the API body: { success, data }
+const BASE = '/admin/owner-management';
 
 const getDocTypeLabel = (value) => {
   const v = String(value || '').toLowerCase();
@@ -16,7 +19,6 @@ const getDocTypeLabel = (value) => {
 
 const OwnerNeededDocuments = () => {
   const navigate = useNavigate();
-  const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken')) || '';
 
   const [isLoading, setIsLoading] = useState(true);
   const [documents, setDocuments] = useState([]);
@@ -28,16 +30,13 @@ const OwnerNeededDocuments = () => {
   const fetchDocuments = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${BASE}/owner-needed-document`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const json = await res.json();
+      const json = await api.get(`${BASE}/owner-needed-document`);
       if (json?.success) {
         const list = Array.isArray(json?.data) ? json.data : json?.data?.results || [];
         setDocuments(Array.isArray(list) ? list : []);
       }
     } catch (e) {
-      console.error('Failed to fetch owner needed documents:', e);
+      toast.error(e?.message || 'Could not load owner documents');
     } finally {
       setIsLoading(false);
     }
@@ -51,16 +50,11 @@ const OwnerNeededDocuments = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this document requirement?')) return;
     try {
-      const res = await fetch(`${BASE}/owner-needed-document/${id}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const json = await res.json();
+      const json = await api.delete(`${BASE}/owner-needed-document/${id}`);
       if (json?.success) fetchDocuments();
       else alert(json?.message || 'Delete failed');
     } catch (e) {
-      console.error('Failed to delete owner needed document:', e);
-      alert('Delete failed');
+      alert(e?.message || 'Delete failed');
     }
   };
 

@@ -383,6 +383,19 @@ const readStoredDriverVehicleHints = () => {
     }
 };
 
+// Same helper the rider's tracking screen uses: shows the vehicle icon with its white background removed.
+// The hook was called below but never defined here, which crashed the screen with "useTransparentMarkerSrc is not defined".
+const useTransparentMarkerSrc = (src) => {
+    const [clean, setClean] = React.useState({ src: '', out: '' });
+    React.useEffect(() => {
+        let alive = true;
+        if (!src || /\.svg(\?|$)/i.test(src) || src.startsWith('data:image/svg')) return undefined;
+        getTransparentMarkerSrc(src).then((out) => { if (alive) setClean({ src, out }); }).catch(() => {});
+        return () => { alive = false; };
+    }, [src]);
+    return clean.src === src && clean.out ? clean.out : src;
+};
+
 const RotatingVehicleMarker = ({ position, iconUrl = carIcon, fallbackIconUrl = carIcon, heading = 0, title = 'Driver' }) => {
     const [failedUrl, setFailedUrl] = React.useState('');
     const rawSrc = iconUrl && iconUrl !== failedUrl ? iconUrl : fallbackIconUrl;

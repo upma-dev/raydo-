@@ -12,7 +12,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getUnifiedAdminToken } from '../../services/adminSession';
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
+import { BACKEND_ORIGIN } from '../../../../shared/api/runtimeConfig';
 
 const Motion = motion;
 const LIST_PATH = '/admin/promotions/banner-image';
@@ -35,56 +37,40 @@ const BannerImage = () => {
   const [formData, setFormData] = useState(createInitialFormData);
   const [imagePreview, setImagePreview] = useState(null);
 
-  const token = getUnifiedAdminToken() || '';
-  const baseUrl = globalThis.__LEGACY_BACKEND_ORIGIN__ + '/api/v1/taxi/admin';
-
-  const resolveImageUrl = useCallback(
-    (img) => {
-      if (!img) return null;
-      if (img.startsWith('data:') || img.startsWith('http')) return img;
-      const rootUrl = baseUrl.replace('/api/v1/taxi/admin', '');
-      return `${rootUrl}/${img.startsWith('/') ? img.slice(1) : img}`;
-    },
-    [baseUrl],
-  );
+  // The shared axios instance unwraps the HTTP response, so every call below resolves to the API body: { success, data }
+  const resolveImageUrl = useCallback((img) => {
+    if (!img) return null;
+    if (img.startsWith('data:') || img.startsWith('http')) return img;
+    return `${BACKEND_ORIGIN}/${img.startsWith('/') ? img.slice(1) : img}`;
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const bootstrapRes = await fetch(`${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/promotions/bootstrap`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (bootstrapRes.ok) {
-        const bootstrapData = await bootstrapRes.json();
-        if (bootstrapData.success) {
+      try {
+        const bootstrapData = await api.get('/admin/promotions/bootstrap');
+        if (bootstrapData?.success) {
           setBanners(bootstrapData.data?.banners || []);
           return;
         }
+      } catch {
+        // Bootstrap is only a shortcut; fall back to the plain banner list below.
       }
 
-      const res = await fetch(`${baseUrl}/banners`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          const items = data.data?.results || (Array.isArray(data.data) ? data.data : data.results || []);
-          setBanners(items);
-        } else {
-          setBanners([]);
-        }
+      const data = await api.get('/admin/banners');
+      if (data?.success) {
+        const items = data.data?.results || (Array.isArray(data.data) ? data.data : data.results || []);
+        setBanners(items);
       } else {
         setBanners([]);
       }
     } catch (error) {
-      console.error('Error fetching banners:', error);
       setBanners([]);
+      toast.error(error?.message || 'Could not load banners');
     } finally {
       setLoading(false);
     }
-  }, [baseUrl, token]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -144,18 +130,8 @@ const BannerImage = () => {
         use_url: formData.use_url,
       };
 
-      const res = await fetch(`${baseUrl}/banners`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (data.success) {
+      const data = await api.post('/admin/banners', payload);
+      if (data?.success) {
         setFormData(createInitialFormData());
         setImagePreview(null);
         await fetchData();
@@ -164,8 +140,7 @@ const BannerImage = () => {
         alert(data.message || 'Failed to save banner');
       }
     } catch (error) {
-      console.error('Save banner error:', error);
-      alert(`Network Error: ${error.message}`);
+      alert(error?.message || 'Failed to save banner');
     } finally {
       setSaving(false);
     }
@@ -175,38 +150,26 @@ const BannerImage = () => {
     if (!window.confirm('Are you sure you want to delete this banner?')) return;
 
     try {
-      const res = await fetch(`${baseUrl}/banners/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) {
+      const data = await api.delete(`/admin/banners/${id}`);
+      if (data?.success) {
         await fetchData();
       }
     } catch (error) {
-      console.error('Delete banner error:', error);
+      toast.error(error?.message || 'Could not delete banner');
     }
   };
 
   const toggleStatus = async (item) => {
     const id = item._id || item.id;
     try {
-      const res = await fetch(`${baseUrl}/banners/${id}`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ active: !item.active }),
-      });
-      const data = await res.json();
-      if (data.success) {
+      const data = await api.patch(`/admin/banners/${id}`, { active: !item.active });
+      if (data?.success) {
         setBanners((current) =>
           current.map((banner) => ((banner._id || banner.id) === id ? { ...banner, active: !item.active } : banner)),
         );
       }
     } catch (error) {
-      console.error('Banner status toggle error:', error);
+      toast.error(error?.message || 'Could not update banner status');
     }
   };
 

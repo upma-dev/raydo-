@@ -25,6 +25,7 @@ import { Notification } from '../admin/promotions/models/Notification.js';
 import { creditFranchiseCommission } from '../admin/services/taxiFranchiseService.js';
 import { quoteIntercityFare } from './intercityFareService.js';
 import { getDrivingRoute } from './routeMetricsService.js';
+import { stampRideTax } from './taxiTaxService.js';
 
 export { getRideRoom } from './dispatchService.js';
 
@@ -1107,6 +1108,12 @@ export const createRideRecord = async ({
     waiting_charge: Number(intercityQuote ? intercityQuote.waiting.ratePerMinute : (pricingRule?.waiting_charge ?? 0)),
     free_waiting_before: Number(intercityQuote ? intercityQuote.waiting.freeMinutes : (pricingRule?.free_waiting_before ?? 0)),
     free_waiting_after: Number(pricingRule?.free_waiting_after ?? 0),
+    waiting_max_charge: Number(pricingRule?.waiting_max_charge ?? 0),
+    long_pickup_free_km: Number(pricingRule?.long_pickup_free_km ?? 0),
+    long_pickup_price_per_km: Number(pricingRule?.long_pickup_price_per_km ?? 0),
+    long_pickup_max_charge: Number(pricingRule?.long_pickup_max_charge ?? 0),
+    gst_percent: Number(pricingRule?.gst_percent ?? 0),
+    platform_fee: Number(pricingRule?.platform_fee ?? 0),
     ride_surge_enabled: Boolean(surgeZone?.ride_surge_enabled) && rideSurgeAmount > 0,
     ride_surge_amount: rideSurgeAmount,
     fare_before_surge: effectiveStartingFareWithoutSurge,
@@ -1448,6 +1455,16 @@ export const serializeRideRealtime = (ride) => ({
       amount: Number(ride.waitingCharge.amount || 0),
     }
     : null,
+  longPickupCharge: ride.longPickupCharge
+    ? { km: Number(ride.longPickupCharge.km || 0), amount: Number(ride.longPickupCharge.amount || 0) }
+    : null,
+  taxBreakdown: ride.taxBreakdown
+    ? {
+      gst: Number(ride.taxBreakdown.gst || 0),
+      platformFee: Number(ride.taxBreakdown.platformFee || 0),
+      total: Number(ride.taxBreakdown.total || 0),
+    }
+    : null,
   previousCancellationFee: Number(ride.previousCancellationFee || 0),
   promo: ride.promo?.code ? ride.promo : null,
   pricingSnapshot: ride.pricingSnapshot
@@ -1458,6 +1475,8 @@ export const serializeRideRealtime = (ride) => ({
       waiting_charge: Number(ride.pricingSnapshot.waiting_charge ?? 0),
       free_waiting_before: Number(ride.pricingSnapshot.free_waiting_before ?? 0),
       free_waiting_after: Number(ride.pricingSnapshot.free_waiting_after ?? 0),
+      gst_percent: Number(ride.pricingSnapshot.gst_percent ?? 0),
+      platform_fee: Number(ride.pricingSnapshot.platform_fee ?? 0),
       ride_surge_enabled: Boolean(ride.pricingSnapshot.ride_surge_enabled),
       ride_surge_amount: Number(ride.pricingSnapshot.ride_surge_amount ?? 0),
       fare_before_surge: Number(ride.pricingSnapshot.fare_before_surge ?? 0),
@@ -1728,6 +1747,31 @@ export const listRideHistoryForIdentity = async ({ role, entityId, limit = 50, p
   };
 };
 
+const straightLineKm = (a = [], b = []) => {
+  const [lng1, lat1, lng2, lat2] = [Number(a[0]), Number(a[1]), Number(b[0]), Number(b[1])];
+  if (![lng1, lat1, lng2, lat2].every(Number.isFinite)) return 0;
+  const rad = (d) => (d * Math.PI) / 180;
+  const h = (Math.sin(rad(lat2 - lat1) / 2) ** 2)
+    + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * (Math.sin(rad(lng2 - lng1) / 2) ** 2);
+  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+};
+
+// Zone "long pickup" rule: the rider pays extra per km once the driver starts farther away than the free distance.
+// The driver's position is only known now, so it is billed at acceptance (added to the fare once, capped).
+const applyLongPickupCharge = (ride, driver) => {
+  const snapshot = ride.pricingSnapshot || {};
+  const rate = Number(snapshot.long_pickup_price_per_km || 0);
+  if (!(rate > 0) || Number(ride.longPickupCharge?.amount || 0) > 0) return;
+  const pickupKm = straightLineKm(driver.location?.coordinates, ride.pickupLocation?.coordinates);
+  const extraKm = Math.max(0, pickupKm - Number(snapshot.long_pickup_free_km || 0));
+  const cap = Number(snapshot.long_pickup_max_charge || 0);
+  let amount = Math.round(extraKm * rate * 100) / 100;
+  if (cap > 0) amount = Math.min(amount, cap);
+  if (!(amount > 0)) return;
+  ride.longPickupCharge = { km: Math.round(pickupKm * 100) / 100, amount };
+  ride.fare = Number(ride.fare || 0) + amount;
+};
+
 export const acceptRideAssignment = async ({ rideId, driverId }) => {
   let lastError = null;
 
@@ -1788,6 +1832,7 @@ export const acceptRideAssignment = async ({ rideId, driverId }) => {
       ride.liveStatus = RIDE_LIVE_STATUS.ACCEPTED;
       ride.acceptedAt = new Date();
       driver.isOnRide = !isRideScheduledForFuture(ride);
+      applyLongPickupCharge(ride, driver);
 
       await ride.save({ session });
       await driver.save({ session });
@@ -1898,7 +1943,9 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
       const startedTime = new Date(startedAt).getTime();
       const waitingSeconds = Math.max(0, Math.floor((startedTime - arrivedTime) / 1000));
       const chargeableMinutes = Math.max(0, Math.ceil(waitingSeconds / 60) - freeWaitingBefore);
-      const waitingChargeTotal = Math.round(chargeableMinutes * waitingChargeRate * 100) / 100;
+      const waitingMaxCharge = Number(ride.pricingSnapshot?.waiting_max_charge ?? 0);
+      let waitingChargeTotal = Math.round(chargeableMinutes * waitingChargeRate * 100) / 100;
+      if (waitingMaxCharge > 0) waitingChargeTotal = Math.min(waitingChargeTotal, waitingMaxCharge);
 
       ride.fareBeforeWaiting = Number(ride.fare || 0);
       ride.waitingCharge = {
@@ -1911,6 +1958,17 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
       if (waitingChargeTotal > 0) {
         ride.fare = Number(ride.fare || 0) + waitingChargeTotal;
       }
+    }
+  }
+
+  // The fare is final here (waiting is already billed above), so the tax included in it can be fixed now.
+  if (nextStatus === RIDE_LIVE_STATUS.COMPLETED) {
+    await stampRideTax(ride);
+    const gstPercent = Number(ride.pricingSnapshot?.gst_percent || 0);
+    const platformFee = Number(ride.pricingSnapshot?.platform_fee || 0);
+    if (gstPercent > 0 || platformFee > 0) {
+      const gst = Math.round(Number(ride.fare || 0) * gstPercent) / 100;
+      ride.taxBreakdown = { gst, platformFee, total: Math.round((gst + platformFee) * 100) / 100 };
     }
   }
 

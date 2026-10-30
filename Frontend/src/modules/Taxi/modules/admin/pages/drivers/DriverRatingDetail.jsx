@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, ChevronRight, Mail, MapPin, Phone, Star } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import api from '../../../../shared/api/axiosInstance';
 
 const DriverRatingDetail = () => {
   const navigate = useNavigate();
@@ -14,18 +15,15 @@ const DriverRatingDetail = () => {
       setIsLoading(true);
       setError('');
       try {
-        const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken'));
-        const res = await fetch(`${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/driver-ratings/${id}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          setDetail(data.data);
+        // The shared axios instance unwraps the HTTP response, so this is the API body: { success, data }
+        const body = await api.get(`/admin/driver-ratings/${id}`);
+        if (body?.success) {
+          setDetail(body.data);
         } else {
-          setError(data.message || 'Unable to load rating');
+          setError(body?.message || 'Unable to load rating');
         }
       } catch (err) {
-        setError('Unable to load rating');
+        setError(err?.message || 'Unable to load rating');
       } finally {
         setIsLoading(false);
       }
@@ -149,6 +147,7 @@ const DriverRatingDetail = () => {
                       <Star key={s} size={14} className={s <= Math.round(item.rating) ? 'fill-current' : 'text-gray-200'} />
                     ))}
                   </div>
+                  {item.comment ? <div className="text-gray-600 italic">"{item.comment}"</div> : null}
                 </div>
               </div>
             ))

@@ -1810,6 +1810,16 @@ const serializeSetPrice = (item) => ({
   time_price: item.time_price,
   waiting_charge: item.waiting_charge,
   ride_surge_amount: item.ride_surge_amount ?? 0,
+  min_fare: item.min_fare ?? 0,
+  waiting_max_charge: item.waiting_max_charge ?? 0,
+  night_fare_percent: item.night_fare_percent ?? 0,
+  night_fare_start: item.night_fare_start || '22:00',
+  night_fare_end: item.night_fare_end || '06:00',
+  long_pickup_free_km: item.long_pickup_free_km ?? 0,
+  long_pickup_price_per_km: item.long_pickup_price_per_km ?? 0,
+  long_pickup_max_charge: item.long_pickup_max_charge ?? 0,
+  gst_percent: item.gst_percent ?? 0,
+  platform_fee: item.platform_fee ?? 0,
   outstation_base_price: item.outstation_base_price ?? 0,
   outstation_base_distance: item.outstation_base_distance ?? 0,
   outstation_price_per_distance: item.outstation_price_per_distance ?? 0,
@@ -2540,6 +2550,30 @@ const resolveVehicleForImport = async (vehicleLabel, transportType) => {
       ? { transport_type: { $in: [normalizeVehicleTransportType(transportType), 'both'] } }
       : {}),
   }).lean();
+};
+
+// Spreadsheet cells come in many shapes: "+91 98765 43210", "09876543210", 9876543210 (number), "M", "Prefer not to say"...
+const normalizeImportPhone = (value = '') => {
+  let digits = String(value ?? '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  return digits;
+};
+
+const normalizeImportGender = (value = '') => {
+  const text = String(value ?? '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+  if (['m', 'male', 'man'].includes(text)) return 'male';
+  if (['f', 'female', 'woman'].includes(text)) return 'female';
+  if (['o', 'other', 'others'].includes(text)) return 'other';
+  if (['prefer-not-to-say', 'not-specified', 'na', 'n/a'].includes(text)) return 'prefer-not-to-say';
+  return '';
+};
+
+const normalizeImportCountryCode = (value = '') => {
+  const text = String(value ?? '').trim();
+  if (text.startsWith('+')) return text;
+  if (/^\d{1,4}$/.test(text)) return `+${text}`;
+  return '+91';
 };
 
 const normalizeImportTransportType = (value = '') =>
@@ -3365,10 +3399,10 @@ export const bulkImportUsers = async (payload = {}) => {
   for (let index = 0; index < incomingUsers.length; index += 1) {
     const raw = incomingUsers[index] || {};
     const name = String(raw.name || '').trim();
-    const phone = String(raw.phone || raw.mobile || '').replace(/\D/g, '');
+    const phone = normalizeImportPhone(raw.phone || raw.mobile);
     const email = String(raw.email || '').trim().toLowerCase();
-    const gender = String(raw.gender || '').trim().toLowerCase();
-    const countryCode = String(raw.countryCode || raw.country_code || raw.country || '').trim();
+    const normalizedGender = normalizeImportGender(raw.gender);
+    const normalizedCountryCode = normalizeImportCountryCode(raw.countryCode || raw.country_code || raw.country);
 
     if (!name) {
       errors.push({ index, field: 'name', message: 'Name is required' });
@@ -3384,9 +3418,6 @@ export const bulkImportUsers = async (payload = {}) => {
       errors.push({ index, field: 'email', message: 'A valid email address is required' });
       continue;
     }
-
-    const normalizedGender = VALID_USER_GENDERS.has(gender) ? gender : '';
-    const normalizedCountryCode = countryCode && countryCode.startsWith('+') ? countryCode : '+91';
 
     const existingUser = await User.findOne({ phone }).lean();
     if (existingUser) {
@@ -3439,9 +3470,9 @@ export const bulkImportDrivers = async (payload = {}) => {
   for (let index = 0; index < incomingDrivers.length; index += 1) {
     const raw = incomingDrivers[index] || {};
     const name = String(raw.name || '').trim();
-    const phone = String(raw.phone || raw.mobile || '').replace(/\D/g, '');
+    const phone = normalizeImportPhone(raw.phone || raw.mobile);
     const email = String(raw.email || '').trim().toLowerCase();
-    const gender = String(raw.gender || '').trim().toLowerCase();
+    const gender = normalizeImportGender(raw.gender);
     const serviceLocationInput = String(
       raw.service_location || raw.serviceLocation || '',
     ).trim();
@@ -3485,11 +3516,29 @@ export const bulkImportDrivers = async (payload = {}) => {
     }
 
     const serviceLocation = await resolveServiceLocationForImport(serviceLocationInput);
+    // A driver saved under a place that does not exist could never be matched to a ride, so refuse the row instead.
+    if (!serviceLocation) {
+      errors.push({
+        index,
+        field: 'service_location',
+        message: `Service location "${serviceLocationInput}" was not found`,
+      });
+      continue;
+    }
+
     const normalizedVehicleInput = vehicleInput || transportType || 'car';
     const vehicleRecord = await resolveVehicleForImport(
       normalizedVehicleInput,
       transportType,
     );
+    if (vehicleInput && !vehicleRecord) {
+      errors.push({
+        index,
+        field: 'vehicle_type',
+        message: `Vehicle type "${vehicleInput}" was not found`,
+      });
+      continue;
+    }
     const vehicleType = normalizeImportVehicleType(
       normalizedVehicleInput,
       vehicleRecord,
@@ -3509,11 +3558,13 @@ export const bulkImportDrivers = async (payload = {}) => {
         vehicleColor: String(raw.vehicle_color || raw.vehicleColor || '').trim(),
         vehicleNumber: String(raw.vehicle_number || raw.vehicleNumber || '').trim(),
         registerFor: transportType,
+        serviceCategories: [transportType],
+        service_location_id: serviceLocation._id,
+        country: String(raw.country || '').trim() || null,
         city:
           serviceLocation?.service_location_name ||
           serviceLocation?.name ||
-          serviceLocationInput ||
-          String(raw.country || '').trim(),
+          serviceLocationInput,
         approve: raw.approve !== undefined ? Boolean(raw.approve) : true,
         status: raw.status || (raw.approve === false ? 'pending' : 'approved'),
         onboarding: {
@@ -4154,7 +4205,11 @@ export const getDriverRatingDetail = async (id) => {
     throw new ApiError(404, 'Driver not found');
   }
 
-  const rides = await Ride.find({ driverId: driver._id }).sort({ createdAt: -1 }).lean();
+  // Only rides the rider actually rated, each with its own rating and comment (before: every ride showed the driver's average)
+  const rides = await Ride.find({ driverId: driver._id, 'feedback.rating': { $gt: 0 } })
+    .select('createdAt pickupLocation feedback')
+    .sort({ 'feedback.submittedAt': -1, createdAt: -1 })
+    .lean();
 
   return {
     driver: {
@@ -4174,11 +4229,12 @@ export const getDriverRatingDetail = async (id) => {
     reviews: rides.map((ride) => ({
       _id: ride._id,
       request_id: String(ride._id),
-      date: ride.createdAt,
+      date: ride.feedback?.submittedAt || ride.createdAt,
       pickup_location: ride.pickupLocation?.coordinates
         ? `${ride.pickupLocation.coordinates[1]}, ${ride.pickupLocation.coordinates[0]}`
         : 'N/A',
-      rating: Number(driver.ratingCount || 0) > 0 ? Number(driver.rating || 0) : 0,
+      rating: Number(ride.feedback?.rating || 0),
+      comment: ride.feedback?.comment || '',
     })),
   };
 };
@@ -5437,21 +5493,50 @@ export const getReferralDashboard = async () => {
 
 export const listSubscriptionPlans = async () =>
   SubscriptionPlan.find({ audience: 'driver' }).sort({ createdAt: -1 }).populate('vehicle_type_id').lean();
-export const createSubscriptionPlan = async (payload) => {
+export const createSubscriptionPlan = async (payload = {}) => {
   if (!String(payload?.name || '').trim()) {
     throw new ApiError(400, 'Subscription name is required');
   }
 
+  const amount = Number(payload.amount);
+  const duration = Number(payload.duration);
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new ApiError(400, 'A valid plan amount is required');
+  }
+  if (!Number.isFinite(duration) || duration < 1) {
+    throw new ApiError(400, 'Plan duration must be at least 1 day');
+  }
+  if (payload.vehicle_type_id && !mongoose.Types.ObjectId.isValid(payload.vehicle_type_id)) {
+    throw new ApiError(400, 'Valid vehicle type is required');
+  }
+
+  // Only the known plan fields are stored (before, the whole request body was spread into the document)
   const plan = await SubscriptionPlan.create({
-    ...payload,
+    name: String(payload.name).trim(),
+    description: String(payload.description || '').trim(),
+    transport_type: String(payload.transport_type || '').trim().toLowerCase(),
+    vehicle_type_id: payload.vehicle_type_id || undefined,
+    how_it_works: String(payload.how_it_works || '').trim(),
     audience: 'driver',
-    amount: Number(payload.amount || 0),
-    duration: Number(payload.duration || 0),
+    amount,
+    duration,
     benefit_type: 'standard',
     ride_limit: 0,
     active: true,
   });
   return plan.toObject();
+};
+
+// Turn a plan on or off without deleting it: users already holding it keep it, new buyers no longer see it
+export const setSubscriptionPlanActive = async (id, active) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError(400, 'Valid plan id is required');
+  }
+  const plan = await SubscriptionPlan.findByIdAndUpdate(id, { $set: { active: Boolean(active) } }, { new: true }).lean();
+  if (!plan) {
+    throw new ApiError(404, 'Subscription plan not found');
+  }
+  return plan;
 };
 
 export const listCustomerSubscriptionPlans = async () =>
@@ -5465,14 +5550,25 @@ export const createCustomerSubscriptionPlan = async (payload = {}) => {
     throw new ApiError(400, 'Valid vehicle type is required');
   }
 
+  // Buying a plan with a zero price is refused, so such a plan could never be sold
+  const amount = Number(payload.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new ApiError(400, 'Plan price must be greater than zero');
+  }
+
   const benefitType = String(payload.benefit_type || '').trim().toLowerCase() === 'unlimited'
     ? 'unlimited'
     : 'limited';
 
+  // Only the known plan fields are stored (before, the whole request body was spread into the document)
   const plan = await SubscriptionPlan.create({
-    ...payload,
+    name: String(payload.name).trim(),
+    description: String(payload.description || '').trim(),
+    transport_type: String(payload.transport_type || 'taxi').trim().toLowerCase(),
+    vehicle_type_id: payload.vehicle_type_id,
+    how_it_works: String(payload.how_it_works || '').trim(),
     audience: 'user',
-    amount: Number(payload.amount || 0),
+    amount,
     duration: Math.max(1, Number(payload.duration || 0)),
     benefit_type: benefitType,
     ride_limit: benefitType === 'unlimited' ? 0 : Math.max(1, Number(payload.ride_limit || 0)),
@@ -5509,8 +5605,12 @@ export const listUserSubscriptionsByUserId = async (userId) => {
       rides_remaining: String(item.benefit_type || '') === 'unlimited'
         ? null
         : Math.max(0, Number(item.ride_limit || 0) - Number(item.rides_used || 0)),
-      status: item.status || 'active',
-      active: item.active !== false,
+      // A pass past its end date still says "active" in the database until someone uses it; show the real state
+      status:
+        (item.status || 'active') === 'active' && item.expiresAt && new Date(item.expiresAt) <= new Date()
+          ? 'expired'
+          : (item.status || 'active'),
+      active: item.active !== false && !(item.expiresAt && new Date(item.expiresAt) <= new Date()),
       vehicle_type: item.vehicle_type_id?._id
         ? {
             id: String(item.vehicle_type_id._id),
@@ -6519,6 +6619,16 @@ export const createSetPrice = async (payload, currentAdmin = null) => {
     time_price: Number(payload.time_price ?? 0),
     waiting_charge: Number(payload.waiting_charge ?? 0),
     ride_surge_amount: Number(payload.ride_surge_amount ?? 0),
+    min_fare: Number(payload.min_fare ?? 0),
+    waiting_max_charge: Number(payload.waiting_max_charge ?? 0),
+    night_fare_percent: Number(payload.night_fare_percent ?? 0),
+    night_fare_start: String(payload.night_fare_start || '22:00'),
+    night_fare_end: String(payload.night_fare_end || '06:00'),
+    long_pickup_free_km: Number(payload.long_pickup_free_km ?? 0),
+    long_pickup_price_per_km: Number(payload.long_pickup_price_per_km ?? 0),
+    long_pickup_max_charge: Number(payload.long_pickup_max_charge ?? 0),
+    gst_percent: Number(payload.gst_percent ?? 0),
+    platform_fee: Number(payload.platform_fee ?? 0),
     outstation_base_price: Number(payload.outstation_base_price ?? 0),
     outstation_base_distance: Number(payload.outstation_base_distance ?? 0),
     outstation_price_per_distance: Number(payload.outstation_price_per_distance ?? 0),
@@ -6570,6 +6680,8 @@ export const updateSetPrice = async (id, payload, currentAdmin = null) => {
     'waiting_charge', 'ride_surge_amount', 'outstation_base_price', 'outstation_base_distance',
     'outstation_price_per_distance', 'outstation_time_price',
     'free_waiting_before', 'free_waiting_after',
+    'min_fare', 'waiting_max_charge', 'night_fare_percent', 'night_fare_start', 'night_fare_end',
+    'long_pickup_free_km', 'long_pickup_price_per_km', 'long_pickup_max_charge', 'gst_percent', 'platform_fee',
     'enable_shared_ride', 'enable_ride_sharing', 'price_per_seat',
     'shared_price_per_distance', 'shared_cancel_fee',
     'user_cancellation_fee', 'driver_cancellation_fee', 'cancellation_fee_goes_to',
@@ -9548,28 +9660,48 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
 
 
 
+  // Report days start at midnight India time (IST, UTC+05:30, no daylight saving), whatever timezone the server runs in.
+  // Before, "today" used the server's midnight (05:30 off on a UTC server) and "this week" started at the current
+  // time of day on Sunday instead of at midnight.
+  const IST_OFFSET_MS = 330 * 60 * 1000;
+  const istMidnight = (year, month, day) => new Date(Date.UTC(year, month, day) - IST_OFFSET_MS);
+  const parseReportDay = (value) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || '').trim());
+    if (match) return { y: Number(match[1]), m: Number(match[2]) - 1, d: Number(match[3]) };
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    const ist = new Date(date.getTime() + IST_OFFSET_MS);
+    return { y: ist.getUTCFullYear(), m: ist.getUTCMonth(), d: ist.getUTCDate() };
+  };
+
   const buildDateFilter = (date_option, from_date, to_date) => {
     const filter = {};
-    const now = new Date();
-    
+    const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+    const y = nowIst.getUTCFullYear();
+    const m = nowIst.getUTCMonth();
+    const d = nowIst.getUTCDate();
+    const weekday = nowIst.getUTCDay();
+
     if (date_option === 'today') {
-      filter.$gte = new Date(now.setHours(0,0,0,0));
+      filter.$gte = istMidnight(y, m, d);
     } else if (date_option === 'yesterday') {
-      const yesterday = new Date(now.setDate(now.getDate() - 1));
-      filter.$gte = new Date(yesterday.setHours(0,0,0,0));
-      filter.$lt = new Date(new Date().setHours(0,0,0,0));
+      filter.$gte = istMidnight(y, m, d - 1);
+      filter.$lt = istMidnight(y, m, d);
     } else if (date_option === 'this_week') {
-      const first = now.getDate() - now.getDay();
-      filter.$gte = new Date(now.setDate(first));
+      filter.$gte = istMidnight(y, m, d - weekday);
     } else if (date_option === 'this_month') {
-      filter.$gte = new Date(now.getFullYear(), now.getMonth(), 1);
+      filter.$gte = istMidnight(y, m, 1);
     } else if (date_option === 'this_year') {
-      filter.$gte = new Date(now.getFullYear(), 0, 1);
+      filter.$gte = istMidnight(y, 0, 1);
     } else if (date_option === 'range' && from_date && to_date) {
-      filter.$gte = new Date(new Date(from_date).setHours(0,0,0,0));
-      filter.$lte = new Date(new Date(to_date).setHours(23,59,59,999));
+      const from = parseReportDay(from_date);
+      const to = parseReportDay(to_date);
+      if (from && to) {
+        filter.$gte = istMidnight(from.y, from.m, from.d);
+        filter.$lte = new Date(istMidnight(to.y, to.m, to.d + 1).getTime() - 1);
+      }
     }
-    
+
     return Object.keys(filter).length > 0 ? filter : null;
   };
 
@@ -9605,17 +9737,41 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
   };
 
   export const buildDriverReport = async (query = {}) => {
-    const { transport_type, vehicle_type, status, date_option, from_date, to_date } = query;
+    const { transport_type, vehicle_type, status, approval_status, date_option, from_date, to_date } = query;
     const filter = {};
-    
+
     if (transport_type === 'both') {
       filter.registerFor = { $in: ['taxi', 'bike', 'both'] };
     } else if (transport_type) {
       filter.registerFor = transport_type;
     }
 
-    if (vehicle_type) filter.vehicleType = vehicle_type;
-    if (status) filter.status = status;
+    // The screen sends the vehicle type NAME (Cab, SUV...), but drivers store a class ('car') and/or the type id.
+    // Match the chosen type exactly where the driver has its id, and by class for older drivers without one.
+    if (vehicle_type) {
+      const wanted = String(vehicle_type).trim();
+      const exactName = new RegExp(`^${wanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+      const types = await Vehicle.find({ $or: [{ name: exactName }, { type_name: exactName }] })
+        .select('_id icon_types vehicle_type')
+        .lean();
+      const classes = new Set([wanted.toLowerCase()]);
+      types.forEach((type) => {
+        [type.icon_types, type.vehicle_type].forEach((value) => {
+          if (value) classes.add(String(value).trim().toLowerCase());
+        });
+      });
+      filter.$or = [
+        { vehicleTypeId: { $in: types.map((type) => type._id) } },
+        { vehicleTypeId: null, vehicleType: { $in: [...classes] } },
+      ];
+    }
+
+    // The screen sends approval_status (approved / pending / disapproved); status is accepted too
+    const approval = String(approval_status || status || '').trim().toLowerCase();
+    if (approval === 'approved') filter.status = 'approved';
+    else if (approval === 'pending') filter.status = 'pending';
+    else if (['disapproved', 'rejected', 'declined'].includes(approval)) filter.status = { $in: ['rejected', 'declined', 'disapproved'] };
+    else if (approval) filter.status = approval;
 
     const dateFilter = buildDateFilter(date_option, from_date, to_date);
     if (dateFilter) filter.createdAt = dateFilter;
@@ -9649,8 +9805,17 @@ export const buildDriverDutyReport = async (query = {}) => {
     const driverFilter = {};
 
     if (service_location_id) {
-      driverFilter.service_location_id = service_location_id;
+      // Some drivers only carry the city name, so match by id OR by the location's name
+      const location = mongoose.isValidObjectId(service_location_id)
+        ? await ServiceLocation.findById(service_location_id).select('name service_location_name').lean()
+        : null;
+      const names = [location?.service_location_name, location?.name].filter(Boolean);
+      driverFilter.$or = [
+        { service_location_id },
+        ...names.map((name) => ({ city: new RegExp(`^${String(name).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') })),
+      ];
     }
+
     if (selectedDriverId) {
       driverFilter._id = selectedDriverId;
     }
@@ -9719,17 +9884,23 @@ export const buildDriverDutyReport = async (query = {}) => {
   };
 
   export const buildOwnerReport = async (query = {}) => {
-    const { service_location_id, status, date_option, from_date, to_date } = query;
+    const { service_location_id, status, approval_status, date_option, from_date, to_date } = query;
     const filter = {};
-    
-    if (service_location_id) filter.service_location_id = service_location_id;
-    if (status === 'active') filter.active = true;
-    else if (status === 'inactive') filter.active = false;
+
+    if (service_location_id && mongoose.isValidObjectId(service_location_id)) filter.service_location_id = service_location_id;
+
+    // The screen sends approval_status (approved / pending / blocked); status active/inactive is accepted too
+    const state = String(approval_status || status || '').trim().toLowerCase();
+    if (state === 'approved') Object.assign(filter, { approve: true, active: { $ne: false } });
+    else if (state === 'pending') filter.approve = false;
+    else if (state === 'blocked' || state === 'inactive') filter.active = false;
+    else if (state === 'active') filter.active = { $ne: false };
 
     const dateFilter = buildDateFilter(date_option, from_date, to_date);
     if (dateFilter) filter.createdAt = dateFilter;
 
-    const owners = await listOwners(filter);
+    // listOwners() only understands a text search, so the filters above were silently ignored before
+    const owners = (await Owner.find(filter).sort({ createdAt: -1 }).lean()).map(serializeOwner);
     return {
       headers: ['company_name', 'name', 'email', 'transport_type', 'active', 'createdAt'],
       rows: owners.map((item) => ({
@@ -9771,9 +9942,10 @@ export const buildDriverDutyReport = async (query = {}) => {
 
     const items = await Ride.find(rideFilter)
       .sort({ createdAt: -1 })
-      .select('driverId userId fare status paymentMethod createdAt transport_type commissionAmount driverEarnings')
+      .select('driverId userId fare status paymentMethod createdAt transport_type commissionAmount driverEarnings vehicleTypeId')
       .populate('driverId', 'name phone registerFor vehicleType')
       .populate('userId', 'name phone')
+      .populate('vehicleTypeId', 'name type_name icon_types')
       .lean();
 
     const normalizedTransportType = String(transport_type || '').trim().toLowerCase();
@@ -9790,7 +9962,11 @@ export const buildDriverDutyReport = async (query = {}) => {
           )
             .trim()
             .toLowerCase();
-        const resolvedVehicleType = String(item.driverId?.vehicleType || '').trim().toLowerCase();
+        // The ride's own vehicle type name (Cab, SUV...) is what the screen filters by; the driver's class is the fallback
+        const resolvedVehicleType = String(
+          item.vehicleTypeId?.type_name || item.vehicleTypeId?.name || item.driverId?.vehicleType || '',
+        ).trim().toLowerCase();
+        const vehicleClass = String(item.vehicleTypeId?.icon_types || item.driverId?.vehicleType || '').trim().toLowerCase();
         const fare = Number(item.fare || 0);
         const commission =
           item.commissionAmount !== undefined && item.commissionAmount !== null
@@ -9805,6 +9981,7 @@ export const buildDriverDutyReport = async (query = {}) => {
           user_phone: item.userId?.phone || '',
           transport_type: resolvedTransportType,
           vehicle_type: resolvedVehicleType,
+          vehicle_class: vehicleClass,
           payment_method: String(item.paymentMethod || '').toLowerCase(),
           fare,
           admin_commission: Number(commission.toFixed(2)),
@@ -9821,7 +9998,8 @@ export const buildDriverDutyReport = async (query = {}) => {
           item.transport_type === normalizedTransportType;
         const vehicleMatches =
           !normalizedVehicleType ||
-          item.vehicle_type === normalizedVehicleType;
+          item.vehicle_type === normalizedVehicleType ||
+          item.vehicle_class === normalizedVehicleType;
         return transportMatches && vehicleMatches;
       });
 

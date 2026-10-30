@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
-import { getUnifiedAdminToken } from '../../services/adminSession';
+import api from '../../../../shared/api/axiosInstance';
 
 const StatCard = ({ icon: Icon, label, value, color, onViewAll }) => (
   <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
@@ -59,22 +59,15 @@ const OwnerDashboard = () => {
     const fetchDashboard = async () => {
       try {
         setIsLoading(true);
-        const token = getUnifiedAdminToken();
-        
-        const response = await fetch(globalThis.__LEGACY_BACKEND_ORIGIN__ + '/api/v1/taxi/admin/owner-management/dashboard', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        const resData = await response.json();
-        if (response.ok && resData.success) {
+        // The shared axios instance unwraps the HTTP response, so this is the API body: { success, data }
+        const resData = await api.get('/admin/owner-management/dashboard');
+        if (resData?.success) {
           setData(resData.data);
         } else {
-          setError(resData.message || 'Failed to fetch dashboard');
+          setError(resData?.message || 'Failed to fetch dashboard');
         }
       } catch (err) {
-        setError('Network error');
+        setError(err?.message || 'Failed to fetch dashboard');
       } finally {
         setIsLoading(false);
       }

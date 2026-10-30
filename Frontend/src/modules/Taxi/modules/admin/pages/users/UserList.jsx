@@ -23,6 +23,7 @@ const GENDER_LABELS = {
   male: 'Male',
   female: 'Female',
   other: 'Other',
+  'prefer-not-to-say': 'Not specified',
 };
 
 const UserList = () => {

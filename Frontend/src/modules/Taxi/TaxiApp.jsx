@@ -146,6 +146,7 @@ const OwnerBusServicePage = lazy(() => import('./modules/driver/pages/OwnerBusSe
 const OwnerBusBookingsPage = lazy(() => import('./modules/driver/pages/OwnerBusBookingsPage'));
 const ActiveTrip = lazy(() => import('./modules/driver/pages/ActiveTrip'));
 const DriverWallet = lazy(() => import('./modules/driver/pages/DriverWallet'));
+const DriverSubscription = lazy(() => import('./modules/driver/pages/DriverSubscription'));
 const OwnerWallet = lazy(() => import('./modules/driver/pages/OwnerWallet'));
 const DriverEarnings = lazy(() => import('./modules/driver/pages/DriverEarnings'));
 const DriverProfile = lazy(() => import('./modules/driver/pages/DriverProfile'));
@@ -313,6 +314,8 @@ const AdminDriverReport = lazy(() => import('./modules/admin/pages/reports/Drive
 const AdminDriverDutyReport = lazy(() => import('./modules/admin/pages/reports/DriverDutyReport'));
 const AdminOwnerReport = lazy(() => import('./modules/admin/pages/reports/OwnerReport'));
 const AdminFinanceReport = lazy(() => import('./modules/admin/pages/reports/FinanceReport'));
+const AdminTaxReport = lazy(() => import('./modules/admin/pages/reports/TaxReport'));
+const AdminTaxSettings = lazy(() => import('./modules/admin/pages/settings/TaxSettings'));
 const AdminFleetFinanceReport = lazy(() => import('./modules/admin/pages/reports/FleetFinanceReport'));
 
 // Masters Management
@@ -1119,6 +1122,7 @@ function TaxiApp() {
                 <Route path="active-trip" element={<ActiveTrip />} />
                 <Route path="chat" element={<Chat />} />
                 <Route path="wallet" element={<DriverWallet />} />
+                <Route path="subscription" element={<DriverSubscription />} />
                 <Route path="earnings" element={<DriverEarnings />} />
                 <Route path="profile" element={<MergedPartnerRedirect to="/food/delivery/profile"><DriverProfile /></MergedPartnerRedirect>} />
                 {RENTAL_ENABLED ? (
@@ -1692,6 +1696,7 @@ function TaxiApp() {
                   path="reports/finance"
                   element={<AdminFinanceReport />}
                 />
+                <Route path="reports/tax" element={<AdminTaxReport />} />
                 <Route
                   path="reports/fleet-finance"
                   element={<AdminFleetFinanceReport />}
@@ -1720,6 +1725,7 @@ function TaxiApp() {
                   path="settings/business/customization"
                   element={<AdminCustomizationSettings />}
                 />
+                <Route path="settings/business/tax" element={<AdminTaxSettings />} />
                 <Route
                   path="settings/business/transport-ride"
                   element={<AdminTransportRideSettings />}

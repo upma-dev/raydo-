@@ -7,6 +7,7 @@ import { WalletTransaction } from '../models/WalletTransaction.js';
 import { Ride } from '../../user/models/Ride.js';
 import { getWalletSettings } from '../../services/appSettingsService.js';
 import { Owner } from '../../admin/models/Owner.js';
+import { assertDriverMaySubscriptionWork, subscriptionWaivesCommission } from './driverSubscriptionCore.js';
 import {
   applyOwnerWalletAdjustment,
   computeFleetRideSplit,
@@ -146,6 +147,11 @@ const getWalletSnapshot = async (driver) => {
   if (driver?.linkedDeliveryPartnerId && rules.minimumBalanceForOrders > 0) {
     rules.minimumBalanceForOrders = 0;
   }
+  // The reserve exists to cover ride commission. A driver with a live subscription pays none, so a positive minimum
+  // must not block them (buying the plan itself may have lowered the balance).
+  if (driver?._id && rules.minimumBalanceForOrders > 0 && (await subscriptionWaivesCommission(driver._id))) {
+    rules.minimumBalanceForOrders = 0;
+  }
   const balance = Number(driver?.wallet?.balance || 0);
 
   return {
@@ -193,6 +199,9 @@ export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session } = 
   if (!driver) {
     throw new ApiError(404, 'Driver not found');
   }
+
+  // Subscription-only mode: no live pass, no going online and no accepting rides
+  await assertDriverMaySubscriptionWork(driver, { session });
 
   const wallet = await getWalletSnapshot(driver);
   const isBlocked = wallet.isBlocked;
@@ -356,11 +365,15 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
     const surgeAmount = Math.max(0, Math.round(ride?.pricingSnapshot?.ride_surge_amount || 0));
     const commissionableFare = Math.max(0, Math.round(baseRideFare - surgeAmount));
     const commissionConfig = await resolveCommissionConfigForRide(ride, session);
-    const commissionAmount = Math.round(computeCommissionAmount({
-      fare: commissionableFare,
-      type: commissionConfig.type,
-      value: commissionConfig.value,
-    }));
+    // A live driver subscription replaces the per-ride commission (checked at the moment the ride was completed)
+    const subscriptionWaived = await subscriptionWaivesCommission(ride.driverId, ride.completedAt || new Date(), { session });
+    const commissionAmount = subscriptionWaived
+      ? 0
+      : Math.round(computeCommissionAmount({
+        fare: commissionableFare,
+        type: commissionConfig.type,
+        value: commissionConfig.value,
+      }));
     const paymentMethod = normalizePaymentMethod(ride.paymentMethod);
     const driverEarnings = Math.max(Math.round(baseRideFare - commissionAmount), 0);
     const amount = paymentMethod === 'cash'
@@ -512,6 +525,7 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
         commissionAmount,
         driverEarnings,
         paymentMethod,
+        subscriptionWaived,
         commissionSource: commissionConfig.source,
         commissionType: normalizeCommissionType(commissionConfig.type),
         commissionValue: Number(commissionConfig.value || 0),

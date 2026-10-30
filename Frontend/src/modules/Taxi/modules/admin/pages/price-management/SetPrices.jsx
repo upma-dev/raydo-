@@ -115,6 +115,16 @@ const initialFormState = {
   ride_surge_amount: '',
   free_waiting_before: '',
   free_waiting_after: '',
+  min_fare: '',
+  waiting_max_charge: '',
+  night_fare_percent: '',
+  night_fare_start: '22:00',
+  night_fare_end: '06:00',
+  long_pickup_free_km: '',
+  long_pickup_price_per_km: '',
+  long_pickup_max_charge: '',
+  gst_percent: '',
+  platform_fee: '',
   enable_airport_ride: false,
   support_airport_fee: '',
   airport_surge: '',
@@ -205,6 +215,8 @@ const SetPrices = ({ mode }) => {
         'admin_commision', 'admin_commission_from_driver', 'admin_commission_for_owner',
         'service_tax', 'order_number', 'base_price', 'base_distance', 'price_per_distance',
         'time_price', 'waiting_charge', 'ride_surge_amount', 'free_waiting_before', 'free_waiting_after',
+        'min_fare', 'waiting_max_charge', 'night_fare_percent', 'long_pickup_free_km',
+        'long_pickup_price_per_km', 'long_pickup_max_charge', 'gst_percent', 'platform_fee',
         'airport_surge', 'support_airport_fee', 'outstation_base_price', 'outstation_base_distance',
         'outstation_price_per_distance', 'outstation_time_price', 'fixed_cancellation_charge',
         'max_cancellation_fee', 'free_cancellation_time_mins', 'cancellation_grace_period_driver_arrived',
@@ -728,6 +740,54 @@ const SetPrices = ({ mode }) => {
                         <div>
                            <label className={labelClass}>Free Waiting Time In Minutes After Start A Ride <span className="text-rose-500">*</span></label>
                            <input type="number" required className={inputClass} placeholder="Free Waiting Time In Minutes After Start A Ride" value={formData.free_waiting_after} onChange={e => setFormData(p=>({...p, free_waiting_after: e.target.value}))} />
+                        </div>
+                     </div>
+
+                     <div className="md:col-span-2 space-y-6 pt-6 border-t border-gray-100 mt-4">
+                        <h2 className="text-base font-bold text-[#1E293B] uppercase tracking-wider">Rate Card Extras (0 = off)</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+                           <div>
+                              <label className={labelClass}>Minimum Fare</label>
+                              <input type="number" min="0" step="any" className={inputClass} placeholder="Minimum fare for any ride" value={formData.min_fare} onChange={e => setFormData(p=>({...p, min_fare: e.target.value}))} />
+                           </div>
+                           <div>
+                              <label className={labelClass}>Waiting Charge Maximum</label>
+                              <input type="number" min="0" step="any" className={inputClass} placeholder="Max total waiting charge per ride" value={formData.waiting_max_charge} onChange={e => setFormData(p=>({...p, waiting_max_charge: e.target.value}))} />
+                           </div>
+                           <div>
+                              <label className={labelClass}>Night Fare (%)</label>
+                              <input type="number" min="0" step="any" className={inputClass} placeholder="Extra % on fare at night" value={formData.night_fare_percent} onChange={e => setFormData(p=>({...p, night_fare_percent: e.target.value}))} />
+                           </div>
+                           <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                 <label className={labelClass}>Night Starts</label>
+                                 <input type="time" className={inputClass} value={formData.night_fare_start} onChange={e => setFormData(p=>({...p, night_fare_start: e.target.value}))} />
+                              </div>
+                              <div>
+                                 <label className={labelClass}>Night Ends</label>
+                                 <input type="time" className={inputClass} value={formData.night_fare_end} onChange={e => setFormData(p=>({...p, night_fare_end: e.target.value}))} />
+                              </div>
+                           </div>
+                           <div>
+                              <label className={labelClass}>Long Pickup Free Distance (km)</label>
+                              <input type="number" min="0" step="any" className={inputClass} placeholder="Driver distance with no extra charge" value={formData.long_pickup_free_km} onChange={e => setFormData(p=>({...p, long_pickup_free_km: e.target.value}))} />
+                           </div>
+                           <div>
+                              <label className={labelClass}>Long Pickup Price Per km</label>
+                              <input type="number" min="0" step="any" className={inputClass} placeholder="Charge per km after free distance" value={formData.long_pickup_price_per_km} onChange={e => setFormData(p=>({...p, long_pickup_price_per_km: e.target.value}))} />
+                           </div>
+                           <div>
+                              <label className={labelClass}>Long Pickup Maximum Charge</label>
+                              <input type="number" min="0" step="any" className={inputClass} placeholder="Max long pickup charge" value={formData.long_pickup_max_charge} onChange={e => setFormData(p=>({...p, long_pickup_max_charge: e.target.value}))} />
+                           </div>
+                           <div>
+                              <label className={labelClass}>GST Shown In Bill (%)</label>
+                              <input type="number" min="0" step="any" className={inputClass} placeholder="Included in fare, not added on top" value={formData.gst_percent} onChange={e => setFormData(p=>({...p, gst_percent: e.target.value}))} />
+                           </div>
+                           <div>
+                              <label className={labelClass}>3rd Party Fee Shown In Bill</label>
+                              <input type="number" min="0" step="any" className={inputClass} placeholder="Fixed amount, included in fare" value={formData.platform_fee} onChange={e => setFormData(p=>({...p, platform_fee: e.target.value}))} />
+                           </div>
                         </div>
                      </div>
 

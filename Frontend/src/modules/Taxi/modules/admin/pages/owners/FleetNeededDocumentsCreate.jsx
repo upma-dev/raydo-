@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Loader2, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
 
-const BASE = `${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/owner-management`;
+// The shared axios instance unwraps the HTTP response, so every call resolves to the API body: { success, data }
+const BASE = '/admin/owner-management';
 
 const inputClass =
   'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-800 bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors';
@@ -23,7 +26,6 @@ const FleetNeededDocumentsCreate = () => {
     active: true,
   });
 
-  const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken')) || '';
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -35,28 +37,18 @@ const FleetNeededDocumentsCreate = () => {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${BASE}/driver-needed-document`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...formData,
-          has_expiry_date: formData.has_expiry_date === '1',
-          has_identify_number: formData.has_identify_number === '1',
-        }),
+      const json = await api.post(`${BASE}/driver-needed-document`, {
+        ...formData,
+        has_expiry_date: formData.has_expiry_date === '1',
+        has_identify_number: formData.has_identify_number === '1',
       });
-
-      const json = await res.json();
       if (json?.success) {
         navigate('/taxi/admin/fleet/documents');
         return;
       }
       alert(json?.message || 'Operation failed');
     } catch (error) {
-      console.error('Failed to create fleet needed document:', error);
-      alert('Network error');
+      alert(error?.message || 'Operation failed');
     } finally {
       setSubmitting(false);
     }

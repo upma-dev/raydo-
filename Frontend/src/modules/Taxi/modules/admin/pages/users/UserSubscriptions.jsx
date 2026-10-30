@@ -26,6 +26,18 @@ const UserSubscriptions = () => {
     load();
   }, []);
 
+  const togglePlan = async (plan) => {
+    const id = plan._id || plan.id;
+    const next = plan.active === false;
+    try {
+      await adminService.setSubscriptionPlanActive(id, next);
+      setPlans((current) => current.map((item) => ((item._id || item.id) === id ? { ...item, active: next } : item)));
+      toast.success(next ? 'Plan is on sale again' : 'Plan hidden from customers');
+    } catch (error) {
+      toast.error(error?.message || 'Could not update the plan');
+    }
+  };
+
   const filteredPlans = plans.filter((item) =>
     `${item.name || ''} ${item.vehicle_type?.name || ''}`.toLowerCase().includes(searchTerm.toLowerCase()),
   );
@@ -78,6 +90,7 @@ const UserSubscriptions = () => {
                   <th className="px-4 py-3">Benefit</th>
                   <th className="px-4 py-3">Duration</th>
                   <th className="px-4 py-3">Price</th>
+                  <th className="px-4 py-3">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -100,6 +113,16 @@ const UserSubscriptions = () => {
                     </td>
                     <td className="px-4 py-4 text-sm font-semibold text-slate-600">{item.duration} days</td>
                     <td className="px-4 py-4 text-sm font-black text-slate-900">₹{Number(item.amount || 0).toFixed(2)}</td>
+                    <td className="px-4 py-4">
+                      <button
+                        type="button"
+                        onClick={() => togglePlan(item)}
+                        className={`rounded-full px-3 py-1 text-xs font-black ${item.active === false ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-600'}`}
+                        title={item.active === false ? 'Click to put the plan on sale' : 'Click to hide the plan from customers'}
+                      >
+                        {item.active === false ? 'Hidden' : 'On sale'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

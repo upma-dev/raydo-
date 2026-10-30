@@ -790,12 +790,28 @@ const calculateEstimatedFare = ({ vehicle, pricingRule, distanceMeters, duration
     ? basePrice
     : basePrice + (extraDistanceKm * pricePerDistance) + (Math.max(0, Number(durationMinutes || 0)) * timePrice);
 
-  const total = subtotal + (subtotal * serviceTax) / 100;
+  const minFare = Math.max(0, toFiniteNumber(pricingRule.min_fare, 0));
+  const nightFarePercent = Math.max(0, toFiniteNumber(pricingRule.night_fare_percent, 0));
+  const toMinutes = (value, fallback) => {
+    const [h, m] = String(value || fallback).split(':').map(Number);
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+  };
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const nightStart = toMinutes(pricingRule.night_fare_start, '22:00');
+  const nightEnd = toMinutes(pricingRule.night_fare_end, '06:00');
+  const isNight = nightStart > nightEnd
+    ? (nowMinutes >= nightStart || nowMinutes < nightEnd)
+    : (nowMinutes >= nightStart && nowMinutes < nightEnd);
+  const nightMultiplier = nightFarePercent > 0 && isNight ? 1 + nightFarePercent / 100 : 1;
+
+  const total = Math.max(subtotal, minFare) * nightMultiplier;
+  const taxedTotal = total + (total * serviceTax) / 100;
   const rideSurgeAmount = pricingRule.zone_id?.ride_surge_enabled
     ? toFiniteNumber(pricingRule.ride_surge_amount, 0)
     : 0;
 
-  return Math.max(basePrice > 0 ? basePrice : fallbackFare, Math.round(total + rideSurgeAmount));
+  return Math.max(basePrice > 0 ? basePrice : fallbackFare, Math.round(taxedTotal + rideSurgeAmount));
 };
 
 const getDropTime = (minutesAway = 0) => {

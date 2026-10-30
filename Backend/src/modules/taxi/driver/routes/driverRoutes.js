@@ -89,6 +89,7 @@ import {
   deleteOwnerFleetVehicle,
   updateCurrentDriverDocument,
 } from "../controllers/driverController.js";
+import { buyDriverSubscription, getMyDriverSubscriptions } from "../controllers/driverSubscriptionController.js";
 import { triggerDriverSosAlert } from '../../safety/controllers/safetyController.js';
 import { createSupportTicket } from '../../support/controllers/supportController.js';
 
@@ -202,6 +203,16 @@ driverRouter.get(
   "/wallet",
   authenticate(["driver", "owner"]),
   asyncHandler(getMyWallet),
+);
+driverRouter.get(
+  "/subscriptions/me",
+  authenticate(["driver"]),
+  asyncHandler(getMyDriverSubscriptions),
+);
+driverRouter.post(
+  "/subscriptions/purchase",
+  authenticate(["driver"]),
+  asyncHandler(buyDriverSubscription),
 );
 driverRouter.get(
   "/incentives",

@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Eye, FileSearch, MoreHorizontal, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import api from '../../../../shared/api/axiosInstance';
 
-const BASE = () => `${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/wallet/drivers/negative-balance`;
+const NEGATIVE_BALANCE_PATH = '/admin/wallet/drivers/negative-balance';
 
 const NegativeBalanceDrivers = () => {
   const navigate = useNavigate();
@@ -18,23 +20,20 @@ const NegativeBalanceDrivers = () => {
   const fetchRows = async ({ nextPage = page, nextLimit = itemsPerPage, nextSearch = searchTerm } = {}) => {
     setLoading(true);
     try {
-      const token = (localStorage.getItem('admin_accessToken') || localStorage.getItem('adminToken'));
-      const params = new URLSearchParams({
-        page: String(nextPage),
-        limit: String(nextLimit),
-      });
+      const params = { page: nextPage, limit: nextLimit };
       if (String(nextSearch || '').trim()) {
-        params.set('search', String(nextSearch).trim());
+        params.search = String(nextSearch).trim();
       }
-      const res = await fetch(`${BASE()}?${params.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setRows(data.data?.results || []);
-        setPaginator(data.data?.paginator || null);
-        setSummary(data.data?.summary || { total_outstanding: 0 });
+      // The shared axios instance unwraps the HTTP response, so this is the API body: { success, data }
+      const body = await api.get(NEGATIVE_BALANCE_PATH, { params });
+      if (!body?.success) {
+        throw new Error(body?.message || 'Unexpected response from server');
       }
+      setRows(body.data?.results || []);
+      setPaginator(body.data?.paginator || null);
+      setSummary(body.data?.summary || { total_outstanding: 0 });
+    } catch (err) {
+      toast.error(err?.message || 'Could not load negative balance drivers');
     } finally {
       setLoading(false);
     }

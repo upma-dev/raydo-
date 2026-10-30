@@ -11,6 +11,8 @@ import { ApiError } from '../../../../utils/ApiError.js';
 import { User } from '../../user/models/User.js';
 import { isSuperAdminLike } from '../../../../core/admin/adminHierarchy.service.js';
 import { refundCompletedRide } from '../../services/rideRefundService.js';
+import { getTaxiTaxReport } from '../../services/taxiTaxService.js';
+import { listDriverSubscribersForAdmin } from '../../driver/services/driverSubscriptionService.js';
 
 const ok = (res, data, extra = {}) =>
   res.json({ success: true, data, ...extra });
@@ -319,6 +321,16 @@ const reportCellValue = (key, value) => {
   return isTextColumn(key) ? String(value) : value;
 };
 
+// csv and Excel are the only formats built here. Anything else (a "pdf" choice used to slip through) used to get an
+// Excel file sent under the wrong type, which the browser then saved as a broken .pdf.
+const REPORT_FORMATS = new Set(['csv', 'excel', 'xlsx']);
+const assertReportFormat = (format) => {
+  if (!REPORT_FORMATS.has(String(format || '').toLowerCase())) {
+    throw new ApiError(400, 'file_format must be csv or excel');
+  }
+  return String(format).toLowerCase();
+};
+
 const sendFile = async (res, filename, reportData, format) => {
   const { headers, rows } = reportData;
   const labels = headers.map(reportHeaderLabel);
@@ -622,10 +634,16 @@ export const getCustomerSubscriptionPlans = asyncHandler(async (_req, res) =>
 export const createCustomerSubscriptionPlan = asyncHandler(async (req, res) =>
   ok(res, await adminService.createCustomerSubscriptionPlan(req.body)),
 );
+export const updateSubscriptionPlanActive = asyncHandler(async (req, res) =>
+  ok(res, await adminService.setSubscriptionPlanActive(req.params.id, req.body?.active)),
+);
 export const getUserSubscriptions = asyncHandler(async (req, res) =>
   ok(res, await adminService.listUserSubscriptionsByUserId(req.params.id)),
 );
 
+export const getDriverSubscribers = asyncHandler(async (req, res) =>
+  ok(res, await listDriverSubscribersForAdmin(req.query || {})),
+);
 export const getSubscriptionSettings = asyncHandler(async (_req, res) =>
   ok(res, await adminService.getSubscriptionSettings()),
 );
@@ -1622,37 +1640,37 @@ export const deleteOnboardingScreen = asyncHandler(async (req, res) =>
 );
 
 export const downloadUserReport = asyncHandler(async (req, res) => {
-  const format = req.query.file_format || 'csv';
+  const format = assertReportFormat(req.query.file_format || 'csv');
   const data = await adminService.buildUserReport(req.query);
   await sendFile(res, "user-report", data, format);
 });
 
 export const downloadDriverReport = asyncHandler(async (req, res) => {
-  const format = req.query.file_format || 'csv';
+  const format = assertReportFormat(req.query.file_format || 'csv');
   const data = await adminService.buildDriverReport(req.query);
   await sendFile(res, "driver-report", data, format);
 });
 
 export const downloadDriverDutyReport = asyncHandler(async (req, res) => {
-  const format = req.query.file_format || 'csv';
+  const format = assertReportFormat(req.query.file_format || 'csv');
   const data = await adminService.buildDriverDutyReport(req.query);
   await sendFile(res, "driver-duty-report", data, format);
 });
 
 export const downloadOwnerReport = asyncHandler(async (req, res) => {
-  const format = req.query.file_format || 'csv';
+  const format = assertReportFormat(req.query.file_format || 'csv');
   const data = await adminService.buildOwnerReport(req.query);
   await sendFile(res, "owner-report", data, format);
 });
 
 export const downloadFinanceReport = asyncHandler(async (req, res) => {
-  const format = req.query.file_format || 'csv';
+  const format = assertReportFormat(req.query.file_format || 'csv');
   const data = await adminService.buildFinanceReport(req.query);
   await sendFile(res, "finance-report", data, format);
 });
 
 export const downloadFleetFinanceReport = asyncHandler(async (req, res) => {
-  const format = req.query.file_format || 'csv';
+  const format = assertReportFormat(req.query.file_format || 'csv');
   const data = await adminService.buildFleetFinanceReport(req.query);
   await sendFile(res, "fleet-finance-report", data, format);
 });
@@ -1669,6 +1687,10 @@ export const getTransportTypes = asyncHandler(async (_req, res) =>
   ok(res, await adminService.listTransportTypes()),
 );
 
+export const getTaxiTaxReportData = asyncHandler(async (req, res) =>
+  ok(res, await getTaxiTaxReport(req.query || {})),
+);
+
 export const getTaxiCancellationAnalytics = asyncHandler(async (req, res) => {
   const totalRidesCount = await Ride.countDocuments();
   const cancelledRides = await Ride.find({
@@ -1677,6 +1699,7 @@ export const getTaxiCancellationAnalytics = asyncHandler(async (req, res) => {
       { 'cancellation.cancelled_by': { $ne: '' } }
     ]
   })
+    .select('status fare baseFare cancellation userId driverId updatedAt')
     .populate('userId', 'name phone email')
     .populate('driverId', 'name phone vehicleNumber rating')
     .sort({ createdAt: -1 })

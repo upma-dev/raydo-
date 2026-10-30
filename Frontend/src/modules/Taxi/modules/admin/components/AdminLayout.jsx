@@ -5,7 +5,8 @@ import {
   TAXI_ADMIN_HOME,
   prefetchFoodAdmin,
 } from '@/shared/utils/activeModule.js';
-import { POOLING_ENABLED, RENTAL_ENABLED } from '../../../shared/featureFlags';
+// POOLING_ENABLED / RENTAL_ENABLED were only used by the sidebar items that are commented out below.
+// import { POOLING_ENABLED, RENTAL_ENABLED } from '../../../shared/featureFlags';
 import { socketService } from '../../../shared/api/socket';
 import { useSettings } from '../../../shared/context/SettingsContext';
 import { getSupportConversations, markSupportMessagesRead } from '../../shared/chat/chatApi';
@@ -766,22 +767,24 @@ const AdminLayout = () => {
               // { label: 'Airport', path: '/taxi/admin/pricing/airport', permission: 'airports.view' },   // airport disabled for now
               { label: 'App Modules', path: '/taxi/admin/pricing/app-modules', permission: 'settings.view' },
               { label: 'Vehicle Type', path: '/taxi/admin/pricing/vehicle-type', permission: 'vehicle_types.view' },
-              { label: 'Rental Package Types', path: '/taxi/admin/pricing/rental-packages', permission: 'rental.view' },
-              { label: 'Package Pricing', path: '/taxi/admin/pricing/package-pricing', permission: 'rental.view' },
-              ...(RENTAL_ENABLED
-                ? [
-                    {
-                      label: 'Rental',
-                      subItems: [
-                        { label: 'Service Stores', path: '/taxi/admin/pricing/service-stores', permission: 'service_stores.view' },
-                        { label: 'Rental Vehicles', path: '/taxi/admin/pricing/rental-vehicles', permission: 'rental.view' },
-                        { label: 'Track Vehicles', path: '/taxi/admin/pricing/rental-tracking', permission: 'rental.view' },
-                        { label: 'Rental Requests', path: '/taxi/admin/pricing/rental-requests', permission: 'rental.view' },
-                        { label: 'Rental Quote Requests', path: '/taxi/admin/pricing/rental-quotes', permission: 'rental.view' },
-                      ],
-                    },
-                  ]
-                : []),
+              // Hidden by request: Rental menu (Rental Package Types, Package Pricing and the Rental group). Routes and pages are
+              // untouched; uncomment to show them in the sidebar again.
+              // { label: 'Rental Package Types', path: '/taxi/admin/pricing/rental-packages', permission: 'rental.view' },
+              // { label: 'Package Pricing', path: '/taxi/admin/pricing/package-pricing', permission: 'rental.view' },
+              // ...(RENTAL_ENABLED
+              //   ? [
+              //       {
+              //         label: 'Rental',
+              //         subItems: [
+              //           { label: 'Service Stores', path: '/taxi/admin/pricing/service-stores', permission: 'service_stores.view' },
+              //           { label: 'Rental Vehicles', path: '/taxi/admin/pricing/rental-vehicles', permission: 'rental.view' },
+              //           { label: 'Track Vehicles', path: '/taxi/admin/pricing/rental-tracking', permission: 'rental.view' },
+              //           { label: 'Rental Requests', path: '/taxi/admin/pricing/rental-requests', permission: 'rental.view' },
+              //           { label: 'Rental Quote Requests', path: '/taxi/admin/pricing/rental-quotes', permission: 'rental.view' },
+              //         ],
+              //       },
+              //     ]
+              //   : []),
               { label: 'Set Price', path: '/taxi/admin/pricing/set-price', permission: 'set_prices.view' },
               // Hidden by request. Parcel booking still reads the existing goods types; they just can not be edited from the admin
               // until this item is turned back on.
@@ -798,20 +801,21 @@ const AdminLayout = () => {
               { label: 'Bus Bookings', path: '/taxi/admin/bus-service/bookings', permission: 'bus_service.view' },
             ],
           },
-          ...(POOLING_ENABLED
-            ? [
-                {
-                  icon: Share2,
-                  label: 'Car Pooling',
-                  subItems: [
-                    { label: 'Pooling Vehicles', path: '/taxi/admin/pooling/vehicles', permission: 'pooling.view' },
-                    { label: 'Pooling Commission', path: '/taxi/admin/pooling/commission', permission: 'pooling.view' },
-                    { label: 'Routes & Stops', path: '/taxi/admin/pooling/routes', permission: 'pooling.view' },
-                    { label: 'Pooling Bookings', path: '/taxi/admin/pooling/bookings', permission: 'pooling.view' },
-                  ],
-                },
-              ]
-            : []),
+          // Hidden by request: Car Pooling menu. Routes and pages are untouched; uncomment to show it again.
+          // ...(POOLING_ENABLED
+          //   ? [
+          //       {
+          //         icon: Share2,
+          //         label: 'Car Pooling',
+          //         subItems: [
+          //           { label: 'Pooling Vehicles', path: '/taxi/admin/pooling/vehicles', permission: 'pooling.view' },
+          //           { label: 'Pooling Commission', path: '/taxi/admin/pooling/commission', permission: 'pooling.view' },
+          //           { label: 'Routes & Stops', path: '/taxi/admin/pooling/routes', permission: 'pooling.view' },
+          //           { label: 'Pooling Bookings', path: '/taxi/admin/pooling/bookings', permission: 'pooling.view' },
+          //         ],
+          //       },
+          //     ]
+          //   : []),
           {
             icon: MapPin,
             label: 'Geofencing',
@@ -886,6 +890,7 @@ const AdminLayout = () => {
               // Hidden: Owner Report and Fleet Finance Report only list fleet owners (no finance figures); fleet owners are not used.
               // { label: 'Owner Report', path: '/taxi/admin/reports/owner', permission: 'reports.view' },
               { label: 'Finance Report', path: '/taxi/admin/reports/finance', permission: 'reports.view' },
+              { label: 'Tax Report', path: '/taxi/admin/reports/tax', permission: 'reports.view' },
               // { label: 'Fleet Finance Report', path: '/taxi/admin/reports/fleet-finance', permission: 'reports.view' },
             ],
           },
@@ -917,7 +922,9 @@ const AdminLayout = () => {
             permission: 'settings.view',
             subItems: [
               { label: 'General Settings', path: '/taxi/admin/settings/business/general', permission: 'settings.view' },
-              { label: 'Customization Settings', path: '/taxi/admin/settings/business/customization', permission: 'settings.view' },
+              // Hidden: General Settings already loads and saves the same `customize` settings. Route is untouched.
+              // { label: 'Customization Settings', path: '/taxi/admin/settings/business/customization', permission: 'settings.view' },
+              { label: 'Tax Settings', path: '/taxi/admin/settings/business/tax', permission: 'settings.view' },
               { label: 'Transport Ride Settings', path: '/taxi/admin/settings/business/transport-ride', permission: 'settings.view' },
               { label: 'Bid Ride Settings', path: '/taxi/admin/settings/business/bid-ride', permission: 'settings.view' },
             ],
