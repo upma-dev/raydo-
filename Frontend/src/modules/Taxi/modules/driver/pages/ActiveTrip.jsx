@@ -52,7 +52,6 @@ const MAP_CONTAINER_STYLE = {
 };
 
 const DEFAULT_CENTER = { lat: 22.7196, lng: 75.8577 };
-const DEFAULT_DRIVER_COORDS = [75.8577, 22.7196];
 const ARRIVAL_RADIUS_METERS = 100;
 const MIN_ROUTE_POLYLINE_METERS = 1;
 const ROUTE_DEVIATION_METERS = 100;
@@ -979,7 +978,7 @@ const ActiveTrip = () => {
             effectiveState?.request?.raw?.pickup,
             effectiveState?.request?.raw?.pickupLocation,
             effectiveState?.pickupCoords,
-        ) || resolvedPickupCoords || DEFAULT_DRIVER_COORDS,
+        ) || resolvedPickupCoords || null,
         [
             effectiveState?.pickup,
             effectiveState?.pickupCoords,
@@ -1008,7 +1007,7 @@ const ActiveTrip = () => {
             effectiveState?.request?.raw?.drop,
             effectiveState?.request?.raw?.dropLocation,
             effectiveState?.dropCoords,
-        ) || resolvedDropCoords || [75.8937, 22.7533],
+        ) || resolvedDropCoords || null,
         [effectiveState?.drop, effectiveState?.dropCoords, effectiveState?.dropLocation, effectiveState?.request?.raw?.drop, effectiveState?.request?.raw?.dropLocation, liveRaw?.drop, liveRaw?.dropLocation, liveRequest?.drop, liveRequest?.dropLocation, liveRequest?.raw?.drop, liveRequest?.raw?.dropLocation, resolvedDropCoords],
     );
     const assignedDriverCoords = readCoordinatePair(
@@ -1019,6 +1018,10 @@ const ActiveTrip = () => {
         readStoredDriverCoords(),
     );
 
+    // Without real coordinates the positions below only hold a neutral placeholder; the map
+    // must not draw markers/routes from them (see hasActiveDestination / routeReady).
+    const hasPickupLocation = Boolean(pickupCoords);
+    const hasDropLocation = Boolean(dropCoords);
     const pickupPosition = useMemo(() => toLatLng(pickupCoords), [pickupCoords]);
     const dropPosition = useMemo(() => toLatLng(dropCoords), [dropCoords]);
     const initialDriverPosition = useMemo(
@@ -1093,6 +1096,8 @@ const ActiveTrip = () => {
     }, []);
     const [map, setMap] = useState(null);
     const [driverPosition, setDriverPosition] = useState(initialDriverPosition);
+    // True only once the position is a real GPS/stored fix, not the placeholder offset.
+    const [hasDriverFix, setHasDriverFix] = useState(Boolean(assignedDriverCoords));
     const [driverHeading, setDriverHeading] = useState(null);
     const [routePath, setRoutePath] = useState([]);
     const [routeError, setRouteError] = useState('');
@@ -1140,9 +1145,15 @@ const ActiveTrip = () => {
         driverPositionRef.current = driverPosition;
     }, [driverPosition]);
 
+    const isPickupLeg = phase === 'to_pickup' || phase === 'otp_verification';
+    const hasActiveDestination = isPickupLeg ? hasPickupLocation : hasDropLocation;
+    // Simulation (dev tool) intentionally runs from the placeholder start position.
+    const showDriverMarker = hasDriverFix || isSimulationEnabled;
+    const routeReady = hasActiveDestination && showDriverMarker;
+
     useEffect(() => {
-        activeDestinationRef.current = activeDestination;
-    }, [activeDestination]);
+        activeDestinationRef.current = routeReady ? activeDestination : null;
+    }, [activeDestination, routeReady]);
 
     useEffect(() => {
         phaseRef.current = phase;
@@ -1693,8 +1704,9 @@ const ActiveTrip = () => {
     const freeWaitingRemainingSeconds = Math.max(0, freeWaitingBeforeMinutes * 60 - waitingElapsedSeconds);
     const waitingChargeableMinutes = Math.max(0, Math.ceil(waitingElapsedSeconds / 60) - freeWaitingBeforeMinutes);
     const liveWaitingChargeTotal = Math.round(waitingChargeableMinutes * waitingChargePerMinute * 100) / 100;
-    const canMarkArrived = pickupDistanceMeters <= ARRIVAL_RADIUS_METERS;
-    const canDeliverParcel = dropDistanceMeters <= ARRIVAL_RADIUS_METERS;
+    // Distance is only meaningful with a real driver GPS fix and real pickup/drop coordinates.
+    const canMarkArrived = hasPickupLocation && showDriverMarker && pickupDistanceMeters <= ARRIVAL_RADIUS_METERS;
+    const canDeliverParcel = hasDropLocation && showDriverMarker && dropDistanceMeters <= ARRIVAL_RADIUS_METERS;
     const isWaitingForOtp = phase === 'otp_verification' && Boolean(waitingStartedAt);
     const pickupContact = isParcel ? tripData.sender : tripData.user;
     const destinationContact = isParcel ? tripData.receiver : tripData.user;
@@ -1748,6 +1760,15 @@ const ActiveTrip = () => {
     const simulationProgress = simulationTotalSteps > 0
         ? Math.min(100, Math.round((simulationStep / simulationTotalSteps) * 100))
         : 0;
+    // Directions can fail or return nothing for very short hops; fall back to a straight
+    // driver -> destination line so the pickup/drop leg is always drawn.
+    const displayRoutePath = useMemo(() => {
+        if (routePath.length > 1) {
+            return routePath;
+        }
+
+        return routeReady ? [driverPosition, activeDestination] : [];
+    }, [activeDestination, driverPosition, routePath, routeReady]);
     const displayDriverHeading = useMemo(() => {
         if (Number.isFinite(Number(driverHeading))) {
             return normalizeHeading(driverHeading);
@@ -2204,6 +2225,7 @@ const ActiveTrip = () => {
             .then((position) => {
                 if (!cancelled && !isSimulationEnabledRef.current) {
                     hasResolvedLivePositionRef.current = true;
+                    setHasDriverFix(true);
                     setDriverPosition((previousPosition) => {
                         const nextHeading = calculateBearing(previousPosition, position, displayDriverHeadingRef.current);
                         setDriverHeading(nextHeading);
@@ -2233,6 +2255,7 @@ const ActiveTrip = () => {
                     lng: pos.coords.longitude,
                 };
 
+                setHasDriverFix(true);
                 setDriverPosition((previousPosition) => {
                     hasResolvedLivePositionRef.current = true;
                     const nextHeading = normalizeHeading(
@@ -2352,6 +2375,16 @@ const ActiveTrip = () => {
             return;
         }
 
+        // Never frame the map around a placeholder position.
+        if (!routeReady) {
+            if (showDriverMarker) {
+                map.panTo(driverPosition);
+            } else if (hasActiveDestination) {
+                map.panTo(activeDestination);
+            }
+            return;
+        }
+
         const frameKey = [
             phase,
             activeDestination?.lat?.toFixed?.(5) || activeDestination?.lat,
@@ -2384,7 +2417,7 @@ const ActiveTrip = () => {
         bounds.extend(driverPosition);
         bounds.extend(activeDestination);
         map.fitBounds(bounds, 80);
-    }, [activeDestination, driverPosition, isSimulationRunning, map, routePath]);
+    }, [activeDestination, driverPosition, hasActiveDestination, showDriverMarker, isSimulationRunning, map, routePath, routeReady]);
 
     const handleOTPChange = (index, value) => {
         const digits = String(value || '').replace(/\D/g, '');
@@ -2504,10 +2537,10 @@ const ActiveTrip = () => {
                         onUnmount={() => setMap(null)}
                         options={mapOptions}
                     >
-                        {routePath.length > 1 && (
+                        {displayRoutePath.length > 1 && (
                             <>
                                 <PolylineF
-                                    path={routePath}
+                                    path={displayRoutePath}
                                     options={{
                                         strokeColor: '#000000',
                                         strokeOpacity: 0.16,
@@ -2516,7 +2549,7 @@ const ActiveTrip = () => {
                                     }}
                                 />
                                 <PolylineF
-                                    path={routePath}
+                                    path={displayRoutePath}
                                     options={{
                                         strokeColor: routeStrokeColor,
                                         strokeOpacity: 0.95,
@@ -2526,14 +2559,16 @@ const ActiveTrip = () => {
                                 />
                             </>
                         )}
-                        <RotatingVehicleMarker
-                            position={driverPosition}
-                            iconUrl={vehicleIconUrl}
-                            fallbackIconUrl={fallbackVehicleIcon}
-                            heading={displayDriverHeading}
-                            title="Driver"
-                        />
-                        <MarkerF
+                        {showDriverMarker && (
+                            <RotatingVehicleMarker
+                                position={driverPosition}
+                                iconUrl={vehicleIconUrl}
+                                fallbackIconUrl={fallbackVehicleIcon}
+                                heading={displayDriverHeading}
+                                title="Driver"
+                            />
+                        )}
+                        {hasActiveDestination && <MarkerF
                             position={activeDestination}
                             title={phase === 'to_pickup' || phase === 'otp_verification' ? 'Pickup' : 'Drop'}
                             icon={{
@@ -2551,13 +2586,21 @@ const ActiveTrip = () => {
                                 fontWeight: '800',
                             }}
                             zIndex={50}
-                        />
+                        />}
                     </GoogleMap>
                 ) : (
                     <div className="flex h-full w-full items-center justify-center bg-slate-200">
                         <div className="rounded-[16px] bg-white/90 px-4 py-3 shadow-sm text-[12px] font-semibold text-slate-700">
                             Loading map
                         </div>
+                    </div>
+                )}
+
+                {(!hasActiveDestination || !showDriverMarker) && (
+                    <div className="absolute left-4 right-4 top-24 z-[55] rounded-2xl bg-amber-50 px-4 py-3 text-[12px] font-bold text-amber-800 shadow-lg border border-amber-200">
+                        {!hasActiveDestination
+                            ? `${isPickupLeg ? 'Pickup' : 'Drop'} location unavailable for this ride. Use the address or call the ${isParcel ? 'sender/receiver' : 'rider'}.`
+                            : 'Waiting for your GPS location...'}
                     </div>
                 )}
 
