@@ -34,6 +34,7 @@ export const PocketStatementV2 = () => {
   const [weekRange, setWeekRange] = useState(getInitialWeekRange);
   const [orders, setOrders] = useState([]);
   const [bonusTransactions, setBonusTransactions] = useState([]);
+  const [rideTrips, setRideTrips] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Load trips (orders) and bonus for selected day
@@ -50,10 +51,16 @@ export const PocketStatementV2 = () => {
         };
         
         // Parallel fetch for speed
-        const [tripRes, walletRes] = await Promise.all([
+        const [tripRes, walletRes, rideRes] = await Promise.all([
           deliveryAPI.getTripHistory(params),
-          deliveryAPI.getWalletTransactions({ type: 'bonus', limit: 1000 })
+          deliveryAPI.getWalletTransactions({ type: 'bonus', limit: 1000 }),
+          deliveryAPI.getWalletTransactions({ type: 'ride_trip', limit: 200 }).catch(() => null)
         ]);
+        const rides = rideRes?.data?.data?.transactions || [];
+        setRideTrips(rides.filter((r) => {
+          const d = new Date(r.date || r.createdAt);
+          return d >= weekRange.start && d <= weekRange.end;
+        }));
         
         setOrders(tripRes?.data?.data?.trips || []);
         setBonusTransactions(walletRes?.data?.data?.transactions || []);
@@ -165,13 +172,56 @@ export const PocketStatementV2 = () => {
              </div>
           </div>
 
+          {/* Ride & parcel statement: fare, commission, earned */}
+          {!loading && rideTrips.length > 0 && (
+             <div className="mb-6">
+                <div className="flex items-center justify-between px-1 mb-2">
+                   <p className="text-xs font-black text-gray-900 uppercase tracking-widest">Ride & parcel statement</p>
+                   <p className="text-xs font-bold text-[#ff8100]">
+                      ₹{rideTrips.reduce((sum, r) => sum + (Number(r.amount) || 0), 0).toFixed(0)} earned
+                   </p>
+                </div>
+                <div className="space-y-3">
+                   {rideTrips.map((r, i) => (
+                      <div key={r.id || r._id || i} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                         <div className="flex items-start justify-between mb-3">
+                            <div>
+                               <p className="text-gray-900 text-sm font-bold">{r.description || 'Ride earning'}</p>
+                               <p className="text-gray-400 text-[11px] font-bold uppercase tracking-tight">
+                                  {r.orderId} • {new Date(r.date || r.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                               </p>
+                            </div>
+                            {r.paymentMethod && (
+                               <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-gray-50 border border-gray-100 text-gray-600">{r.paymentMethod}</span>
+                            )}
+                         </div>
+                         <div className="grid grid-cols-3 gap-2 text-center pt-3 border-t border-gray-50">
+                            <div className="text-left">
+                               <p className="text-[10px] text-gray-400 font-bold uppercase">Fare</p>
+                               <p className="text-sm font-bold text-black">₹{Number(r.fare || 0).toFixed(0)}</p>
+                            </div>
+                            <div>
+                               <p className="text-[10px] text-red-400 font-bold uppercase">Commission</p>
+                               <p className="text-sm font-bold text-red-600">-₹{Number(r.commission || 0).toFixed(0)}</p>
+                            </div>
+                            <div className="text-right">
+                               <p className="text-[10px] text-gray-800 font-bold uppercase">Earned</p>
+                               <p className="text-sm font-bold text-[#ff8100]">₹{Number(r.amount || 0).toFixed(0)}</p>
+                            </div>
+                         </div>
+                      </div>
+                   ))}
+                </div>
+             </div>
+          )}
+
           {/* Orders List */}
           {loading ? (
              <div className="flex flex-col items-center justify-center py-20 gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
                 <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">Loading Statement...</p>
              </div>
-          ) : orders.length === 0 ? (
+          ) : orders.length === 0 && rideTrips.length > 0 ? null : orders.length === 0 ? (
              <div className="bg-white rounded-xl p-10 text-center shadow-sm border border-gray-100">
                 <Clock className="w-10 h-10 text-gray-200 mx-auto mb-4" />
                 <p className="text-gray-900 text-lg font-bold mb-1">No transactions</p>

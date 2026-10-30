@@ -1,3 +1,4 @@
+import { removeImageBackground } from '../../utils/removeImageBackground';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Plus,
@@ -403,7 +404,10 @@ const VehicleType = ({ mode: propMode }) => {
     if (!file) {
       return;
     }
-    const dataUrl = await fileToDataUrl(file);
+    let dataUrl = await fileToDataUrl(file);
+    if (field === 'map_icon') {
+      dataUrl = await removeImageBackground(dataUrl);
+    }
     updateForm(field, dataUrl);
     event.target.value = '';
   };

@@ -11,10 +11,11 @@ import { clearCurrentRide, getCurrentRide, saveCurrentRide } from '../../service
 import RideCancellationModal from '../../components/RideCancellationModal';
 import { showChatNotification } from '@/shared/utils/chatNotificationSound';
 import toast from 'react-hot-toast';
-import carIcon from '@/assets/hero_sedan.png';
-import bikeIcon from '@/assets/hero_bike.png';
-import autoIcon from '@/assets/hero_bike.png';
-import deliveryIcon from '@/assets/hero_parcel.png';
+import carIcon from '@/assets/map_marker_car.svg';
+import bikeIcon from '@/assets/map_marker_bike.svg';
+import autoIcon from '@/assets/map_marker_bike.svg';
+import deliveryIcon from '@/assets/map_marker_bike.svg';
+import { getTransparentMarkerSrc } from '../../../admin/utils/removeImageBackground';
 import { useSettings } from '../../../../shared/context/SettingsContext';
 import { useLiveDriverLocation, distanceMeters } from '../../hooks/useLiveDriverLocation';
 // Cancellation receipt removed per requirements - user should not see bill on cancel
@@ -76,7 +77,21 @@ const getVehicleMarkerOffset = (width, height) => ({
   y: -(height / 2),
 });
 
-const RotatingVehicleMarker = ({ position, iconUrl = carIcon, heading = 0, title = 'Driver', live = false }) => (
+
+const useTransparentMarkerSrc = (src) => {
+  const [clean, setClean] = React.useState({ src: '', out: '' });
+  React.useEffect(() => {
+    let alive = true;
+    if (!src || /\.svg(\?|$)/i.test(src) || src.startsWith('data:image/svg')) return undefined;
+    getTransparentMarkerSrc(src).then((out) => { if (alive) setClean({ src, out }); });
+    return () => { alive = false; };
+  }, [src]);
+  return clean.src === src && clean.out ? clean.out : src;
+};
+
+const RotatingVehicleMarker = ({ position, iconUrl = carIcon, heading = 0, title = 'Driver', live = false }) => {
+  const markerSrc = useTransparentMarkerSrc(iconUrl || carIcon);
+  return (
   <OverlayViewF
     position={position}
     mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
@@ -89,7 +104,7 @@ const RotatingVehicleMarker = ({ position, iconUrl = carIcon, heading = 0, title
         style={{ transform: `rotate(${normalizeHeading(heading)}deg)` }}
       >
         <img
-          src={iconUrl || carIcon}
+          src={markerSrc}
           alt={title}
           className="h-12 w-12 object-contain drop-shadow-[0_8px_10px_rgba(15,23,42,0.35)]"
           draggable={false}
@@ -97,7 +112,8 @@ const RotatingVehicleMarker = ({ position, iconUrl = carIcon, heading = 0, title
       </div>
     </div>
   </OverlayViewF>
-);
+  );
+};
 
 const getTrackingVehicleIcon = (ride, driver) => {
   const customIcon = String(

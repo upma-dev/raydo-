@@ -1,3 +1,4 @@
+import { getTransparentMarkerSrc } from '../../admin/utils/removeImageBackground';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -29,8 +30,8 @@ import { socketService } from '../../../shared/api/socket';
 import { pushDriverLocationRealtime } from '../../../shared/services/rideRealtime';
 import api from '../../../shared/api/axiosInstance';
 import { BACKEND_ORIGIN } from '../../../shared/api/runtimeConfig';
-import carIcon from '@/assets/hero_sedan.png';
-import bikeIcon from '@/assets/hero_bike.png';
+import carIcon from '@/assets/map_marker_car.svg';
+import bikeIcon from '@/assets/map_marker_bike.svg';
 import { getLocalDriverToken } from '../services/registrationService';
 import CancellationReceiptModal from '../../shared/components/CancellationReceiptModal';
 import DriverCancelRide from '../components/DriverCancelRide';
@@ -365,9 +366,22 @@ const getFallbackVehicleIcon = (iconType = '') => {
     return carIcon;
 };
 
+
+const useTransparentMarkerSrc = (src) => {
+  const [clean, setClean] = React.useState({ src: '', out: '' });
+  React.useEffect(() => {
+    let alive = true;
+    if (!src || /\.svg(\?|$)/i.test(src) || src.startsWith('data:image/svg')) return undefined;
+    getTransparentMarkerSrc(src).then((out) => { if (alive) setClean({ src, out }); });
+    return () => { alive = false; };
+  }, [src]);
+  return clean.src === src && clean.out ? clean.out : src;
+};
+
 const RotatingVehicleMarker = ({ position, iconUrl = carIcon, fallbackIconUrl = carIcon, heading = 0, title = 'Driver' }) => {
     const [failedUrl, setFailedUrl] = React.useState('');
-    const src = iconUrl && iconUrl !== failedUrl ? iconUrl : fallbackIconUrl;
+    const rawSrc = iconUrl && iconUrl !== failedUrl ? iconUrl : fallbackIconUrl;
+    const src = useTransparentMarkerSrc(rawSrc);
 
     return (
     <OverlayViewF

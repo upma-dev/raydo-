@@ -366,6 +366,9 @@ export const cancelRideByAdmin = async (rideId) => {
 
   ride.status = RIDE_STATUS.CANCELLED;
   ride.liveStatus = RIDE_LIVE_STATUS.CANCELLED;
+  ride.adminDeleted = true;
+  ride.set('cancellation.cancelled_by', 'admin');
+  ride.set('cancellation.reason', 'Deleted by admin');
   if (ride.bookingMode === 'bidding') {
     ride.biddingStatus = 'cancelled';
   }

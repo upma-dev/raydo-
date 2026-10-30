@@ -259,10 +259,19 @@ const startServer = async () => {
             process.exit(1);
         });
 
+        // Node's default keep-alive (5s) is shorter than the reverse proxy's idle timeout: the proxy then reuses a
+        // connection Node just closed and answers 502. Keep Node's timeout longer than the proxy's (nginx default 60s).
+        server.keepAliveTimeout = Number(process.env.KEEP_ALIVE_TIMEOUT_MS || 65000);
+        server.headersTimeout = server.keepAliveTimeout + 5000;
+
         // Handle unhandled promise rejections
         process.on('unhandledRejection', (err) => {
             logger.error(`Unhandled Rejection: ${err?.message || err}`);
             if (config.nodeEnv === 'production') {
+                // server.close() waits for every open socket (Socket.IO connections never end), so without a
+                // deadline this worker would stay alive but deaf: PM2 would not restart it and the proxy would 502.
+                const forceExit = setTimeout(() => process.exit(1), 5000);
+                forceExit.unref();
                 if (server) server.close(() => process.exit(1));
                 else process.exit(1);
             }

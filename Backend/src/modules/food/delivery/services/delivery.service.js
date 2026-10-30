@@ -920,6 +920,7 @@ const getLinkedRideTrips = async (deliveryPartnerId, { start, end, statusFilter,
     const inRange = { $gte: start, $lte: end };
     const match = {
         driverId: new mongoose.Types.ObjectId(String(driverId)),
+        adminDeleted: { $ne: true },
         $or: [{ completedAt: inRange }, { updatedAt: inRange }, { createdAt: inRange }]
     };
     const sf = String(statusFilter || '').toLowerCase();
@@ -1251,12 +1252,54 @@ export const getDeliveryPartnerReviews = async (deliveryPartnerId) => {
         }));
     }
 
-    const overallRating = Number(partner.rating || 0);
-    const totalRatings = Number(partner.totalRatings || reviews.length || 0);
+    // Ride / parcel ratings from the linked ride profile count together with food ratings
+    const foodRating = Number(partner.rating || 0);
+    const foodCount = Number(partner.totalRatings || 0);
+    let rideRating = 0;
+    let rideCount = 0;
+    try {
+        const linkedPartner = await FoodDeliveryPartner.findById(deliveryPartnerId).select('rideMode.taxiDriverId').lean();
+        const taxiDriverId = linkedPartner?.rideMode?.taxiDriverId;
+        if (taxiDriverId) {
+            const [{ Ride }, { Driver }] = await Promise.all([
+                import('../../../taxi/user/models/Ride.js'),
+                import('../../../taxi/driver/models/Driver.js'),
+            ]);
+            const [rideDocs, driver] = await Promise.all([
+                Ride.find({ driverId: taxiDriverId, 'feedback.rating': { $ne: null } })
+                    .populate('userId', 'name')
+                    .select('serviceType feedback userId createdAt')
+                    .sort({ createdAt: -1 })
+                    .limit(100)
+                    .lean(),
+                Driver.findById(taxiDriverId).select('rating ratingCount').lean(),
+            ]);
+            rideRating = Number(driver?.rating || 0);
+            rideCount = Number(driver?.ratingCount || 0) || rideDocs.length;
+            reviews = [
+                ...reviews,
+                ...rideDocs.map((r) => ({
+                    _id: r._id,
+                    rating: r.feedback?.rating || 0,
+                    comment: r.feedback?.comment || '',
+                    customerName: r.userId?.name || 'Customer',
+                    orderId: `RIDE-${String(r._id).slice(-6).toUpperCase()}`,
+                    createdAt: r.feedback?.submittedAt || r.createdAt,
+                })),
+            ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        }
+    } catch (err) {
+        logger.warn(`[Reviews] ride ratings skipped: ${err?.message || err}`);
+    }
+
+    const totalRatings = foodCount + rideCount;
+    const overallRating = totalRatings > 0
+        ? Number((((foodRating * foodCount) + (rideRating * rideCount)) / totalRatings).toFixed(1))
+        : 0;
 
     return {
         rating: overallRating,
-        totalRatings: totalRatings,
+        totalRatings,
         reviews
     };
 };

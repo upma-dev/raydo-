@@ -97,6 +97,23 @@ export const PocketDetailsV2 = () => {
     return b ? b.amount : 0;
   };
 
+  // Day-wise groups, newest day first
+  const dayGroups = useMemo(() => {
+    const map = new Map();
+    orders.forEach((order) => {
+      const d = new Date(order.deliveredAt || order.createdAt);
+      const key = d.toDateString();
+      if (!map.has(key)) map.set(key, { key, date: d, orders: [], total: 0 });
+      const g = map.get(key);
+      const oid = order.orderId || order._id || order.id;
+      g.orders.push(order);
+      g.total += getOrderEarning(oid) + getOrderBonus(oid);
+    });
+    const groups = [...map.values()].sort((a, b) => b.date - a.date);
+    groups.forEach((g) => g.orders.sort((a, b) => new Date(b.deliveredAt || b.createdAt) - new Date(a.deliveredAt || a.createdAt)));
+    return groups;
+  }, [orders, paymentTransactions, bonusTransactions]);
+
   return (
     <div className="min-h-screen bg-gray-50 pb-12 font-poppins">
       {/* ─── HEADER ─── */}
@@ -163,8 +180,17 @@ export const PocketDetailsV2 = () => {
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-4">Syncing History...</p>
             </div>
           ) : orders.length > 0 ? (
-            <div className="grid gap-3">
-              {orders.map((order, idx) => {
+            <div className="space-y-5">
+             {dayGroups.map((group) => (
+              <div key={group.key}>
+               <div className="flex items-center justify-between px-1 mb-2">
+                 <p className="text-xs font-black text-gray-950 uppercase tracking-widest">
+                   {group.date.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+                 </p>
+                 <p className="text-xs font-black text-gray-950">{formatCurrency(group.total)}</p>
+               </div>
+               <div className="grid gap-3">
+              {group.orders.map((order, idx) => {
                 const oid = order.orderId || order._id || order.id;
                 const earning = getOrderEarning(oid);
                 const bonus = getOrderBonus(oid);
@@ -202,6 +228,9 @@ export const PocketDetailsV2 = () => {
                   </motion.div>
                 );
               })}
+               </div>
+              </div>
+             ))}
             </div>
           ) : (
             <div className="py-20 text-center bg-white rounded-[2rem] border-2 border-dashed border-gray-100">

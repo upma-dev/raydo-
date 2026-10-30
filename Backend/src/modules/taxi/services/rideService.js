@@ -1525,20 +1525,36 @@ export const getActiveRideForIdentity = async ({ role, entityId }) => {
   if (role === 'user') {
     const user = await User.findById(entityId).select('currentRideId');
 
-    if (!user?.currentRideId) {
-      return null;
-    }
+    if (user?.currentRideId) {
+      const currentRide = await populateRideRealtime(user.currentRideId);
 
-    const currentRide = await populateRideRealtime(user.currentRideId);
+      if (currentRide && ![RIDE_STATUS.COMPLETED, RIDE_STATUS.CANCELLED].includes(currentRide.status)) {
+        return currentRide;
+      }
 
-    // The pointer is stale when the ride is gone or already finished / cancelled (a path that closed the ride did not clear it):
-    // clear it, or the passenger keeps seeing an old booking as their running ride
-    if (!currentRide || [RIDE_STATUS.COMPLETED, RIDE_STATUS.CANCELLED].includes(currentRide.status)) {
+      // The pointer is stale when the ride is gone or already finished / cancelled (a path that closed the ride did not clear it):
+      // clear it, or the passenger keeps seeing an old booking as their running ride
       await User.updateOne({ _id: entityId, currentRideId: user.currentRideId }, { $set: { currentRideId: null } });
+    }
+
+    // The pointer can also be MISSING while a ride is running (a path that created or re-assigned the ride did not set it).
+    // Look for the passenger's own running ride, so an ongoing ride always shows on the home screen. Only recent rides count:
+    // an abandoned old search must not come back.
+    const runningRides = await Ride.find({
+      userId: entityId,
+      status: { $in: activeRideStatuses },
+      updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    })
+      .sort({ updatedAt: -1 })
+      .limit(5);
+    const runningRide = runningRides.find((ride) => !isRideScheduledForFuture(ride));
+
+    if (!runningRide) {
       return null;
     }
 
-    return currentRide;
+    await User.updateOne({ _id: entityId }, { $set: { currentRideId: runningRide._id } });
+    return populateRideRealtime(runningRide._id);
   }
 
   if (role === 'driver') {
@@ -1564,6 +1580,8 @@ export const listRideHistoryForIdentity = async ({ role, entityId, limit = 50, p
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
   const safePage = Math.max(Number(page) || 1, 1);
   const query = role === 'driver' ? { driverId: entityId } : { userId: entityId };
+  // Rides the admin deleted are not part of anyone's history
+  query.adminDeleted = { $ne: true };
   const normalizedCategory = String(category || 'all').trim().toLowerCase();
 
   if (normalizedCategory === 'rides') {

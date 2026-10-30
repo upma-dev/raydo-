@@ -311,7 +311,7 @@ api.interceptors.response.use(
       return new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1))).then(() => api(config));
     }
 
-    return Promise.reject({ message: 'Network error or server down.' });
+    return Promise.reject({ message: 'No internet connection. Please check your network and try again.' });
   }
 );
 

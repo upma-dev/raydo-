@@ -83,6 +83,9 @@ const buildServiceCategoryFilter = (serviceType = 'ride') => {
     ];
     return {
       $or: [
+        // Hardcoded: a delivery partner's linked ride profile (two-wheeler) always gets parcel requests.
+        // Food-toggle / online / busy checks are done afterwards by filterLinkedDriversForDispatch.
+        { linkedDeliveryPartnerId: { $exists: true, $ne: null } },
         { serviceCategories: { $in: deliveryKeys } },
         { service_categories: { $in: deliveryKeys } },
         { registerFor: { $in: ['delivery', 'Delivery', 'DELIVERY', 'both', 'Both', 'BOTH'] } },

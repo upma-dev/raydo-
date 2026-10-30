@@ -147,7 +147,11 @@ export const normalizeRide = (ride) => {
     'Driver assigned',
   );
   const vehicle = ride.driver?.vehicleType || ride.vehicleIconType || 'Ride';
-  const status = formatStatus(ride.status || ride.liveStatus);
+  // A ride that has a driver and is not finished reads "Ongoing" (the raw words accepted / arriving / started confuse people)
+  const rawStatus = String(ride.status || ride.liveStatus || '').toLowerCase();
+  const status = ['accepted', 'ongoing', 'arriving', 'arrived', 'started'].includes(rawStatus)
+    ? 'Ongoing'
+    : formatStatus(ride.status || ride.liveStatus);
   const serviceType = String(ride.serviceType || ride.type || 'ride').toLowerCase();
   const type = serviceType === 'parcel' ? 'parcel' : 'ride';
   const pickup = ride.pickupAddress || coordLabel(ride.pickupLocation, 'Pickup');

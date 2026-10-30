@@ -253,6 +253,8 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
                 id: r._id,
                 type: 'ride_trip',
                 amount: round2(earned),
+                fare: round2(Number(r.fare) || 0),
+                commission: round2(Number(r.commissionAmount) || Math.max((Number(r.fare) || 0) - earned, 0)),
                 status: 'Completed',
                 date: r.completedAt || r.createdAt,
                 description: `${label} earning`,

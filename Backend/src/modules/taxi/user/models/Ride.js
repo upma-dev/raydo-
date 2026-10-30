@@ -701,6 +701,12 @@ const rideSchema = new mongoose.Schema(
         ref: 'TaxiRide',
       },
     ],
+    // Set when the admin deletes / cancels a ride from the admin panel: such a ride is never shown to the passenger or the driver
+    adminDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     cancellation: {
       cancelled_by: {
         type: String,

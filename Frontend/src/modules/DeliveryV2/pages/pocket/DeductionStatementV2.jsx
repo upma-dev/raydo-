@@ -55,6 +55,22 @@ export const DeductionStatementV2 = () => {
     fetchData();
   }, [weekRange]);
 
+  // Day-wise groups, newest day first
+  const dayGroups = useMemo(() => {
+    const map = new Map();
+    deductions.forEach((item) => {
+      const d = new Date(item.createdAt || item.date);
+      const key = d.toDateString();
+      if (!map.has(key)) map.set(key, { key, date: d, items: [], total: 0 });
+      const g = map.get(key);
+      g.items.push(item);
+      g.total += Number(item.amount) || 0;
+    });
+    const groups = [...map.values()].sort((a, b) => b.date - a.date);
+    groups.forEach((g) => g.items.sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date)));
+    return groups;
+  }, [deductions]);
+
   return (
     <div className="min-h-screen bg-[#f6e9dc] font-poppins pb-32">
        {/* Header (Old Style) */}
@@ -98,28 +114,40 @@ export const DeductionStatementV2 = () => {
                 <p className="text-gray-400 text-xs font-medium mt-1">Is hafton mein koi deduction nahi hui.</p>
              </div>
           ) : (
-             <div className="space-y-3 mb-6">
-                {deductions.map((item, index) => (
-                   <div
-                     key={item._id || index}
-                     className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 active:scale-[0.98] transition-all"
-                   >
-                      <div className="flex items-center justify-between">
-                         <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded ${ 
-                               index % 3 === 0 ? 'bg-green-500' : 
-                               index % 3 === 1 ? 'bg-orange-500' : 'bg-blue-500'
-                            }`}></div>
-                            <div>
-                               <p className="text-gray-900 text-sm font-bold leading-tight">{item.description || 'System Deduction'}</p>
-                               <p className="text-gray-400 text-[10px] font-bold mt-1 uppercase tracking-tight">
-                                  {new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                               </p>
+             <div className="space-y-5 mb-6">
+                {dayGroups.map((group) => (
+                   <div key={group.key}>
+                      <div className="flex items-center justify-between px-1 mb-2">
+                         <p className="text-gray-900 text-xs font-black uppercase tracking-wider">
+                            {group.date.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+                         </p>
+                         <p className="text-red-600 text-xs font-bold">-{formatCurrency(group.total)}</p>
+                      </div>
+                      <div className="space-y-3">
+                         {group.items.map((item, index) => (
+                            <div
+                              key={item._id || index}
+                              className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 active:scale-[0.98] transition-all"
+                            >
+                               <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                     <div className={`w-2 h-2 rounded ${
+                                        index % 3 === 0 ? 'bg-green-500' :
+                                        index % 3 === 1 ? 'bg-orange-500' : 'bg-blue-500'
+                                     }`}></div>
+                                     <div>
+                                        <p className="text-gray-900 text-sm font-bold leading-tight">{item.description || 'System Deduction'}</p>
+                                        <p className="text-gray-400 text-[10px] font-bold mt-1 uppercase tracking-tight">
+                                           {new Date(item.createdAt || item.date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                     </div>
+                                  </div>
+                                  <div className="text-red-600 text-base font-bold">
+                                     -{formatCurrency(item.amount)}
+                                  </div>
+                               </div>
                             </div>
-                         </div>
-                         <div className="text-red-600 text-base font-bold">
-                            -{formatCurrency(item.amount)}
-                         </div>
+                         ))}
                       </div>
                    </div>
                 ))}

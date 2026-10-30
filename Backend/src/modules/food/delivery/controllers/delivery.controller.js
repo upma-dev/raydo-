@@ -129,7 +129,7 @@ export const getWalletController = async (req, res, next) => {
             createdAt: tx?.createdAt || tx?.date
         });
 
-        if (['bonus', 'deposit', 'deduction', 'withdrawal', 'payment', 'earning', 'order'].includes(requestedTypeRaw)) {
+        if (['bonus', 'deposit', 'deduction', 'withdrawal', 'payment', 'earning', 'order', 'ride_trip'].includes(requestedTypeRaw)) {
             if (!deliveryPartnerId || !mongoose.Types.ObjectId.isValid(deliveryPartnerId)) {
                 return sendResponse(res, 200, 'Wallet fetched successfully', { wallet: { transactions: [] } });
             }
@@ -158,6 +158,8 @@ export const getWalletController = async (req, res, next) => {
                     allowedTypes = new Set(['withdrawal']);
                 } else if (requestedTypeRaw === 'deposit') {
                     allowedTypes = new Set(['deposit']);
+                } else if (requestedTypeRaw === 'ride_trip') {
+                    allowedTypes = new Set(['ride_trip']);
                 } else if (['payment', 'earning', 'order'].includes(requestedTypeRaw)) {
                     allowedTypes = new Set(['payment', 'ride_earning']);
                 } else {
