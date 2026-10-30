@@ -16,6 +16,7 @@ import bikeIcon from '@/assets/map_marker_bike.svg';
 import autoIcon from '@/assets/map_marker_bike.svg';
 import deliveryIcon from '@/assets/map_marker_bike.svg';
 import { getTransparentMarkerSrc } from '../../../admin/utils/removeImageBackground';
+import { notifyDriverCancelled } from '../../utils/driverCancelledNotice';
 import { useSettings } from '../../../../shared/context/SettingsContext';
 import { useLiveDriverLocation, distanceMeters } from '../../hooks/useLiveDriverLocation';
 // Cancellation receipt removed per requirements - user should not see bill on cancel
@@ -965,12 +966,18 @@ const RideTracking = () => {
     socketService.on('ride:state', onRideState);
     socketService.on('ride:driver-location:updated', onLocationUpdated);
     socketService.on('ride:status:updated', onStatusUpdated);
+    const onRideRequestClosed = (payload) => {
+      if (String(payload?.rideId || '') !== String(rideId)) return;
+      notifyDriverCancelled(payload);
+    };
+    socketService.on('rideRequestClosed', onRideRequestClosed);
     socketService.emit('ride:join', { rideId });
 
     return () => {
       socketService.off('ride:state', onRideState);
       socketService.off('ride:driver-location:updated', onLocationUpdated);
       socketService.off('ride:status:updated', onStatusUpdated);
+      socketService.off('rideRequestClosed', onRideRequestClosed);
     };
   }, [rideId]);
 
@@ -1486,7 +1493,7 @@ const RideTracking = () => {
 
       <motion.div
         animate={{ y: drawerOpen ? 0 : 420 }}
-        className="absolute bottom-0 left-0 right-0 bg-white shadow-[0_-12px_44px_rgba(15,23,42,0.12)] z-20 rounded-t-[28px] border-t border-slate-100/50"
+        className="absolute bottom-0 left-0 right-0 bg-white shadow-[0_-12px_44px_rgba(15,23,42,0.12)] z-20 rounded-t-[28px] border-t border-slate-100/50 pb-[max(env(safe-area-inset-bottom),3.5rem)]"
       >
         <div className="w-12 h-1.5 bg-slate-200/60 rounded-full mx-auto mt-2.5 mb-3.5 cursor-pointer hover:bg-slate-300 transition-colors" onClick={() => setDrawerOpen(!drawerOpen)} />
 

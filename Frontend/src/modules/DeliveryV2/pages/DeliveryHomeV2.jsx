@@ -1613,6 +1613,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 }
               }}
               zoom={zoom}
+              incomingOrder={incomingOrder}
             />
 
             <div className="absolute right-4 bottom-28 md:bottom-32 flex flex-col gap-4 z-[120]">

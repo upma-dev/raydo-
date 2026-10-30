@@ -15,6 +15,7 @@ export const ProfileDocsV2 = () => {
   const [loading, setLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showViewer, setShowViewer] = useState(null); // { title: string, url: string }
+  const [rideMode, setRideMode] = useState(null);
   const [uploadField, setUploadField] = useState(null)
   const fileInputRef = useRef(null);
 
@@ -27,6 +28,10 @@ export const ProfileDocsV2 = () => {
       finally { setLoading(false); }
     };
     fetchProfile();
+    // Ride & Parcel profile (the same person's two-wheeler driver account): status, vehicle and its documents
+    deliveryAPI.getRideMode()
+      .then((res) => setRideMode(res?.data?.data || res?.data || null))
+      .catch(() => {});
   }, []);
 
   const handleUpdate = async (field, file) => {
@@ -62,6 +67,20 @@ export const ProfileDocsV2 = () => {
     return doc.verified ? "Verified" : "Pending Verification";
   };
 
+  const expiryInfo = (value) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    const days = Math.ceil((date.getTime() - Date.now()) / 86400000);
+    const text = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    if (days < 0) return { text: `Expired ${text}`, tone: 'bg-red-50 text-red-600 border-red-100' };
+    if (days <= 30) return { text: `Expires ${text} (${days}d)`, tone: 'bg-amber-50 text-amber-700 border-amber-100' };
+    return { text: `Valid till ${text}`, tone: 'bg-green-50 text-green-700 border-green-100' };
+  };
+
+  const hasRideProfile = Boolean(rideMode?.status && rideMode.status !== 'none');
+  const rideStatusLabel = { approved: 'Approved', pending: 'Under review', rejected: 'Rejected' }[rideMode?.status] || rideMode?.status;
+
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>;
 
   const docs = [
@@ -85,6 +104,53 @@ export const ProfileDocsV2 = () => {
              <h3 className="text-2xl font-black z-10">{profile?.vehicle?.number || "NO # REGISTERED"}</h3>
              <p className="text-[10px] font-bold z-10 opacity-70 uppercase tracking-widest">{profile?.vehicle?.type || "Standard Bike"}</p>
           </div>
+
+          {/* 1b. Ride & Parcel profile: status, vehicle, rating and its documents */}
+          {hasRideProfile && (
+            <div className="space-y-3">
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Ride & Parcel profile</p>
+                  <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${rideMode.status === 'approved' ? 'bg-green-50 text-green-700 border-green-100' : rideMode.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>{rideStatusLabel}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="text-left">
+                    <p className="text-[9px] font-bold text-gray-400 uppercase">Vehicle</p>
+                    <p className="text-sm font-black text-gray-900 truncate">{rideMode.vehicle?.vehicleNumber || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-gray-400 uppercase">Rating</p>
+                    <p className="text-sm font-black text-gray-900">{Number(rideMode.taxi?.rating || 0) > 0 ? Number(rideMode.taxi.rating).toFixed(1) : '—'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] font-bold text-gray-400 uppercase">Ride wallet</p>
+                    <p className="text-sm font-black text-gray-900">₹{Number(rideMode.wallet?.rideWalletBalance || 0).toFixed(0)}</p>
+                  </div>
+                </div>
+                {rideMode.status === 'rejected' && rideMode.rejectionReason && (
+                  <p className="mt-3 text-[11px] font-semibold text-red-600">{rideMode.rejectionReason}</p>
+                )}
+              </div>
+
+              {(rideMode.documents || []).map((doc) => {
+                const expiry = expiryInfo(doc.expiryDate);
+                return (
+                  <div key={doc.key} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">{doc.label} · Ride & Parcel</p>
+                      <h4 className="text-sm font-bold text-gray-800 truncate">{doc.number || 'Uploaded'}</h4>
+                      {expiry && (
+                        <span className={`inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border ${expiry.tone}`}>{expiry.text}</span>
+                      )}
+                    </div>
+                    {doc.url && (
+                      <button onClick={() => setShowViewer({ title: doc.label, url: doc.url })} className="p-3 bg-gray-50 rounded-xl text-gray-600 active:scale-95 transition-all shrink-0"><Eye className="w-5 h-5" /></button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* 2. Documents List */}
           <div className="space-y-4">

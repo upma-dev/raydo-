@@ -1,6 +1,7 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { MapPin, FileText } from 'lucide-react';
+import { hasDeliveryLogin } from '@/modules/DeliveryV2/utils/rideModeSession';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
 import api from './shared/api/axiosInstance';
@@ -399,6 +400,72 @@ const MainLayout = ({ children }) => {
   );
 };
 
+// Shows the spinner only if a page takes longer than ~180 ms to load, so quick page switches never flash a white screen
+const DelayedSpinner = () => {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setVisible(true), 180);
+    return () => window.clearTimeout(timer);
+  }, []);
+  if (!visible) return null;
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></span>
+    </div>
+  );
+};
+
+// After the first screen is up, quietly download the pages people open next, so a tap shows the page at once
+// instead of waiting for its code to download. Skipped on data saver / very slow connections.
+const PREFETCH_USER_PAGES = [
+  () => import('./modules/user/pages/ride/SelectLocation'),
+  () => import('./modules/user/pages/ride/SelectVehicle'),
+  () => import('./modules/user/pages/ride/SearchingDriver'),
+  () => import('./modules/user/pages/ride/RideTracking'),
+  () => import('./modules/user/pages/parcel/ParcelType'),
+  () => import('./modules/user/pages/parcel/SenderReceiverDetails'),
+  () => import('./modules/user/pages/parcel/ParcelSearchingDriver'),
+  () => import('./modules/user/pages/parcel/ParcelTracking'),
+];
+const PREFETCH_DRIVER_PAGES = [
+  () => import('./modules/driver/pages/DriverHome'),
+  () => import('./modules/driver/pages/ActiveTrip'),
+  () => import('./modules/driver/pages/DriverWallet'),
+  () => import('./modules/driver/pages/DriverProfile'),
+];
+
+const RoutePrefetcher = () => {
+  const { pathname } = useLocation();
+  const group = pathname.startsWith('/taxi/driver') ? 'driver' : pathname.startsWith('/taxi/user') ? 'user' : '';
+
+  useEffect(() => {
+    if (!group) return undefined;
+    const connection = navigator.connection || {};
+    if (connection.saveData || /2g/.test(String(connection.effectiveType || ''))) return undefined;
+
+    const loaders = group === 'driver' ? PREFETCH_DRIVER_PAGES : PREFETCH_USER_PAGES;
+    const idle = window.requestIdleCallback || ((cb) => window.setTimeout(cb, 1500));
+    const cancel = window.cancelIdleCallback || window.clearTimeout;
+    let index = 0;
+    let handle;
+    const next = () => {
+      if (index >= loaders.length) return;
+      loaders[index]().catch(() => {});
+      index += 1;
+      handle = idle(next);
+    };
+    handle = idle(next);
+    return () => cancel(handle);
+  }, [group]);
+
+  return null;
+};
+
+// A delivery partner who also drives rides is one account: its profile and settings live in the delivery panel, so the ride
+// app's profile / settings routes send that partner there instead of showing a second copy.
+const MergedPartnerRedirect = ({ to, children }) =>
+  hasDeliveryLogin() ? <Navigate to={to} replace /> : children;
+
 const ScrollToTop = () => {
   const { pathname } = useLocation();
 
@@ -709,15 +776,11 @@ function TaxiApp() {
         {RENTAL_ENABLED ? <RentalLocationTracker /> : null}
         <AppAutoUpdater />
         <ScrollToTop />
+        <RoutePrefetcher />
         <UserAccountInvalidationListener />
         <UserUpcomingRideReminderBootstrap />
         <MainLayout>
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center min-h-screen bg-white">
-                <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></span>
-              </div>
-            }>
+          <Suspense fallback={<DelayedSpinner />}>
             <Toaster position="top-right" closeButton />
             <Routes>
               {/* Static / Public routes */}
@@ -1057,7 +1120,7 @@ function TaxiApp() {
                 <Route path="chat" element={<Chat />} />
                 <Route path="wallet" element={<DriverWallet />} />
                 <Route path="earnings" element={<DriverEarnings />} />
-                <Route path="profile" element={<DriverProfile />} />
+                <Route path="profile" element={<MergedPartnerRedirect to="/food/delivery/profile"><DriverProfile /></MergedPartnerRedirect>} />
                 {RENTAL_ENABLED ? (
                   <>
                     <Route path="service-center" element={<ServiceCenterDashboard />} />
@@ -1068,10 +1131,10 @@ function TaxiApp() {
                 <Route path="history" element={<RideRequests />} />
                 <Route path="incentives" element={<DriverIncentives />} />
 
-                <Route path="edit-profile" element={<EditProfile />} />
-                <Route path="documents" element={<DriverDocuments />} />
-                <Route path="notifications" element={<Notifications />} />
-                <Route path="payout-methods" element={<PayoutMethods />} />
+                <Route path="edit-profile" element={<MergedPartnerRedirect to="/food/delivery/profile/details"><EditProfile /></MergedPartnerRedirect>} />
+                <Route path="documents" element={<MergedPartnerRedirect to="/food/delivery/profile/documents"><DriverDocuments /></MergedPartnerRedirect>} />
+                <Route path="notifications" element={<MergedPartnerRedirect to="/food/delivery/notifications"><Notifications /></MergedPartnerRedirect>} />
+                <Route path="payout-methods" element={<MergedPartnerRedirect to="/food/delivery/profile/bank"><PayoutMethods /></MergedPartnerRedirect>} />
                 <Route path="referral" element={<Referral />} />
                 <Route
                   path="delete-account"

@@ -365,6 +365,8 @@ export const HistoryV2 = () => {
                       trip.earningAmount ||
                       0
                    );
+                   const cancellation = isCancelled && trip.source === 'ride' ? trip.cancellation : null;
+                   const cancelNet = cancellation ? (cancellation.driverCompensation || 0) - (cancellation.driverPenalty || 0) : 0;
                    const isCOD = (trip.paymentMethod || '').toLowerCase() === 'cash' || (trip.paymentMethod || '').toLowerCase() === 'cod';
                    const collection = trip.source === 'ride' ? Number(trip.orderTotal || trip.totalAmount || 0) : Number(trip.codCollectedAmount || trip.orderTotal || 0);
                    const breakdown = getEarningBreakdown(trip);
@@ -390,6 +392,29 @@ export const HistoryV2 = () => {
                              </span>
                          </div>
 
+                         {cancellation && (
+                            <div className="mb-4 rounded-2xl border border-red-100 bg-red-50/60 p-3">
+                               <p className="text-xs font-bold text-red-600">
+                                  Cancelled by {cancellation.cancelledBy === 'driver' ? 'you' : cancellation.cancelledBy === 'admin' ? 'admin' : 'customer'}
+                                  {cancellation.reason ? ` · ${cancellation.reason}` : ''}
+                               </p>
+                               <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                                  <div className="text-left">
+                                     <p className="text-[10px] font-medium text-gray-400">Customer charge</p>
+                                     <p className="text-sm font-bold text-gray-950">{formatCurrency(cancellation.customerCharge)}</p>
+                                  </div>
+                                  <div>
+                                     <p className="text-[10px] font-medium text-gray-400">You received</p>
+                                     <p className="text-sm font-bold text-[#10B981]">+{formatCurrency(cancellation.driverCompensation)}</p>
+                                  </div>
+                                  <div className="text-right">
+                                     <p className="text-[10px] font-medium text-gray-400">Penalty on you</p>
+                                     <p className="text-sm font-bold text-red-500">-{formatCurrency(cancellation.driverPenalty)}</p>
+                                  </div>
+                               </div>
+                            </div>
+                         )}
+
                          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-[#F4F7FA]">
                              <div>
                                 <p className="text-[11px] font-medium text-gray-400 mb-1">Time</p>
@@ -407,7 +432,7 @@ export const HistoryV2 = () => {
                                   className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-[#F7FFFB] px-2.5 py-1 text-right transition-colors hover:bg-[#ECFDF5]"
                                   aria-label={isBreakdownOpen ? 'Hide earning breakdown' : 'Show earning breakdown'}
                                 >
-                                  <span className="text-sm font-bold text-gray-950">{formatCurrency(payout)}</span>
+                                  <span className={`text-sm font-bold ${cancellation && cancelNet < 0 ? 'text-red-500' : 'text-gray-950'}`}>{cancellation ? `${cancelNet < 0 ? '-' : ''}${formatCurrency(Math.abs(cancelNet))}` : formatCurrency(payout)}</span>
                                   <ChevronDown className={`w-4 h-4 text-[#10B981] transition-transform ${isBreakdownOpen ? 'rotate-180' : ''}`} />
                                 </button>
                              </div>

@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { getScheduledRideCountdown } from '../utils/scheduledRideTime';
+import RequestRouteMap from '../components/RequestRouteMap';
 
 const Motion = motion;
 const DEFAULT_ACCEPT_REJECT_SECONDS = 15;
@@ -78,6 +79,7 @@ const IncomingRideRequest = ({
   previewCancelDisabledLabel = 'Cancel unavailable',
   previewCancelHelpText = '',
   mode = 'live',
+  driverPosition = null,
 }) => {
   const isPreviewMode = mode === 'preview';
   const requestDurationSeconds = getRequestDurationSeconds(requestData);
@@ -265,6 +267,12 @@ const IncomingRideRequest = ({
                 <p className={`truncate text-[12px] font-black ${accentTextClass}`}>{payment}</p>
               </div>
             </div>
+
+            <RequestRouteMap
+              pickupLocation={data.raw?.pickupLocation || data.raw?.ride?.pickupLocation}
+              dropLocation={data.raw?.dropLocation || data.raw?.ride?.dropLocation}
+              driverPosition={driverPosition}
+            />
 
             {isPreviewMode ? (
               <div className="mb-4 rounded-[18px] border border-blue-100 bg-blue-50 px-4 py-3">

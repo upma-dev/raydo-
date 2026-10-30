@@ -1,151 +1,150 @@
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { MapPin, X } from "lucide-react"
-import { Card, CardHeader, CardTitle, CardContent } from "@food/components/ui/card"
-import { Button } from "@food/components/ui/button"
 import { useLocation } from "@food/hooks/useLocation"
 
+// "Not now" only hides the popup until the app is opened again
+const DISMISSED_KEY = "foodLocationPromptDismissed"
+
+const readDismissed = () => {
+  try {
+    return sessionStorage.getItem(DISMISSED_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Every time the app is opened without a working location, it first tries to get the real location by itself (this is what
+ * makes the browser / Android ask to allow and turn on location). If that does not work - blocked, or the phone's location
+ * is switched off - a small bottom card explains it and lets the user retry with one tap.
+ */
 export default function LocationPrompt() {
-  const { location, loading, permissionGranted, requestLocation } = useLocation()
-  const [showPrompt, setShowPrompt] = useState(false)
-  const cardRef = useRef(null)
+  const { location, loading, error, requestLocation } = useLocation()
+  const [permission, setPermission] = useState("unknown") // granted | prompt | denied | unknown
+  const [permissionChecked, setPermissionChecked] = useState(false)
+  const [open, setOpen] = useState(false)
+  const autoTriedRef = useRef(false)
 
   useEffect(() => {
-    // Check if location permission was already granted
-    const storedLocation = localStorage.getItem("userLocation")
-    const promptDismissed = localStorage.getItem("locationPromptDismissed")
-
-    // The useLocation hook will automatically try to get location on app start
-    // We only show the prompt if:
-    // 1. No location is stored (first time user)
-    // 2. Prompt hasn't been dismissed
-    // 3. Location permission was denied (we'll detect this after a delay)
-    
-    if (!storedLocation && !promptDismissed) {
-      // Wait a bit to let the hook try to get location automatically
-      // If it fails, we'll show the prompt
-      const timer = setTimeout(() => {
-        // Check again if location was set (hook might have succeeded)
-        const currentLocation = localStorage.getItem("userLocation")
-        if (!currentLocation && !permissionGranted) {
-          setShowPrompt(true)
-          // Prevent body scroll when popup is open
-          document.body.style.overflow = "hidden"
-          // CSS animation will handle the fade-in
-          if (cardRef.current) {
-            cardRef.current.style.opacity = '0'
-            cardRef.current.style.transform = 'translateY(20px)'
-            requestAnimationFrame(() => {
-              if (cardRef.current) {
-                cardRef.current.style.opacity = '1'
-                cardRef.current.style.transform = 'translateY(0)'
-              }
-            })
-          }
-        }
-      }, 2000) // Wait 2 seconds for automatic location request to complete
-
-      return () => {
-        clearTimeout(timer)
-        document.body.style.overflow = ""
+    let status = null
+    let alive = true
+    const read = async () => {
+      try {
+        status = await navigator.permissions.query({ name: "geolocation" })
+        if (!alive) return
+        setPermission(status.state)
+        status.onchange = () => setPermission(status.state)
+      } catch {
+        // Permissions API not available: the automatic attempt below still asks through the browser
+      } finally {
+        if (alive) setPermissionChecked(true)
       }
     }
-  }, [permissionGranted])
-
-  // Close prompt when location is successfully obtained
-  useEffect(() => {
-    if (location && showPrompt) {
-      const timer = setTimeout(() => {
-        setShowPrompt(false)
-        document.body.style.overflow = ""
-        localStorage.setItem("locationPromptDismissed", "true")
-      }, 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [location, showPrompt])
-
-  const handleAllow = async () => {
-    await requestLocation()
-    try {
-      localStorage.setItem("deliveryAddressMode", "current")
-      window.dispatchEvent(new Event("deliveryAddressModeChanged"))
-    } catch {
-      // Ignore storage/event errors; location is already fetched.
-    }
-    // Wait a bit for location to be set
-    setTimeout(() => {
-      setShowPrompt(false)
-      document.body.style.overflow = ""
-      localStorage.setItem("locationPromptDismissed", "true")
-    }, 500)
-  }
-
-  const handleDismiss = () => {
-    setShowPrompt(false)
-    document.body.style.overflow = ""
-    localStorage.setItem("locationPromptDismissed", "true")
-  }
-
-  // Cleanup on unmount
-  useEffect(() => {
+    read()
     return () => {
-      document.body.style.overflow = ""
+      alive = false
+      if (status) status.onchange = null
     }
   }, [])
 
-  if (!showPrompt) return null
+  // App opened: if there is no live location yet, go and get it
+  useEffect(() => {
+    if (!permissionChecked || autoTriedRef.current || readDismissed()) return
+    if (permission === "granted" && location) return
+    autoTriedRef.current = true
+
+    if (permission === "denied") {
+      setOpen(true)
+      return
+    }
+    requestLocation()
+      .then(() => setOpen(false))
+      .catch(() => setOpen(true))
+  }, [permissionChecked, permission, location, requestLocation])
+
+  // Failed later (e.g. device location switched off while the app was open)
+  useEffect(() => {
+    if (error && !location && !readDismissed()) setOpen(true)
+  }, [error, location])
+
+  // Location is working: nothing left to ask
+  useEffect(() => {
+    if (open && location && permission !== "denied" && !error) setOpen(false)
+  }, [open, location, permission, error])
+
+  const handleDismiss = () => {
+    setOpen(false)
+    try {
+      sessionStorage.setItem(DISMISSED_KEY, "1")
+    } catch {
+      // Ignore storage errors: the card just shows again next time
+    }
+  }
+
+  const handleTurnOn = async () => {
+    try {
+      await requestLocation()
+      try {
+        localStorage.setItem("deliveryAddressMode", "current")
+        window.dispatchEvent(new Event("deliveryAddressModeChanged"))
+      } catch {
+        // Ignore storage/event errors; the location itself is already fetched
+      }
+      setOpen(false)
+    } catch {
+      // Still blocked / off: the card stays open with the help text
+    }
+  }
+
+  if (!open) return null
+
+  const blocked = permission === "denied"
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
-      <Card
-        ref={cardRef}
-        className="w-full max-w-md border-2 border-gray-200 shadow-2xl mx-auto my-auto"
+    <div
+      className="fixed left-3 right-3 z-[100] mx-auto max-w-md rounded-2xl bg-white p-4 shadow-2xl border border-gray-100"
+      style={{ bottom: "max(env(safe-area-inset-bottom), 16px)" }}
+      role="dialog"
+      aria-live="polite"
+    >
+      <button
+        type="button"
+        onClick={handleDismiss}
+        className="absolute right-2 top-2 p-1.5 text-gray-400"
+        aria-label="Close"
       >
-        <CardHeader className="relative">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-2 top-2"
-            onClick={handleDismiss}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center">
-              <MapPin className="h-6 w-6 text-primary-orange" />
-            </div>
-            <div>
-              <CardTitle>Enable Location Services</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                Get faster delivery and better recommendations
-              </p>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            We use your location to show nearby restaurants and provide accurate
-            delivery times. Your location data is stored locally and never
-            shared.
+        <X className="h-4 w-4" />
+      </button>
+      <div className="flex items-start gap-3 pr-6">
+        <div className="h-10 w-10 shrink-0 rounded-full bg-orange-50 flex items-center justify-center">
+          <MapPin className="h-5 w-5 text-primary-orange" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-gray-900">Turn on location</p>
+          <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+            {blocked
+              ? "Location is blocked for this app. Open your browser's site settings, allow Location, then tap Try again."
+              : "We need your location to show nearby restaurants and deliver to your exact spot. Make sure your phone's location is on."}
           </p>
-          <div className="flex gap-2">
-            <Button
-              onClick={handleDismiss}
-              variant="outline"
-              className="flex-1"
-            >
-              Not Now
-            </Button>
-            <Button
-              onClick={handleAllow}
-              className="flex-1 bg-primary-orange hover:opacity-90 text-white"
-              disabled={loading}
-            >
-              {loading ? "Getting location..." : "Allow Location"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={handleDismiss}
+          className="flex-1 h-10 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700"
+        >
+          Not now
+        </button>
+        <button
+          type="button"
+          onClick={handleTurnOn}
+          disabled={loading}
+          className="flex-1 h-10 rounded-xl bg-primary-orange text-sm font-semibold text-white disabled:opacity-60"
+        >
+          {loading ? "Getting location..." : blocked ? "Try again" : "Turn on"}
+        </button>
+      </div>
     </div>
   )
 }
-

@@ -417,6 +417,17 @@ export const getRideModeStatus = async (partnerId, { reconcile = true } = {}) =>
             vehicleColor: driver.vehicleColor,
             services: driver.serviceCategories || [],
         } : null,
+        // The ride profile's documents (RC, licence, insurance ...), so the delivery app can show them with number and expiry
+        documents: driver ? Object.entries(driver.documents || {})
+            .filter(([, doc]) => doc && typeof doc === 'object' && (doc.secureUrl || doc.previewUrl || doc.uploaded))
+            .map(([key, doc]) => ({
+                key,
+                label: String(doc.name || key).replace(/_/g, ' ').replace(/(^|\s)\w/g, (c) => c.toUpperCase()),
+                url: doc.secureUrl || doc.previewUrl || '',
+                number: doc.identifyNumber || doc.documentNumber || doc.document_number || '',
+                expiryDate: doc.expiryDate || doc.expiry_date || null,
+                uploadedAt: doc.uploadedAt || null,
+            })) : [],
         taxi: driver ? {
             driverId: String(driver._id),
             isOnline: Boolean(driver.isOnline),

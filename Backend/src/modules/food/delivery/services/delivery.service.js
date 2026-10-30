@@ -876,6 +876,16 @@ const toRideTripDto = (ride) => {
     const earning = status === 'Completed' ? rideEarningOf(ride) : 0;
     const fare = Number(ride?.fare) || 0;
     const time = when ? new Date(when).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+    // A cancelled ride: who cancelled, why, what the customer was charged and what the driver got / was fined
+    const cancel = ride?.cancellation || {};
+    const cancellation = status === 'Cancelled' ? {
+        cancelledBy: cancel.cancelled_by || '',
+        reason: cancel.reason || '',
+        customerCharge: Math.round((Number(cancel.cancellation_charge) || 0) * 100) / 100,
+        driverCompensation: Math.round((Number(cancel.driver_compensation_amount) || 0) * 100) / 100,
+        driverPenalty: Math.round((Number(cancel.driver_penalty_amount) || 0) * 100) / 100,
+        feeApplied: Boolean(cancel.is_fee_applied),
+    } : null;
 
     return {
         id: ride?._id,
@@ -900,6 +910,7 @@ const toRideTripDto = (ride) => {
         amount: earning,
         riderTotalPayout: earning,
         commissionAmount: Number(ride?.commissionAmount) || 0,
+        cancellation,
         createdAt: ride?.createdAt,
         deliveredAt: when,
         completedAt: when,
@@ -930,7 +941,7 @@ const getLinkedRideTrips = async (deliveryPartnerId, { start, end, statusFilter,
     else match.status = { $in: ['accepted', 'ongoing', 'completed', 'cancelled'] };
 
     const rides = await Ride.find(match)
-        .select('serviceType status fare commissionAmount driverEarnings paymentMethod pickupAddress dropAddress completedAt createdAt updatedAt')
+        .select('serviceType status fare commissionAmount driverEarnings paymentMethod pickupAddress dropAddress completedAt createdAt updatedAt cancellation')
         .sort({ completedAt: -1, createdAt: -1 })
         .limit(limit)
         .lean();

@@ -1,24 +1,12 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
-import {
-  User,
-  ArrowRight,
-  Bike,
-  Ticket,
-  ChevronRight,
-  Share2,
-  LogOut,
-  X,
-  Loader2,
-  Briefcase,
-  Star,
-  MessageSquare
-} from "lucide-react"
+import { Gift, Siren, Trophy, CarFront, User, ArrowRight, Bike, Ticket, ChevronRight, Share2, LogOut, X, Loader2, Briefcase, Star, MessageSquare, FileText, Landmark, Bell, Car, ShieldCheck, UserCog } from 'lucide-react'
 import { deliveryAPI } from "@food/api"
 import DeleteAccountModal from "@food/components/DeleteAccountModal";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner"
 import { clearModuleAuth } from "@food/utils/auth"
+import { openRideApp } from "../utils/rideModeSession"
 
 /**
  * ProfileV2 - 1:1 EXACT Restoration of the Legacy Profile Hub.
@@ -223,6 +211,44 @@ export const ProfileV2 = () => {
             >
               Share
             </button>
+          </div>
+
+          {/* Settings: one place for the delivery account and the two-wheeler (Ride & Parcel) driver profile */}
+          <div>
+            <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-[0.2em] mb-3 px-1">Settings</h3>
+            <div className="bg-white rounded-xl overflow-hidden divide-y divide-gray-50">
+              {[
+                { icon: UserCog, label: "Personal details", sub: "Name, phone, address", to: "/food/delivery/profile/details" },
+                { icon: Car, label: "Ride & Parcel", sub: "Ride mode, vehicle and wallet", to: "/food/delivery/ride-mode" },
+                { icon: FileText, label: "Documents", sub: "Delivery and ride documents, expiry", to: "/food/delivery/profile/documents" },
+                { icon: Landmark, label: "Bank & payout", sub: "Account for withdrawals", to: "/food/delivery/profile/bank" },
+                { icon: Bell, label: "Notifications", sub: "Orders, rides and payouts", to: "/food/delivery/notifications" },
+                { icon: CarFront, label: "Vehicle & fleet", sub: "Your ride vehicle details", ride: "/taxi/driver/vehicle-fleet" },
+                { icon: Siren, label: "Safety & SOS", sub: "Emergency contacts and SOS", ride: "/taxi/driver/security" },
+                { icon: Trophy, label: "Ride incentives", sub: "Targets and bonuses on rides", ride: "/taxi/driver/incentives" },
+                { icon: Gift, label: "Ride referral", sub: "Invite drivers and earn", ride: "/taxi/driver/referral" },
+                { icon: ShieldCheck, label: "Terms & privacy", sub: "Policies for partners", to: "/food/delivery/profile/terms" },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  onClick={() => {
+                    if (item.to) return navigate(item.to)
+                    // Ride screens need the ride session: open them with a fresh one (Back returns to this profile)
+                    openRideApp(navigate, item.ride).catch(() => toast.error("Apply for Ride & Parcel first to use this"))
+                  }}
+                  className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <item.icon className="w-5 h-5 text-gray-700 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-gray-900">{item.label}</p>
+                      <p className="text-[11px] font-medium text-gray-400 truncate">{item.sub}</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-gray-300 shrink-0" />
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Support Section */}

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import IncomingRideRequest from '../pages/IncomingRideRequest';
 import api from '../../../shared/api/axiosInstance';
 import { socketService } from '../../../shared/api/socket';
@@ -109,6 +110,7 @@ const DriverRideRequestListener = () => {
     const [acceptingRideId, setAcceptingRideId] = useState('');
     const acceptingRideIdRef = useRef('');
     const requestRef = useRef(null);
+    const notifiedCancelRef = useRef(new Set());
     const activeOnRoute = !ignoredRoutes.has(location.pathname);
 
     useEffect(() => {
@@ -252,7 +254,21 @@ const DriverRideRequestListener = () => {
             playRideRequestAlertSound();
         };
 
-        const onRideRequestClosed = ({ rideId }) => {
+        const onRideRequestClosed = (payload = {}) => {
+            const { rideId } = payload;
+
+            // The customer cancelled a trip this driver had accepted (the server sends the cancellation bill only to that
+            // driver) or a request that is on screen: say so, once per ride
+            if (payload.reason === 'user-cancelled' && rideId && !notifiedCancelRef.current.has(String(rideId))
+                && (payload.cancellationBill || requestRef.current?.rideId === rideId)) {
+                notifiedCancelRef.current.add(String(rideId));
+                const payout = Number(payload.cancellationBill?.driverBreakdown?.driverPayout || 0);
+                toast.error('Cancelled by customer', {
+                    description: payout > 0 ? `You get ₹${payout} cancellation compensation.` : 'The customer cancelled this trip.',
+                    duration: 8000,
+                });
+            }
+
             if (acceptingRideIdRef.current && acceptingRideIdRef.current === rideId) return;
 
             const activeRequest = requestRef.current;

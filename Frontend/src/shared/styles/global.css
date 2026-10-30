@@ -289,3 +289,45 @@ iframe[id*="container"],
   display: none !important;
 }
 
+
+/*
+ * Phone scroll performance: backdrop-filter and big blurred blobs force the GPU to re-blur everything behind them on every
+ * scroll frame, which makes mid-range Android phones lag. On small screens the frosted blur is dropped (panels stay
+ * translucent) and decorative glow blobs get the same soft edge from a mask instead of a blur filter.
+ */
+@media (max-width: 1024px) {
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  div.blur-2xl,
+  div.blur-3xl,
+  div[class*=" blur-["],
+  div[class^="blur-["] {
+    filter: none !important;
+    -webkit-mask-image: radial-gradient(closest-side, #000 0%, transparent 100%);
+    mask-image: radial-gradient(closest-side, #000 0%, transparent 100%);
+  }
+}
+
+/* Mobile feel: no tap delay / flash on buttons and links, and no scroll-chaining jitter inside panels */
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+a,
+button,
+[role="button"],
+input,
+select,
+textarea,
+label,
+summary {
+  touch-action: manipulation;
+}
+.overflow-y-auto,
+.overflow-auto {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}

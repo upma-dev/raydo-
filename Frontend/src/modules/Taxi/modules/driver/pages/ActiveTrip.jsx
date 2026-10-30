@@ -299,18 +299,24 @@ const resolvePhaseFromJob = (job = {}) => {
         return 'cancelled';
     }
 
-    if (['to_pickup', 'otp_verification', 'in_trip', 'payment_confirm', 'review'].includes(explicitPhase)) {
+    // The rating step is only shown once, at the very end of the trip the driver is finishing. A restored / reopened trip
+    // that is already at (or past) that step is over, so it is never shown again: 'done' sends the driver home.
+    if (explicitPhase === 'review' || storedPhase === 'review') {
+        return 'done';
+    }
+
+    if (['to_pickup', 'otp_verification', 'in_trip', 'payment_confirm'].includes(explicitPhase)) {
         return explicitPhase;
     }
 
-    if (['to_pickup', 'otp_verification', 'in_trip', 'payment_confirm', 'review'].includes(storedPhase)) {
+    if (['to_pickup', 'otp_verification', 'in_trip', 'payment_confirm'].includes(storedPhase)) {
         return storedPhase;
     }
 
     if (liveStatus === 'arriving') return 'otp_verification';
     if (liveStatus === 'started' || liveStatus === 'ongoing') return 'in_trip';
     if (liveStatus === 'arrived') return 'payment_confirm';
-    if (liveStatus === 'completed') return 'review';
+    if (liveStatus === 'completed') return 'done';
 
     return 'to_pickup';
 };
@@ -359,23 +365,23 @@ const getVehicleMarkerOffset = (width, height) => ({
     y: -(height / 2),
 });
 
-// Bundled marker per vehicle kind, used when the admin-uploaded map icon URL is missing or fails to load
-const getFallbackVehicleIcon = (iconType = '') => {
-    const value = String(iconType || '').toLowerCase();
-    if (value.includes('bike')) return bikeIcon;
+// Bundled marker per vehicle kind, used when the admin-uploaded map icon URL is missing or fails to load.
+// Several hints are checked (booking icon type, vehicle name, parcel category, the driver's own vehicle) so a two-wheeler
+// never ends up with the car marker.
+const TWO_WHEELER_HINT_RE = /bike|scooter|scooty|moped|2\s*-?\s*wheel|two\s*-?\s*wheel/i;
+const getFallbackVehicleIcon = (...hints) => {
+    const value = hints.filter(Boolean).map((hint) => String(hint)).join(' ');
+    if (TWO_WHEELER_HINT_RE.test(value)) return bikeIcon;
     return carIcon;
 };
 
-
-const useTransparentMarkerSrc = (src) => {
-  const [clean, setClean] = React.useState({ src: '', out: '' });
-  React.useEffect(() => {
-    let alive = true;
-    if (!src || /\.svg(\?|$)/i.test(src) || src.startsWith('data:image/svg')) return undefined;
-    getTransparentMarkerSrc(src).then((out) => { if (alive) setClean({ src, out }); });
-    return () => { alive = false; };
-  }, [src]);
-  return clean.src === src && clean.out ? clean.out : src;
+const readStoredDriverVehicleHints = () => {
+    try {
+        const stored = JSON.parse(localStorage.getItem('driverInfo') || '{}');
+        return [stored?.vehicleIconType, stored?.vehicleType, stored?.vehicleName];
+    } catch {
+        return [];
+    }
 };
 
 const RotatingVehicleMarker = ({ position, iconUrl = carIcon, fallbackIconUrl = carIcon, heading = 0, title = 'Driver' }) => {
@@ -878,7 +884,15 @@ const ActiveTrip = () => {
         effectiveState.image ||
         ''
     ).trim();
-    const vehicleIconUrl = rawVehicleIcon ? resolveAssetUrl(rawVehicleIcon) : carIcon;
+    const fallbackVehicleIcon = getFallbackVehicleIcon(
+        liveRaw.vehicleIconType,
+        effectiveState.vehicleIconType,
+        liveRaw.vehicleType,
+        liveRaw.parcel?.deliveryCategory,
+        liveRaw.parcel?.goodsTypeFor,
+        ...readStoredDriverVehicleHints(),
+    );
+    const vehicleIconUrl = rawVehicleIcon ? resolveAssetUrl(rawVehicleIcon) : fallbackVehicleIcon;
 
     useEffect(() => {
         if (!rideId) return;
@@ -1022,6 +1036,13 @@ const ActiveTrip = () => {
             phase: initialState?.phase || initialJob?.phase || '',
         });
     });
+    // A finished trip restored from storage / the server has nothing left to show (no second rating screen)
+    useEffect(() => {
+        if (phase === 'done') {
+            exitToDriverHome();
+        }
+    }, [phase, exitToDriverHome]);
+
     const [otp, setOtp] = useState(['', '', '', '']);
     const [otpError, setOtpError] = useState('');
     const [selectedRating, setSelectedRating] = useState(0);
@@ -2508,7 +2529,7 @@ const ActiveTrip = () => {
                         <RotatingVehicleMarker
                             position={driverPosition}
                             iconUrl={vehicleIconUrl}
-                            fallbackIconUrl={getFallbackVehicleIcon(liveRaw.vehicleIconType || effectiveState.vehicleIconType)}
+                            fallbackIconUrl={fallbackVehicleIcon}
                             heading={displayDriverHeading}
                             title="Driver"
                         />
@@ -2520,9 +2541,16 @@ const ActiveTrip = () => {
                                 fillColor: routeStrokeColor,
                                 fillOpacity: 1,
                                 strokeColor: '#ffffff',
-                                strokeWeight: 2,
-                                scale: 7,
+                                strokeWeight: 3,
+                                scale: 11,
                             }}
+                            label={{
+                                text: phase === 'to_pickup' || phase === 'otp_verification' ? 'P' : 'D',
+                                color: '#ffffff',
+                                fontSize: '11px',
+                                fontWeight: '800',
+                            }}
+                            zIndex={50}
                         />
                     </GoogleMap>
                 ) : (

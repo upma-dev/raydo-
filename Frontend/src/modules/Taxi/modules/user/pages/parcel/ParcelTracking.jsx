@@ -1,3 +1,5 @@
+import { getTransparentMarkerSrc } from '../../../admin/utils/removeImageBackground';
+import { notifyDriverCancelled } from '../../utils/driverCancelledNotice';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -40,11 +42,11 @@ const loadRazorpayScript = () =>
   });
 
 // Assets (Using the same icons as RideTracking)
-import carIcon from '@/assets/hero_sedan.png';
-import bikeIcon from '@/assets/hero_bike.png';
-import autoIcon from '@/assets/hero_bike.png';
+import carIcon from '@/assets/map_marker_car.svg';
+import bikeIcon from '@/assets/map_marker_bike.svg';
+import autoIcon from '@/assets/map_marker_bike.svg';
 import { useLiveDriverLocation } from '../../hooks/useLiveDriverLocation';
-import deliveryIcon from '@/assets/hero_parcel.png';
+import deliveryIcon from '@/assets/map_marker_bike.svg';
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
 const DEFAULT_CENTER = { lat: 22.7196, lng: 75.8577 };
@@ -87,7 +89,20 @@ const getRouteHeading = (position, path = [], fallback = 0) => {
   return nextPoint ? calculateBearing(position, nextPoint, fallback) : fallback;
 };
 
-const RotatingVehicleMarker = ({ position, iconUrl = deliveryIcon, heading = 0, title = 'Delivery Captain' }) => (
+const useTransparentMarkerSrc = (src) => {
+  const [clean, setClean] = React.useState({ src: '', out: '' });
+  React.useEffect(() => {
+    let alive = true;
+    if (!src || /\.svg(\?|$)/i.test(src) || src.startsWith('data:image/svg')) return undefined;
+    getTransparentMarkerSrc(src).then((out) => { if (alive) setClean({ src, out }); });
+    return () => { alive = false; };
+  }, [src]);
+  return clean.src === src && clean.out ? clean.out : src;
+};
+
+const RotatingVehicleMarker = ({ position, iconUrl = deliveryIcon, heading = 0, title = 'Delivery Captain' }) => {
+  const markerSrc = useTransparentMarkerSrc(iconUrl || deliveryIcon);
+  return (
   <OverlayViewF
     position={position}
     mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
@@ -99,7 +114,7 @@ const RotatingVehicleMarker = ({ position, iconUrl = deliveryIcon, heading = 0, 
         style={{ transform: `rotate(${normalizeHeading(heading)}deg)` }}
       >
         <img
-          src={iconUrl || deliveryIcon}
+          src={markerSrc}
           alt={title}
           className="h-12 w-12 object-contain drop-shadow-[0_8px_10px_rgba(15,23,42,0.35)]"
           draggable={false}
@@ -107,7 +122,8 @@ const RotatingVehicleMarker = ({ position, iconUrl = deliveryIcon, heading = 0, 
       </div>
     </div>
   </OverlayViewF>
-);
+  );
+};
 
 const getTrackingVehicleIcon = (ride, driver) => {
   const customIcon = String(
@@ -590,12 +606,18 @@ const ParcelTracking = () => {
     socketService.on('ride:state', onRideState);
     socketService.on('ride:driver-location:updated', onLocationUpdated);
     socketService.on('ride:status:updated', onStatusUpdated);
+    const onRideRequestClosed = (payload) => {
+      if (String(payload?.rideId || '') !== String(rideId)) return;
+      notifyDriverCancelled(payload);
+    };
+    socketService.on('rideRequestClosed', onRideRequestClosed);
     socketService.emit('ride:join', { rideId });
 
     return () => {
       socketService.off('ride:state', onRideState);
       socketService.off('ride:driver-location:updated', onLocationUpdated);
       socketService.off('ride:status:updated', onStatusUpdated);
+      socketService.off('rideRequestClosed', onRideRequestClosed);
     };
   }, [rideId, navigate, routePrefix, userHomeRoute]);
 
@@ -891,7 +913,7 @@ const ParcelTracking = () => {
       <motion.div
         initial={{ y: 300 }}
         animate={{ y: 0 }}
-        className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-20px_60px_rgba(0,0,0,0.15)] p-5 sm:p-6 pb-8 border-t border-gray-100 max-h-[85vh] sm:max-h-[90vh] overflow-y-auto"
+        className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-20px_60px_rgba(0,0,0,0.15)] p-5 sm:p-6 pb-[max(env(safe-area-inset-bottom),4.5rem)] border-t border-gray-100 max-h-[85vh] sm:max-h-[90vh] overflow-y-auto"
       >
         <div className="w-12 h-1.5 bg-gray-100 rounded-full mx-auto mb-6" />
 

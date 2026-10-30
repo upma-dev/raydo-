@@ -825,7 +825,7 @@ const ContactDetailsSheet = ({
             </div>
           </div>
 
-          <div className="border-t border-slate-100 px-5 py-4">
+          <div className="border-t border-slate-100 px-5 pt-4 pb-[max(env(safe-area-inset-bottom),3.5rem)]">
             <button
               type="button"
               onClick={onSave}
@@ -2132,7 +2132,7 @@ const SenderReceiverDetails = () => {
         </motion.section>
       </main>
 
-      <div className="fixed bottom-0 left-0 right-0 z-30 p-6">
+      <div className="fixed bottom-0 left-0 right-0 z-30 p-6 pb-[max(env(safe-area-inset-bottom),3.5rem)]">
         <div className="mx-auto max-w-lg relative">
           <div className="absolute inset-x-0 bottom-0 -mb-6 h-32 bg-gradient-to-t from-white via-white/80 to-transparent pointer-events-none" />
           <motion.button

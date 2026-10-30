@@ -531,6 +531,27 @@ export const cancelRideByUser = async ({ rideId, userId, reason = '', comment = 
     cancellationBill,
   });
 
+  // The driver who had accepted the trip is told even when the app is closed (a delivery partner's tokens are included)
+  if (ride.driverId) {
+    const cancelledWhat = ride.serviceType === 'parcel' ? 'delivery' : 'ride';
+    const driverPayout = Number(cancellationBill?.driverBreakdown?.driverPayout || 0);
+    const chargeText = driverPayout > 0 ? ` You will get Rs ${driverPayout} as cancellation compensation.` : '';
+    sendPushNotificationToEntities({
+      driverIds: [String(ride.driverId)],
+      title: `${cancelledWhat === 'delivery' ? 'Delivery' : 'Ride'} cancelled by customer`,
+      body: `The customer cancelled this ${cancelledWhat}.${chargeText}`,
+      data: {
+        type: 'ride_cancelled_by_user',
+        rideId: String(ride._id),
+        serviceType: ride.serviceType || 'ride',
+        targetUrl: '/taxi/driver/home',
+        link: '/taxi/driver/home',
+      },
+    }).catch((error) => {
+      console.error('Failed to send driver ride cancellation push notification', error);
+    });
+  }
+
   // Create persistent cancellation notification in driver inbox
   const cancelReasonText = String(reason || comment || 'User cancelled the ride').trim();
   const targetDriverIds = new Set();

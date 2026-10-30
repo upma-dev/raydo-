@@ -1942,8 +1942,13 @@ const DriverHome = () => {
             const locationInterval = setInterval(() => {
                 getCurrentCoords({ purpose: 'background' })
                     .then((coordinates) => {
+                        // Re-render the whole screen only when the driver actually moved (~10 m); the server still gets every ping
+                        const previous = driverCoordsRef.current;
+                        const moved = !Array.isArray(previous) || previous.length !== 2
+                            || Math.abs(previous[0] - coordinates[0]) > 0.0001
+                            || Math.abs(previous[1] - coordinates[1]) > 0.0001;
                         driverCoordsRef.current = coordinates;
-                        setDriverCoords(coordinates);
+                        if (moved) setDriverCoords(coordinates);
                         persistStoredDriverInfo({
                             location: {
                                 coordinates,
@@ -2123,6 +2128,7 @@ const DriverHome = () => {
             <IncomingRideRequest 
                 visible={showRequest && Boolean(currentRequest)}
                 requestData={currentRequest}
+                driverPosition={driverCoords}
                 isAccepting={Boolean(acceptingRideId)}
                 onAccept={handleAccept} 
                 onDecline={handleDecline}

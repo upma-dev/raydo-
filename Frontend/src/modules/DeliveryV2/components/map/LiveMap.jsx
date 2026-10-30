@@ -39,7 +39,14 @@ const mapOptions = {
     { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] }
   ]
 };
-export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineReceived, zoom = 12 }) => {
+const parseOrderPoint = (raw, fallbackLat, fallbackLng) => {
+  const coords = Array.isArray(raw?.coordinates) ? raw.coordinates : [];
+  const lat = parseFloat(raw?.lat ?? raw?.latitude ?? (coords.length >= 2 ? coords[1] : fallbackLat));
+  const lng = parseFloat(raw?.lng ?? raw?.longitude ?? (coords.length >= 2 ? coords[0] : fallbackLng));
+  return (Number.isFinite(lat) && Number.isFinite(lng)) ? { lat, lng } : null;
+};
+
+export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineReceived, zoom = 12, incomingOrder = null }) => {
   const { riderLocation, activeOrder, tripStatus } = useDeliveryStore();
   
   const { isLoaded, loadError } = useAppGoogleMapsLoader();
@@ -104,6 +111,33 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
   }, [riderLocation]);
 
   useEffect(() => { if (map) map.setZoom(zoom); }, [zoom, map]);
+
+  // Pickup (restaurant) and drop (customer) of an order that is still only an offer.
+  const incomingPickup = useMemo(() => {
+    if (!incomingOrder || activeOrder) return null;
+    return parseOrderPoint(
+      incomingOrder.restaurantLocation || incomingOrder.restaurant_location || incomingOrder.restaurantId?.location,
+      incomingOrder.restaurant_lat ?? incomingOrder.restaurantLat,
+      incomingOrder.restaurant_lng ?? incomingOrder.restaurantLng,
+    );
+  }, [incomingOrder, activeOrder]);
+
+  const incomingDrop = useMemo(() => {
+    if (!incomingOrder || activeOrder) return null;
+    return parseOrderPoint(
+      incomingOrder.customerLocation || incomingOrder.deliveryLocation || incomingOrder.deliveryAddress?.location,
+      incomingOrder.customer_lat ?? incomingOrder.customerLat,
+      incomingOrder.customer_lng ?? incomingOrder.customerLng,
+    );
+  }, [incomingOrder, activeOrder]);
+
+  // Frame rider + pickup + drop so the offer's route is visible at a glance.
+  useEffect(() => {
+    if (!map || !window.google?.maps || !incomingPickup) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    [incomingPickup, incomingDrop, parsedRiderLocation].filter(Boolean).forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
+    map.fitBounds(bounds, { top: 140, bottom: 340, left: 40, right: 40 });
+  }, [map, incomingPickup, incomingDrop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shouldUpdateRoute = useMemo(() => {
     const now = Date.now();
@@ -175,7 +209,7 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
 
   const lastCenteredPosRef = useRef(null);
   useEffect(() => {
-    if (map && parsedRiderLocation) {
+    if (map && parsedRiderLocation && !incomingPickup) {
       if (!lastCenteredPosRef.current) {
         map.panTo(parsedRiderLocation);
         lastCenteredPosRef.current = parsedRiderLocation;
@@ -190,7 +224,7 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
         lastCenteredPosRef.current = parsedRiderLocation;
       }
     }
-  }, [map, parsedRiderLocation]);
+  }, [map, parsedRiderLocation, incomingPickup]);
 
   const remainingPath = useMemo(() => {
     if (!directions || !parsedRiderLocation) return [];
@@ -252,6 +286,25 @@ export const LiveMap = ({ onMapClick, onMapLoad, onPathReceived, onPolylineRecei
 
         {targetLocation && (
           <Marker position={targetLocation} icon={{ url: (tripStatus === 'PICKING_UP' || tripStatus === 'REACHED_PICKUP') ? restaurantMarkerUrl : customerMarkerUrl, scaledSize: new window.google.maps.Size(44, 44), anchor: new window.google.maps.Point(22, 22) }} />
+        )}
+
+        {incomingPickup && (
+          <Marker
+            position={incomingPickup}
+            title="Pickup"
+            label={{ text: 'P', color: '#ffffff', fontSize: '11px', fontWeight: '800' }}
+            icon={{ path: window.google.maps.SymbolPath.CIRCLE, fillColor: '#10b981', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3, scale: 12 }}
+            zIndex={50}
+          />
+        )}
+        {incomingDrop && (
+          <Marker
+            position={incomingDrop}
+            title="Drop"
+            label={{ text: 'D', color: '#ffffff', fontSize: '11px', fontWeight: '800' }}
+            icon={{ path: window.google.maps.SymbolPath.CIRCLE, fillColor: '#f97316', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3, scale: 12 }}
+            zIndex={40}
+          />
         )}
 
         {zones.map((zone) => (
