@@ -2,7 +2,9 @@ import { toast } from "sonner";
 import { userAPI, restaurantAPI, deliveryAPI, adminAPI } from "@food/api";
 import { initializeApp, getApp, getApps } from "firebase/app";
 import fallbackNotificationSound from "@food/assets/audio/alert.mp3";
+import rideRequestAlertSoundUrl from "@/modules/Taxi/assets/sounds/ride-request-alert.mp3";
 import { playChatNotificationSound } from "@/shared/utils/chatNotificationSound";
+import { playRideRequestAlertSound } from "@/modules/Taxi/modules/driver/utils/rideRequestAlertSound";
 
 const pushNotificationSoundPath = "/zomato_sms.mp3";
 
@@ -49,7 +51,7 @@ function isRecord(value) {
 function getPushSoundSources(moduleName = normalizeModuleFromPath()) {
   // Delivery and restaurant should always use the alert tone for FCM pushes.
   if (moduleName === "delivery" || moduleName === "restaurant") {
-    return [fallbackNotificationSound];
+    return [rideRequestAlertSoundUrl, fallbackNotificationSound];
   }
   return [pushNotificationSoundPath, fallbackNotificationSound];
 }
@@ -206,13 +208,28 @@ export function isPushSoundEnabled() {
 async function triggerWebViewNativeNotification(payload = {}) {
   if (typeof window === "undefined") return false;
 
+  const data = payload?.data || {};
   const bridgePayload = {
     title: payload?.notification?.title || payload?.data?.title || "New notification",
     body: payload?.notification?.body || payload?.data?.body || "",
     notificationId: payload?.data?.notificationId || payload?.messageId || "",
     targetUrl: payload?.data?.targetUrl || payload?.data?.link || "",
     imageUrl: payload?.notification?.image || payload?.data?.image || payload?.data?.imageUrl || "",
+    rideId: data.rideId || data.ride_id || "",
+    orderId: data.orderId || data.order_id || "",
+    type: data.type || "ride_request",
+    serviceType: data.serviceType || "parcel",
+    action: "start",
   };
+
+  try {
+    if (typeof window.__nativeDriverOrderAlert === 'function') {
+      window.__nativeDriverOrderAlert(bridgePayload);
+    }
+    if (typeof window.Android?.driverOrderAlert === 'function') {
+      window.Android.driverOrderAlert(JSON.stringify(bridgePayload));
+    }
+  } catch {}
 
   try {
     if (
@@ -220,6 +237,7 @@ async function triggerWebViewNativeNotification(payload = {}) {
       typeof window.flutter_inappwebview.callHandler === "function"
     ) {
       const handlerNames = [
+        "driverOrderAlert",
         "playNotificationSound",
         "triggerNotificationFeedback",
         "onPushNotification",
@@ -301,7 +319,20 @@ export function isPushRingEvent(payload = {}) {
     return true;
   }
 
-  // 4. Delivery Partner Ring Event (when a new order is offered/assigned to driver)
+  // 4. Delivery Partner Ring Event (when a new food order or parcel / ride request is offered to driver)
+  const isRingFlag = String(data.ring || payload.ring || '').toLowerCase() === 'true';
+  const isRideOrParcelRequest =
+    type === 'ride_request' ||
+    type.includes('ride_request') ||
+    type.includes('ride') ||
+    String(data.serviceType || '').toLowerCase() === 'parcel' ||
+    title.includes('delivery request') ||
+    title.includes('ride request');
+
+  if (isRingFlag || isRideOrParcelRequest) {
+    return true;
+  }
+
   if (moduleName === 'delivery') {
     if (
       type.includes('order_assigned') ||
@@ -351,11 +382,27 @@ async function playPushSound(payload = {}) {
       return;
     }
 
+    // For ride & parcel requests, start the dedicated driver alert sound loop and native pulse
+    const isRideOrParcel =
+      type === 'ride_request' ||
+      type.includes('ride') ||
+      String(data.serviceType || '').toLowerCase() === 'parcel' ||
+      title.includes('delivery request') ||
+      title.includes('ride request');
+
+    if (isRideOrParcel) {
+      try {
+        playRideRequestAlertSound();
+      } catch (e) {
+        pushDebugWarn(PUSH_DEBUG_PREFIX, "playRideRequestAlertSound fallback", { error: e?.message });
+      }
+    }
+
     const usedNativeBridge = await triggerWebViewNativeNotification(payload);
 
     if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
       pushDebugLog(PUSH_DEBUG_PREFIX, "Triggering vibration");
-      navigator.vibrate([200, 100, 200, 100, 300]);
+      navigator.vibrate([500, 200, 500, 200, 500, 200, 800, 300, 500]);
     }
 
     if (usedNativeBridge) {
@@ -784,15 +831,22 @@ function attachServiceWorkerMessageListener() {
         return;
       }
       if (!data || data.type !== "push-notification-received") return;
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        pushDebugLog(PUSH_DEBUG_PREFIX, "Skipping page notification render for SW relay because tab is hidden");
-        return;
-      }
       if (!isRecord(data.payload)) {
         pushDebugWarn(PUSH_DEBUG_PREFIX, "Ignoring malformed SW push relay payload", { payload: data.payload });
         return;
       }
       pushDebugLog(PUSH_DEBUG_PREFIX, "Received service worker message in page", { payload: data.payload });
+
+      const isHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+      if (isHidden) {
+        // Tab is hidden (app backgrounded or screen locked): ALWAYS play sound and trigger native alarm if it is a ring event!
+        if (isPushRingEvent(data.payload)) {
+          pushDebugLog(PUSH_DEBUG_PREFIX, "Tab is hidden, but payload is a ring event: playing sound and triggering native alarm", data.payload);
+          playPushSound(data.payload);
+        }
+        return;
+      }
+
       scheduleForegroundNotification(data.payload);
     });
   }
@@ -829,15 +883,28 @@ const MODULE_OWNER_TYPE = { restaurant: "RESTAURANT", delivery: "DELIVERY_PARTNE
 function isPayloadForThisModule(payload = {}) {
   const target = String(payload?.data?.ownerType || "").toUpperCase();
   if (!target) return true;
-  const mine = MODULE_OWNER_TYPE[normalizeModuleFromPath()];
-  return !mine || mine === target;
+  const currentModule = normalizeModuleFromPath();
+  const mine = MODULE_OWNER_TYPE[currentModule];
+  if (!mine) return true;
+  if (mine === target) return true;
+  // A delivery partner also accepts taxi/parcel requests addressed to DRIVER
+  if (mine === 'DELIVERY_PARTNER' && (target === 'DRIVER' || target === 'TAXI_DRIVER')) {
+    return true;
+  }
+  return false;
 }
 
 function scheduleForegroundNotification(payload) {
   if (!isPayloadForThisModule(payload)) return;
-  // Keep message handlers fast to avoid Chrome [Violation] warnings.
-  // Defer heavier work (toast, audio) to idle time / next tick.
+  const isRing = isPushRingEvent(payload);
   const run = () => showForegroundNotification(payload);
+
+  // Ring events (new order or incoming ride/parcel request) must play immediately and never wait for idle callbacks
+  if (isRing) {
+    setTimeout(run, 0);
+    return;
+  }
+
   try {
     if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
       window.requestIdleCallback(run, { timeout: 1000 });

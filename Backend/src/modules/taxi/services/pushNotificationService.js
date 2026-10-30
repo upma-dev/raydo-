@@ -200,6 +200,7 @@ const sendPushToTargets = async ({
         priority: 'high',
         ...(isRing ? { ttl: 60000 } : {}),
         notification: {
+          channelId: isRing ? 'default' : 'silent_channel',
           ...(image ? { imageUrl: image } : {}),
           ...(isRing
             ? {
@@ -221,11 +222,21 @@ const sendPushToTargets = async ({
           }
         : {}),
       webpush: {
-        ...(isRing ? { headers: { Urgency: 'high', TTL: '60' } } : {}),
+        headers: {
+          Urgency: 'high',
+          ...(isRing ? { TTL: '60' } : {}),
+        },
         notification: {
           title,
           body,
+          icon: '/raydo-logo.png',
+          badge: '/raydo-logo.png',
           ...(image ? { image } : {}),
+          ...(isRing ? { requireInteraction: true, vibrate: [500, 200, 500, 200, 500, 200, 800, 300, 500] } : {}),
+        },
+        data: safeData,
+        fcmOptions: {
+          link: safeData.targetUrl || safeData.link || (safeData.serviceType === 'parcel' ? '/food/delivery/feed' : '/taxi/driver/home'),
         },
       },
     });

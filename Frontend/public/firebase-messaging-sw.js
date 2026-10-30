@@ -12,7 +12,7 @@ const getNotificationKey = (payload) =>
   [
     payload?.notification?.title || payload?.data?.title || "",
     payload?.notification?.body || payload?.data?.body || "",
-    payload?.data?.orderId || "",
+    payload?.data?.orderId || payload?.data?.order_id || payload?.data?.rideId || payload?.data?.ride_id || "",
     payload?.data?.targetUrl || payload?.data?.link || "",
   ].join("::");
 
@@ -21,10 +21,20 @@ const getNotificationKey = (payload) =>
 function shouldPlaySound(payload = {}) {
   const data = payload?.data || {};
   const type = String(data.type || "").toLowerCase();
+  const serviceType = String(data.serviceType || "").toLowerCase();
   const title = String(payload?.notification?.title || data.title || "").toLowerCase();
   const isChat = type.includes("chat") || data.openChat === "true" || Boolean(data.conversationId);
   if (isChat) return true;
-  if (type === "ride_request" || String(data.ring || "").toLowerCase() === "true") return true;
+  if (
+    type === "ride_request" ||
+    type.includes("ride") ||
+    serviceType === "parcel" ||
+    String(data.ring || "").toLowerCase() === "true" ||
+    title.includes("delivery request") ||
+    title.includes("ride request")
+  ) {
+    return true;
+  }
   return (
     type.includes("new_order") || type.includes("order_created") || type.includes("place_order") ||
     type.includes("order_assigned") || type.includes("order_assign") || type.includes("delivery_assigned") ||
@@ -157,15 +167,17 @@ async function loadFirebaseWebConfig() {
         notificationKey,
       });
 
+      const isRing = shouldPlaySound(payload);
       self.registration.showNotification(title, {
         body,
         icon: "/raydo-logo.png",
+        badge: "/raydo-logo.png",
         image,
         tag: notificationKey,
-        renotify: false,
-        silent: !shouldPlaySound(payload),
-        requireInteraction: shouldPlaySound(payload),
-        vibrate: [200, 100, 200, 100, 300],
+        renotify: isRing,
+        silent: !isRing,
+        requireInteraction: isRing,
+        vibrate: isRing ? [500, 200, 500, 200, 500, 200, 800, 300, 500] : [200, 100, 200],
         data: payload?.data || {},
       });
     }
@@ -203,17 +215,17 @@ self.addEventListener("push", (event) => {
 
       // If app/tab is closed or in background, show native OS notification popup!
       if (!visibleClient) {
+        const isRing = shouldPlaySound(payload);
         await self.registration.showNotification(title, {
           body,
           icon: "/raydo-logo.png",
           badge: "/raydo-logo.png",
           image,
-          // same tag as the background-message handler, so the same push is shown once and never re-alerts
           tag: notificationKey,
-          renotify: false,
-          silent: !shouldPlaySound(payload),
-          requireInteraction: shouldPlaySound(payload),
-          vibrate: [200, 100, 200, 100, 300],
+          renotify: isRing,
+          silent: !isRing,
+          requireInteraction: isRing,
+          vibrate: isRing ? [500, 200, 500, 200, 500, 200, 800, 300, 500] : [200, 100, 200],
           data: payload?.data || {},
         });
       }
@@ -265,7 +277,11 @@ self.addEventListener("notificationclick", (event) => {
           : `/food/user/orders/${orderId}/chat`;
       }
     } else if (rideId) {
-      rawLink = `/taxi/driver/home?rideId=${encodeURIComponent(rideId)}`;
+      if (notificationData.serviceType === 'parcel' || notificationData.ownerType === 'DELIVERY_PARTNER') {
+        rawLink = `/food/delivery/feed?rideId=${encodeURIComponent(rideId)}`;
+      } else {
+        rawLink = `/taxi/driver/home?rideId=${encodeURIComponent(rideId)}`;
+      }
     } else if (isRestaurantNotification) {
       rawLink = "/food/restaurant";
     } else {

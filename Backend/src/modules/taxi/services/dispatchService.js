@@ -261,9 +261,12 @@ const emitRideRequestToDrivers = async ({
     });
   }
 
+  const isParcel = ride.serviceType === 'parcel';
+  const targetUrl = isParcel ? `/food/delivery/feed?rideId=${String(ride._id)}` : `/taxi/driver/home?rideId=${String(ride._id)}`;
+
   sendPushNotificationToEntities({
     driverIds: targetDrivers.map((driver) => String(driver._id)),
-    title: ride.serviceType === 'parcel' ? 'New delivery request' : 'New ride request',
+    title: isParcel ? 'New parcel delivery request' : 'New ride request',
     body: ride.pickupAddress
       ? `Pickup: ${ride.pickupAddress}`
       : 'A new booking is waiting for your response.',
@@ -273,9 +276,16 @@ const emitRideRequestToDrivers = async ({
       ring: 'true',
       rideId: String(ride._id),
       serviceType: ride.serviceType || 'ride',
+      pickupAddress: ride.pickupAddress || '',
+      dropAddress: ride.dropAddress || '',
+      fare: String(ride.fare || 0),
+      paymentMethod: ride.paymentMethod || 'Cash',
+      distance: String(ride.estimatedDistanceMeters || 0),
       userId: String(ride.userId?._id || ride.userId || ''),
-      targetUrl: `/taxi/driver/home?rideId=${String(ride._id)}`,
-      link: `/taxi/driver/home?rideId=${String(ride._id)}`,
+      targetUrl,
+      link: targetUrl,
+      click_action: targetUrl,
+      ownerType: isParcel ? 'DELIVERY_PARTNER' : 'DRIVER',
     },
   }).then((result) => {
     // One line per request, so "no notification on a closed app" can be traced to tokens (targets) or delivery (delivered)
