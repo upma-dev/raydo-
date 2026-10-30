@@ -229,11 +229,12 @@ const normalizeDeliveryPricing = (vehicle = {}) => {
   };
 };
 
+// Used when the admin has not set delivery pricing for a vehicle type, so a parcel can still be booked (fare must be > 0)
+const FALLBACK_DELIVERY_PRICING = { basePrice: 30, freeDistance: 2, distancePrice: 10 };
+
 const calculateVehicleFare = (vehicle, distanceKm) => {
-  const pricing = normalizeDeliveryPricing(vehicle);
-  if (!pricing.enabled) {
-    return null;
-  }
+  const configured = normalizeDeliveryPricing(vehicle);
+  const pricing = configured.enabled ? configured : FALLBACK_DELIVERY_PRICING;
 
   const extraDistanceKm = Math.max(Number(distanceKm || 0) - pricing.freeDistance, 0);
   const total = pricing.basePrice + extraDistanceKm * pricing.distancePrice;
