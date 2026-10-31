@@ -68,6 +68,15 @@ export const notifyApiError = (error, config = error?.config) => {
     if (BACKGROUND_REQUEST.test(String(config?.url || ""))) return;
     const method = String(config?.method || "get").toLowerCase();
     if (method === "get" || method === "head") return;
+    // Server / timeout / network hiccups (slow response, 5xx, offline) are never shown as a toast: users saw
+    // "server not responding" pop up on actions like Cancel even though the action went through.
+    const status = Number(error?.response?.status || error?.status || 0);
+    const isTransient =
+      error?.code === "ECONNABORTED" ||
+      /timeout/i.test(String(error?.message || "")) ||
+      (!error?.response && !status) ||
+      status >= 500;
+    if (isTransient) return;
     const message = getFriendlyApiMessage(error);
     if (message && typeof window !== "undefined") {
       toast.error(message, { id: `api-error-${message}` });

@@ -134,7 +134,10 @@ const RideComplete = () => {
   const hasVehiclePhoto = isLikelyVehiclePhoto(driver.vehicleImage) && !vehicleImageBroken;
   const vehicleVisual = hasVehiclePhoto ? driver.vehicleImage : getVehicleIcon(serviceType, {
     ...driver,
-    vehicleIconUrl: driver.vehicleIconUrl || state.vehicleIconUrl || state.vehicle?.vehicleIconUrl || state.vehicle?.icon || '',
+    // once a remote image has failed, drop all remote URLs and use the bundled icon
+    ...(vehicleImageBroken
+      ? { vehicleIconUrl: '', map_icon: '', icon: '' }
+      : { vehicleIconUrl: driver.vehicleIconUrl || state.vehicleIconUrl || state.vehicle?.vehicleIconUrl || state.vehicle?.icon || '' }),
   });
   const totalBill = fare + Number(selectedTip || 0);
   const fareDueNow = isCollectionPaid(paymentCollection) ? 0 : fare;
@@ -628,7 +631,7 @@ const RideComplete = () => {
                 <img
                   src={vehicleVisual}
                   alt={vehicleLabel}
-                  className={`h-full w-full ${hasVehiclePhoto ? 'object-contain bg-white' : 'object-cover'}`}
+                  className={`h-full w-full ${hasVehiclePhoto || vehicleImageBroken ? 'object-contain bg-white' : 'object-cover'}`}
                   onError={() => setVehicleImageBroken(true)}
                 />
               </div>

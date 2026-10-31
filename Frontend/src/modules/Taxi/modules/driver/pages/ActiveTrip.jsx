@@ -770,9 +770,20 @@ const ActiveTrip = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const routeState = useMemo(() => location.state || {}, [location.state]);
-    const storedActiveTripSnapshot = useMemo(() => readStoredActiveTripSnapshot(), []);
-    const [hydratedTripState, setHydratedTripState] = useState(() => storedActiveTripSnapshot);
     const routeRideId = routeState?.rideId || routeState?.request?.rideId || '';
+    // The saved snapshot is a single slot, so it may belong to a PREVIOUS ride. Only reuse it when it is for the ride we were
+    // opened for; otherwise the old ride's phase (in_trip) and drop point would hide the new ride's pickup and OTP step.
+    const storedActiveTripSnapshot = useMemo(() => {
+        const snapshot = readStoredActiveTripSnapshot();
+        if (!snapshot) return null;
+        if (routeRideId && String(snapshot.rideId || '') !== String(routeRideId)) {
+            clearStoredActiveTripSnapshot();
+            return null;
+        }
+        return snapshot;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    const [hydratedTripState, setHydratedTripState] = useState(() => storedActiveTripSnapshot);
     const routeOtp = routeState?.request?.raw?.otp || routeState?.request?.otp || routeState?.otp || '';
     const [isHydratingTrip, setIsHydratingTrip] = useState(!routeRideId || !routeOtp);
     const [cancellationBillReceipt, setCancellationBillReceipt] = useState(null);
