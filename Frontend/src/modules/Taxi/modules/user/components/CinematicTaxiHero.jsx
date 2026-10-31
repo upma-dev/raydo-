@@ -205,7 +205,23 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
   const [activeModeIndex, setActiveModeIndex] = useState(0);
   const [cleanVehicleUrls, setCleanVehicleUrls] = useState({});
   const autoCycleRef = useRef(null);
+  const sceneRef = useRef(null);
+  const [sceneVisible, setSceneVisible] = useState(true);
   const loopDuration = 7.0;
+
+  // Infinite framer-motion loops keep running on the main thread even when the hero is
+  // scrolled out of view, which makes scrolling the rest of the page janky on phones.
+  // Only keep the animated scene mounted while it is (almost) on screen.
+  useEffect(() => {
+    const node = sceneRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => setSceneVisible(entries.some((entry) => entry.isIntersecting)),
+      { rootMargin: '80px 0px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   // 1. Process and cache 100% transparent vehicle assets on mount
   useEffect(() => {
@@ -224,11 +240,12 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
 
   // 2. Auto-cycle vehicles — switches after each drive pass
   useEffect(() => {
+    if (!sceneVisible) return undefined;
     autoCycleRef.current = setInterval(() => {
       setActiveModeIndex((prev) => (prev + 1) % MOBILITY_SERVICES.length);
     }, loopDuration * 1000);
     return () => clearInterval(autoCycleRef.current);
-  }, [loopDuration]);
+  }, [loopDuration, sceneVisible]);
 
   // 3. Sync Location Listener
   useEffect(() => {
@@ -290,11 +307,12 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
 
   useEffect(() => {
+    if (!sceneVisible) return undefined;
     const interval = setInterval(() => {
       setPlaceholderIdx((prev) => (prev + 1) % PLACEHOLDERS.length);
     }, 2800);
     return () => clearInterval(interval);
-  }, []);
+  }, [sceneVisible]);
 
   return (
     <div className="relative w-full bg-gradient-to-b from-[#0B2F7A] via-[#1450B8] to-[#2B6FE0] text-white select-none min-h-[440px] sm:min-h-[460px] flex flex-col justify-between pb-3.5 transition-all duration-300">
@@ -321,7 +339,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
         <button
           type="button"
           onClick={() => navigate('/taxi/user/ride/select-location')}
-          className="flex items-center gap-1.5 bg-white/10 hover:bg-white/18 border border-white/15 backdrop-blur-xl px-3.5 py-1.5 rounded-full text-white shadow-lg transition-all active:scale-95 group min-w-0 max-w-[160px] sm:max-w-[210px]"
+          className="flex items-center gap-1.5 bg-white/10 hover:bg-white/18 border border-white/15 px-3.5 py-1.5 rounded-full text-white shadow-lg transition-all active:scale-95 group min-w-0 max-w-[160px] sm:max-w-[210px]"
         >
           <MapPin size={13} className="text-[#FFC400] fill-[#FFC400]/20 shrink-0" strokeWidth={2.5} />
           <span className="text-[12px] font-extrabold truncate text-white/95">{locationText}</span>
@@ -333,7 +351,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
           type="button"
           whileTap={{ scale: 0.9 }}
           onClick={() => navigate('/taxi/user/wallet')}
-          className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white shadow-lg transition-all"
+          className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white shadow-lg transition-all"
           aria-label="Wallet"
         >
           <div className="w-4.5 h-4.5 rounded-md bg-[#FFC400] text-[#070A18] font-black text-[10px] flex items-center justify-center shadow-sm">
@@ -346,7 +364,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
       {/* 2. FOOD / TAXI SWITCHER BUTTON */}
       {/* ========================================================================= */}
       <div className="relative z-40 flex justify-center mt-0.5 px-3">
-        <div className="bg-[#0B2F7A]/55 p-1 rounded-full flex items-center gap-1 border border-white/20 backdrop-blur-xl shadow-lg">
+        <div className="bg-[#0B2F7A]/55 p-1 rounded-full flex items-center gap-1 border border-white/20 shadow-lg">
           <button
             type="button"
             onClick={() => {
@@ -380,7 +398,8 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
       {/* ========================================================================= */}
       {/* 4. HERO ENVIRONMENT (SCENE 1-8 REAL-TIME JOURNEY PULSE ANIMATION) */}
       {/* ========================================================================= */}
-      <div className="relative w-full h-[220px] sm:h-[250px] my-auto overflow-hidden">
+      <div ref={sceneRef} className="relative w-full h-[220px] sm:h-[250px] my-auto overflow-hidden">
+        {sceneVisible && (<>
         {/* PARALLAX LAYER 1: NIGHT CITY SKYLINE & ATMOSPHERE */}
         <motion.div
           animate={{ x: parallaxShiftX }}
@@ -390,12 +409,12 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_25%,#3B82F6_0%,#1D5FD1_45%,#0B2F7A_100%)]" />
 
           {/* Ambient Sky Glows */}
-          <div className="absolute top-2 left-1/4 w-72 h-72 rounded-full bg-sky-300/30 blur-[95px]" />
-          <div className="absolute bottom-4 right-8 w-80 h-80 rounded-full bg-blue-300/25 blur-[105px]" />
-          <div className="absolute top-8 right-1/3 w-44 h-44 rounded-full bg-[#FFC400]/12 blur-[75px]" />
+          <div className="absolute top-2 left-1/4 w-72 h-72 rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.35)_0%,rgba(125,211,252,0)_70%)]" />
+          <div className="absolute bottom-4 right-8 w-80 h-80 rounded-full bg-[radial-gradient(circle,rgba(147,197,253,0.3)_0%,rgba(147,197,253,0)_70%)]" />
+          <div className="absolute top-8 right-1/3 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(255,196,0,0.16)_0%,rgba(255,196,0,0)_70%)]" />
 
           {/* City Silhouette */}
-          <div className="absolute inset-x-0 bottom-12 h-40 opacity-25 flex items-end justify-between px-1 blur-[1px]">
+          <div className="absolute inset-x-0 bottom-12 h-40 opacity-25 flex items-end justify-between px-1">
             <svg className="w-full h-full text-sky-200" viewBox="0 0 800 180" preserveAspectRatio="none" fill="currentColor">
               <path d="M0 180 L0 100 L30 100 L30 75 L50 75 L50 100 L75 100 L75 180 Z" opacity="0.4" />
               <path d="M70 180 L70 65 L100 65 L100 40 L120 40 L120 65 L150 65 L150 180 Z" opacity="0.6" />
@@ -486,7 +505,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
               opacity: [0, 0.9, 0, 0, 0, 0, 0, 0],
             }}
             transition={{ duration: loopDuration, repeat: Infinity, ease: 'easeOut', times: timeTimes }}
-            className="absolute -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full border-2 border-[#FFC400] bg-[#FFC400]/25 blur-[2px] shadow-[0_0_20px_#FFC400]"
+            className="absolute -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full border-2 border-[#FFC400] bg-[#FFC400]/25 shadow-[0_0_20px_#FFC400]"
           />
 
           {/* SCENE 1 & 5: PICKUP MARKER (Now at Top-Right Position) */}
@@ -499,7 +518,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
                 y: [0, 0, 0, -8, -8, 0, 0, 0],
               }}
               transition={{ duration: loopDuration, repeat: Infinity, ease: 'easeInOut', times: timeTimes }}
-              className="mb-1 bg-[#0B2F7A]/90 border border-[#FFC400]/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-[0_0_12px_rgba(255,196,0,0.3)] flex items-center gap-1.5"
+              className="mb-1 bg-[#0B2F7A]/90 border border-[#FFC400]/50 px-2.5 py-1 rounded-full shadow-[0_0_12px_rgba(255,196,0,0.3)] flex items-center gap-1.5"
             >
               <div className="w-1.5 h-1.5 rounded-full bg-[#FFC400] animate-ping" />
               <span className="text-[10.5px] font-black text-[#FFC400] tracking-wide whitespace-nowrap">
@@ -515,10 +534,10 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
                   opacity: [0.4, 0.7, 0.4, 0.9, 0.4, 0.4, 0.4, 0.4],
                 }}
                 transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                className="absolute w-8 h-8 rounded-full bg-[#FFC400]/30 blur-sm pointer-events-none"
+                className="absolute w-8 h-8 rounded-full bg-[#FFC400]/30 pointer-events-none"
               />
 
-              <div className="flex items-center gap-1.5 bg-[#0B2F7A]/85 border border-white/20 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg whitespace-nowrap">
+              <div className="flex items-center gap-1.5 bg-[#0B2F7A]/85 border border-white/20 px-2.5 py-1 rounded-full shadow-lg whitespace-nowrap">
                 <div className="w-2.5 h-2.5 rounded-full bg-[#FFC400]" />
                 <span className="text-[10px] font-black text-[#FFC400] tracking-wider uppercase">
                   {currentServiceObj.id === 'parcel' ? 'Sender' : isPool ? 'Pickup A' : 'Pickup'}
@@ -536,11 +555,11 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
                   scale: [0.8, 0.8, 0.8, 0.8, 1, 0.8, 0.8, 0.8],
                 }}
                 transition={{ duration: loopDuration, repeat: Infinity, ease: 'easeInOut', times: timeTimes }}
-                className="mb-1 bg-[#123E96]/90 border border-sky-300/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg"
+                className="mb-1 bg-[#123E96]/90 border border-sky-300/50 px-2.5 py-1 rounded-full shadow-lg"
               >
                 <span className="text-[10px] font-black text-sky-200">Pickup B</span>
               </motion.div>
-              <div className="flex items-center gap-1 bg-[#0B2F7A]/85 border border-sky-300/30 backdrop-blur-md px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap">
+              <div className="flex items-center gap-1 bg-[#0B2F7A]/85 border border-sky-300/30 px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap">
                 <div className="w-2 h-2 rounded-full bg-sky-300" />
                 <span className="text-[9px] font-black text-sky-200 uppercase">Pickup B</span>
               </div>
@@ -556,13 +575,13 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
                 scale: [0.8, 0.8, 0.8, 0.8, 0.8, 1, 1, 0.8],
               }}
               transition={{ duration: loopDuration, repeat: Infinity, ease: 'easeInOut', times: timeTimes }}
-              className="mb-1 bg-[#123E96]/90 border border-sky-300/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1.5"
+              className="mb-1 bg-[#123E96]/90 border border-sky-300/50 px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1.5"
             >
               <div className="w-1.5 h-1.5 rounded-full bg-sky-300 animate-pulse" />
               <span className="text-[10px] font-black text-sky-100 whitespace-nowrap">Arriving</span>
             </motion.div>
 
-            <div className="flex items-center gap-1.5 bg-[#0B2F7A]/85 border border-sky-300/30 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg whitespace-nowrap">
+            <div className="flex items-center gap-1.5 bg-[#0B2F7A]/85 border border-sky-300/30 px-2.5 py-1 rounded-full shadow-lg whitespace-nowrap">
               <div className="w-2.5 h-2.5 rounded-full bg-sky-300 animate-pulse" />
               <span className="text-[10px] font-black text-sky-200 tracking-wider uppercase">
                 {currentServiceObj.id === 'parcel' ? 'Receiver' : 'Destination'}
@@ -593,7 +612,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
               <div className={`relative ${currentServiceObj.vehicleWidth}`}>
                 {/* A. Soft Ambient Chassis Aura */}
                 <div
-                  className="absolute bottom-[-6px] left-[12%] right-[12%] h-7 rounded-full blur-xl pointer-events-none opacity-75"
+                  className="absolute bottom-[-6px] left-[12%] right-[12%] h-7 rounded-full pointer-events-none opacity-60"
                   style={{ background: currentServiceObj.glowColor }}
                 />
 
@@ -602,7 +621,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
 
                 {/* C. Flipped Vertical Road Surface Reflection */}
                 {activeVehicleSrc && (
-                  <div className="absolute top-[85%] left-0 right-0 h-full pointer-events-none overflow-hidden opacity-25 filter blur-[3px] scale-y-[-0.55] origin-top">
+                  <div className="absolute top-[85%] left-0 right-0 h-full pointer-events-none overflow-hidden opacity-20 scale-y-[-0.55] origin-top">
                     <img src={activeVehicleSrc} alt="" className="w-full h-auto object-contain grayscale brightness-125" />
                   </div>
                 )}
@@ -615,7 +634,6 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
                   style={{
                     background: currentServiceObj.beamColor,
                     clipPath: 'polygon(100% 35%, 0% 5%, 0% 95%, 100% 65%)',
-                    filter: 'blur(3px)',
                   }}
                 />
 
@@ -637,11 +655,12 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
           </AnimatePresence>
         </div>
 
+        </>)}
         {/* PARALLAX LAYER 5: FOREGROUND OCCLUSION ELEMENTS (PHYSICAL ENVIRONMENT DEPTH) */}
         {/* Street Lamp Pole at X: 35% */}
         <div className="absolute left-[35%] bottom-0 top-0 w-8 z-30 pointer-events-none flex flex-col items-center">
-          <div className="w-2 h-full bg-gradient-to-t from-slate-900 via-slate-800/80 to-transparent blur-[1px] opacity-80" />
-          <div className="absolute top-12 w-8 h-8 rounded-full bg-[#FFC400]/20 blur-md" />
+          <div className="w-2 h-full bg-gradient-to-t from-slate-900 via-slate-800/80 to-transparent opacity-80" />
+          <div className="absolute top-12 w-8 h-8 rounded-full bg-[#FFC400]/20" />
         </div>
       </div>
 
@@ -652,7 +671,7 @@ export default function CinematicTaxiHero({ onSearchFocus }) {
         <button
           type="button"
           onClick={onSearchFocus}
-          className="w-full h-[50px] rounded-[16px] bg-white/95 hover:bg-white backdrop-blur-2xl border border-white/90 shadow-[0_12px_32px_rgba(0,0,0,0.5)] hover:shadow-[0_16px_40px_rgba(255,196,0,0.3)] flex items-center justify-between px-4 transition-all duration-300 active:scale-[0.99] group cursor-pointer"
+          className="w-full h-[50px] rounded-[16px] bg-white/95 hover:bg-white border border-white/90 shadow-[0_12px_32px_rgba(0,0,0,0.5)] hover:shadow-[0_16px_40px_rgba(255,196,0,0.3)] flex items-center justify-between px-4 transition-all duration-300 active:scale-[0.99] group cursor-pointer"
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="w-8 h-8 rounded-xl bg-[#FFC400]/15 flex items-center justify-center text-[#FFC400] shrink-0 border border-[#FFC400]/30 group-hover:scale-105 transition-transform">

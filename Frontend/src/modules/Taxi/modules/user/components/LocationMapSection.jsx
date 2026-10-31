@@ -86,8 +86,31 @@ const LocationMapSection = ({ plain = false }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [map, setMap] = useState(null);
   const [nearbyDrivers, setNearbyDrivers] = useState([]);
+  const [mapNearViewport, setMapNearViewport] = useState(false);
+  const mapHolderRef = useRef(null);
   const isDraggingRef = useRef(false);
   const requestedLocationRef = useRef(false);
+
+  // Mount the (heavy) Google Map only once it is close to the viewport, so it
+  // doesn't compete with scrolling / first paint.
+  useEffect(() => {
+    const node = mapHolderRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setMapNearViewport(true);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setMapNearViewport(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '300px 0px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   const { isLoaded, loadError } = useAppGoogleMapsLoader();
 
   const persistCoords = (next) => {
@@ -288,11 +311,9 @@ const LocationMapSection = ({ plain = false }) => {
       </div>
 
       <div className="relative mt-3 rounded-[20px] bg-[linear-gradient(135deg,rgba(16,185,129,0.40)_0%,rgba(56,189,248,0.22)_50%,rgba(251,146,60,0.16)_100%)] p-[1px] shadow-[0_0_0_1px_rgba(16,185,129,0.10),0_10px_22px_rgba(15,23,42,0.06)]">
-        <motion.div
+        <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-0 rounded-[20px] blur-xl"
-          animate={{ opacity: [0.14, 0.26, 0.14] }}
-          transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}
+          className="pointer-events-none absolute inset-0 z-0 rounded-[20px] opacity-20"
           style={{
             background:
               'linear-gradient(135deg, rgba(16,185,129,0.22) 0%, rgba(56,189,248,0.14) 52%, rgba(251,146,60,0.10) 100%)',
@@ -300,8 +321,11 @@ const LocationMapSection = ({ plain = false }) => {
         />
 
         <div className="relative z-10 overflow-hidden rounded-[19px] border border-white/70 bg-white/85">
-          <div className="relative h-[170px] w-full">
-            {!HAS_VALID_GOOGLE_MAPS_KEY && (
+          <div ref={mapHolderRef} className="relative h-[170px] w-full">
+            {!mapNearViewport && (
+              <div className="h-full w-full bg-[#E3EEFF]" />
+            )}
+            {mapNearViewport && !HAS_VALID_GOOGLE_MAPS_KEY && (
               <div className="flex h-full w-full items-center justify-center px-5 text-center">
                 <div>
                   <p className="text-[12px] font-black text-slate-900">Google Maps key missing</p>
@@ -310,7 +334,7 @@ const LocationMapSection = ({ plain = false }) => {
               </div>
             )}
 
-            {HAS_VALID_GOOGLE_MAPS_KEY && loadError && (
+            {mapNearViewport && HAS_VALID_GOOGLE_MAPS_KEY && loadError && (
               <div className="flex h-full w-full items-center justify-center px-5 text-center">
                 <div>
                   <p className="text-[12px] font-black text-slate-900">Map failed to load</p>
@@ -319,7 +343,7 @@ const LocationMapSection = ({ plain = false }) => {
               </div>
             )}
 
-            {HAS_VALID_GOOGLE_MAPS_KEY && !loadError && !isLoaded && (
+            {mapNearViewport && HAS_VALID_GOOGLE_MAPS_KEY && !loadError && !isLoaded && (
               <div className="flex h-full w-full items-center justify-center">
                 <div className="flex items-center gap-2 rounded-[16px] bg-white/90 px-4 py-3 shadow-sm">
                   <LoaderCircle size={18} className="animate-spin text-slate-500" />
@@ -328,7 +352,7 @@ const LocationMapSection = ({ plain = false }) => {
               </div>
             )}
 
-            {HAS_VALID_GOOGLE_MAPS_KEY && !loadError && isLoaded && (
+            {mapNearViewport && HAS_VALID_GOOGLE_MAPS_KEY && !loadError && isLoaded && (
               <GoogleMap
                 mapContainerStyle={MAP_CONTAINER_STYLE}
                 center={{ lat: centerCoords.lat, lng: centerCoords.lon }}
@@ -393,7 +417,9 @@ const LocationMapSection = ({ plain = false }) => {
                   streetViewControl: false,
                   fullscreenControl: false,
                   mapTypeControl: false,
-                  gestureHandling: 'greedy',
+                  // 'cooperative': one finger scrolls the page, two fingers move the map.
+                  // 'greedy' hijacked every swipe that started on the map -> page scroll felt stuck.
+                  gestureHandling: 'cooperative',
                 }}
               >
                 {nearbyDrivers.map((driver, index) => {

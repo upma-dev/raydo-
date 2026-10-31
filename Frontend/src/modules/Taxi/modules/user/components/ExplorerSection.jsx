@@ -67,13 +67,15 @@ const ExplorerSection = ({ plain = false }) => {
 
   const marqueeStyle = `
     @keyframes marquee {
-      0% { transform: translateX(0); }
-      100% { transform: translateX(-50%); }
+      0% { transform: translate3d(0, 0, 0); }
+      100% { transform: translate3d(-50%, 0, 0); }
     }
     .animate-marquee-left {
       display: flex;
       width: max-content;
       animation: marquee 30s linear infinite;
+      will-change: transform;
+      backface-visibility: hidden;
     }
     .marquee-wrapper:hover .animate-marquee-left {
       animation-play-state: paused;
@@ -125,11 +127,12 @@ const ExplorerSection = ({ plain = false }) => {
                   <img
                     src={city.image}
                     alt={city.title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                    className="w-full h-full object-cover"
                     loading="lazy"
+                    decoding="async"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/20 to-transparent"></div>
-                  <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-2 py-0.5 rounded-full shadow-sm border border-white/60 z-10">
+                  <div className="absolute top-3 right-3 bg-white/95 px-2 py-0.5 rounded-full shadow-sm border border-white/60 z-10">
                     <p className="text-[8px] font-black text-indigo-600 tracking-widest uppercase">{city.code}</p>
                   </div>
                 </div>

@@ -70,7 +70,7 @@ const RideEssentials = ({ plain = false }) => {
             onClick={() => navigate(path)}
             className="group relative overflow-hidden rounded-[22px] border border-blue-200/70 bg-[#E3EEFF] p-4 text-left shadow-[0_10px_26px_rgba(15,23,42,0.06)] min-h-[132px] flex flex-col justify-between"
           >
-            <div className={`pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-gradient-to-br ${glow} to-transparent blur-xl`} />
+            <div className={`pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-gradient-to-br ${glow} to-transparent opacity-80`} />
             <div className="relative flex items-start justify-between">
               <div className={`h-10 w-10 rounded-2xl flex items-center justify-center ${chip}`}>
                 <Icon size={19} strokeWidth={2.4} />

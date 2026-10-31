@@ -39,7 +39,7 @@ const resolveAssetUrl = (value = '') => {
 const Motion = motion;
 const ACTIVE_RIDE_SYNC_INTERVAL_MS = 12000;
 const IDLE_RIDE_SYNC_INTERVAL_MS = 30000;
-const DEFERRED_SECTION_DELAY_MS = 250;
+const DEFERRED_SECTION_DELAY_MS = 60;
 
 const getCurrentRideIcon = (ride) => {
   const customIcon = String(
@@ -592,9 +592,10 @@ const Home = ({ embedded = false }) => {
   return (
     <div className={`${embedded ? 'relative' : 'min-h-screen'} ${pageBgClass} ${embedded ? 'pb-6' : 'pb-24'} w-full relative font-sans no-scrollbar`}>
       {/* Light mix blue draped ambient background elements */}
-      <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-full max-w-lg h-[450px] bg-[radial-gradient(ellipse_at_top,_rgba(96,165,250,0.45)_0%,_rgba(207,226,255,0.6)_50%,_rgba(207,226,255,0)_80%)] blur-2xl pointer-events-none" />
-      <div className="absolute top-44 -left-20 h-80 w-80 rounded-full bg-blue-300/30 blur-3xl pointer-events-none" />
-      <div className="absolute top-[32rem] -right-20 h-96 w-96 rounded-full bg-sky-300/30 blur-3xl pointer-events-none" />
+      {/* Static soft gradients (no CSS blur filters - those repaint on every scroll frame on mobile) */}
+      <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-full max-w-lg h-[450px] bg-[radial-gradient(ellipse_at_top,_rgba(96,165,250,0.45)_0%,_rgba(207,226,255,0.6)_50%,_rgba(207,226,255,0)_80%)] pointer-events-none" />
+      <div className="absolute top-44 -left-20 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(147,197,253,0.4)_0%,rgba(147,197,253,0)_70%)] pointer-events-none" />
+      <div className="absolute top-[32rem] -right-20 h-96 w-96 rounded-full bg-[radial-gradient(circle,rgba(125,211,252,0.4)_0%,rgba(125,211,252,0)_70%)] pointer-events-none" />
 
       <div className="relative z-10 space-y-0 pb-6">
         {!embedded && (
@@ -675,7 +676,7 @@ const Home = ({ embedded = false }) => {
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mx-5 overflow-hidden rounded-[32px] border border-white/60 bg-white/50 p-5 shadow-[0_20px_40px_rgba(0,0,0,0.06)] backdrop-blur-2xl relative"
+            className="mx-5 overflow-hidden rounded-[32px] border border-white/60 bg-white/80 p-5 shadow-[0_20px_40px_rgba(0,0,0,0.06)] relative"
           >
             <div className="relative z-10 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -749,7 +750,7 @@ const Home = ({ embedded = false }) => {
             exit={{ y: 18, opacity: 0, scale: 0.96 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => navigate(trackingPath, { state: currentRide })}
-            className="fixed bottom-24 left-4 right-4 z-[60] mx-auto flex max-w-[calc(32rem-2rem)] items-center gap-3 rounded-[20px] border border-white/80 bg-white/95 px-4 py-3 text-left shadow-[0_12px_34px_rgba(15,23,42,0.16)] backdrop-blur-xl"
+            className="fixed bottom-24 left-4 right-4 z-[60] mx-auto flex max-w-[calc(32rem-2rem)] items-center gap-3 rounded-[20px] border border-white/80 bg-white px-4 py-3 text-left shadow-[0_12px_34px_rgba(15,23,42,0.16)]"
           >
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] bg-slate-900 shadow-lg">
               <img src={currentRideIcon} alt={vehicleLabel} className="h-8 w-8 object-contain" draggable={false} />

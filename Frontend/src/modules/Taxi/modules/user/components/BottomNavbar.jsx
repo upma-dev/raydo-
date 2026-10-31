@@ -20,7 +20,7 @@ const BottomNavbar = () => {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto z-[100] px-6 pb-6 pt-2 pointer-events-none">
-      <div className="flex items-center justify-around bg-white/70 backdrop-blur-2xl border border-white/40 rounded-[32px] shadow-[0_20px_40px_rgba(0,0,0,0.12)] px-2 py-2 pointer-events-auto relative">
+      <div className="flex items-center justify-around bg-white/95 border border-white/60 rounded-[32px] shadow-[0_12px_28px_rgba(0,0,0,0.12)] px-2 py-2 pointer-events-auto relative">
         {navItems.map(({ icon: Icon, label, path }) => {
           const isActive =
             path === '/taxi/user'
