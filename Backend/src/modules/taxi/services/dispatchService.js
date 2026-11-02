@@ -204,6 +204,8 @@ const emitRideRequestToDrivers = async ({
   }
 
   const requestExpiresAt = new Date(Date.now() + dispatchConfig.retryDelayMs).toISOString();
+  const { estimateDriverEarning } = await import('../driver/services/walletService.js');
+  const earningEstimate = await estimateDriverEarning(ride);
 
   for (const driver of targetDrivers) {
     console.log(`[DISPATCH_SERVICE] Emitting 'rideRequest' to Driver: ${driver._id} (Room: ${getDriverRoom(driver._id)}) for Ride: ${ride._id}`);
@@ -230,6 +232,8 @@ const emitRideRequestToDrivers = async ({
       vehicleIconType: ride.vehicleIconType,
       vehicleIconUrl: ride.vehicleIconUrl || '',
       fare: ride.fare,
+      estimatedDriverEarning: earningEstimate ? earningEstimate.earning : null,
+      estimatedCommission: earningEstimate ? earningEstimate.commission : null,
       baseFare: Number(ride.baseFare || ride.fare || 0),
       bookingMode: ride.bookingMode || 'normal',
       pricingNegotiationMode: ride.pricingNegotiationMode || 'none',
@@ -1366,6 +1370,8 @@ export const getActivePendingDispatchForDriver = async (driverId, requestedRideI
       const attemptIndex = Number.isInteger(dispatchState.radiusIndex) ? dispatchState.radiusIndex : 0;
       const requestExpiresAt = new Date(Date.now() + (dispatchConfig.retryDelayMs || 25000)).toISOString();
 
+      const { estimateDriverEarning: estimatePendingEarning } = await import('../driver/services/walletService.js');
+      const pendingEarning = await estimatePendingEarning(ride);
       return {
         rideId: String(ride._id),
         type: ride.serviceType || 'ride',
@@ -1389,6 +1395,8 @@ export const getActivePendingDispatchForDriver = async (driverId, requestedRideI
         vehicleIconType: ride.vehicleIconType,
         vehicleIconUrl: ride.vehicleIconUrl || '',
         fare: ride.fare,
+        estimatedDriverEarning: pendingEarning ? pendingEarning.earning : null,
+        estimatedCommission: pendingEarning ? pendingEarning.commission : null,
         baseFare: Number(ride.baseFare || ride.fare || 0),
         bookingMode: ride.bookingMode || 'normal',
         pricingNegotiationMode: ride.pricingNegotiationMode || 'none',

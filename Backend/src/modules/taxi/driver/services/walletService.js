@@ -110,6 +110,29 @@ const resolveCommissionConfigForRide = async (ride, session) => {
   };
 };
 
+/**
+ * What the driver will earn on this ride, worked out the same way as at completion (fare minus surge, minus the admin
+ * commission set for this vehicle). Shown on the request card so the driver sees his own earning, not the customer's fare.
+ */
+export const estimateDriverEarning = async (ride) => {
+  try {
+    const fare = Math.round(ride?.fare || 0);
+    const previousCancellationFee = Math.max(0, Math.round(ride?.previousCancellationFee || 0));
+    const baseRideFare = Math.max(0, Math.round(ride?.baseRideFare || (fare - previousCancellationFee)));
+    const surgeAmount = Math.max(0, Math.round(ride?.pricingSnapshot?.ride_surge_amount || 0));
+    const commissionableFare = Math.max(0, baseRideFare - surgeAmount);
+    const commissionConfig = await resolveCommissionConfigForRide(ride, null);
+    const commissionAmount = Math.round(computeCommissionAmount({
+      fare: commissionableFare,
+      type: commissionConfig.type,
+      value: commissionConfig.value,
+    }));
+    return { earning: Math.max(baseRideFare - commissionAmount, 0), commission: commissionAmount };
+  } catch {
+    return null;
+  }
+};
+
 const toNonNegativeNumber = (value, fallback = 0) => {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : fallback;

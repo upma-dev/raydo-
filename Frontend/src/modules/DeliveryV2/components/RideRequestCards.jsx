@@ -76,8 +76,13 @@ const RequestCard = ({ job, now, driverPos, onAccept, onDecline, accepting }) =>
         {vehicleLabel(job)}
       </span>
       <div className="mt-1 flex items-baseline justify-between">
-        <div className="text-3xl font-extrabold text-gray-900">
-          ₹{Number(job.fare || 0)}
+        <div>
+          <div className="text-3xl font-extrabold text-gray-900">
+            ₹{job.estimatedDriverEarning != null ? Number(job.estimatedDriverEarning) : Number(job.fare || 0)}
+          </div>
+          {job.estimatedDriverEarning != null && (
+            <div className="text-[11px] font-semibold text-green-600">You earn · trip fare ₹{Number(job.fare || 0)}</div>
+          )}
         </div>
       </div>
       <div className={`mt-1 inline-block rounded-md px-2 py-0.5 text-xs font-bold ${isCashPayment ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-700'}`}>

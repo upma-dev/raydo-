@@ -2957,10 +2957,10 @@ const ActiveTrip = () => {
                     {phase === 'payment_confirm' && (
                         <motion.div
                             key="payment_confirm"
-                            initial={{ y: '100%' }}
-                            animate={{ y: 0 }}
-                            exit={{ y: '100%' }}
-                            className="bg-white rounded-t-[2.5rem] p-6 pb-8 shadow-2xl border-t border-slate-100"
+                            initial={{ opacity: 0, y: 40 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 40 }}
+                            className="fixed inset-0 z-[400] overflow-y-auto bg-white px-6 pb-10 pt-14"
                         >
                             <div className="text-center mb-6">
                                 <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center mb-3 shadow-lg transition-all duration-500 text-white" style={{ backgroundColor: driverPaymentStatus === 'success' ? routeStrokeColor : '#0f172a' }}>
@@ -2972,6 +2972,10 @@ const ActiveTrip = () => {
                                 <p className="text-[12px] font-bold text-slate-400 mt-1 uppercase tracking-wide">
                                     {driverPaymentStatus === 'success' ? 'Ready to close this trip' : tripSummarySubtitle}
                                 </p>
+                                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Final bill · collect from {paymentCollectionLabel}</p>
+                                    <p className="mt-1 text-[34px] font-black leading-none text-slate-900">{collectibleFareLabel}</p>
+                                </div>
                             </div>
                             <div className="mb-6 overflow-hidden rounded-[28px] border border-slate-100 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_100%)] shadow-[0_18px_45px_rgba(15,23,42,0.07)]">
                                 <div className="border-b border-slate-100 px-5 py-4">
@@ -3165,7 +3169,7 @@ const ActiveTrip = () => {
                                     <button
                                         onClick={async () => {
                                             await completeRideForUserSync('cash');
-                                            setPhase('review');
+                                            await completeRideAndExit();
                                         }}
                                         className="mt-4 w-full rounded-xl py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-lg"
                                         style={{ backgroundColor: routeStrokeColor, boxShadow: `0 16px 28px ${routeAccentMuted}` }}
@@ -3207,7 +3211,7 @@ const ActiveTrip = () => {
                                 onClick={async () => {
                                     const paymentMode = selectedPaymentMode || effectiveState?.paymentMethod || liveRequest?.payment || '';
                                     await completeRideForUserSync(paymentMode);
-                                    setPhase('review');
+                                    await completeRideAndExit();
                                 }}
                                 className={`w-full h-15 rounded-xl flex items-center justify-center gap-3 text-[14px] font-semibold uppercase tracking-wide shadow-xl transition-all ${driverPaymentStatus === 'success' && selectedPaymentMode !== 'cash' ? 'text-white' : 'bg-slate-100 text-slate-300 pointer-events-none'}`}
                                 style={driverPaymentStatus === 'success' && selectedPaymentMode !== 'cash' ? { backgroundColor: routeStrokeColor, boxShadow: `0 18px 30px ${routeAccentMuted}` } : undefined}

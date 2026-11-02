@@ -257,7 +257,7 @@ const IncomingRideRequest = ({
                   <Banknote size={13} />
                   <p className="text-[8px] font-black uppercase tracking-widest">Earn</p>
                 </div>
-                <p className="truncate text-[18px] font-black leading-none text-slate-950">{data.fare || 'Rs 0'}</p>
+                <p className="truncate text-[18px] font-black leading-none text-slate-950">{data.raw?.estimatedDriverEarning != null ? `Rs ${data.raw.estimatedDriverEarning}` : (data.fare || 'Rs 0')}</p>
               </div>
               <div className="px-3 py-3">
                 <div className="mb-1 flex items-center gap-1.5 text-slate-400">
