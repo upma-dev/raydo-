@@ -329,5 +329,12 @@ summary {
 .overflow-y-auto,
 .overflow-auto {
   -webkit-overflow-scrolling: touch;
+}
+/* Chaining is blocked only inside panels with their own height (sheets, lists). On a page-sized wrapper that just grows with
+   its content it would trap the touch and the page would not scroll at all. */
+.overflow-y-auto[class*="max-h-"],
+.overflow-auto[class*="max-h-"],
+.overflow-y-auto[class*="h-["],
+.overflow-y-auto.h-full {
   overscroll-behavior-y: contain;
 }
