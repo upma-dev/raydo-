@@ -26,6 +26,7 @@ import toast from 'react-hot-toast';
 import { homeAfterTrip } from '@/modules/DeliveryV2/utils/rideModeSession';
 import { GoogleMap, MarkerF, OverlayView, OverlayViewF, PolylineF } from '@react-google-maps/api';
 import { openMapsNavigation } from '../utils/openMapsNavigation';
+import MapsNavigationOverlay from '../components/MapsNavigationOverlay';
 import { HAS_VALID_GOOGLE_MAPS_KEY, useAppGoogleMapsLoader } from '../../admin/utils/googleMaps';
 import { socketService } from '../../../shared/api/socket';
 import { pushDriverLocationRealtime } from '../../../shared/services/rideRealtime';
@@ -1846,7 +1847,7 @@ const ActiveTrip = () => {
     };
 
     const openGoogleMapsNavigation = () => {
-        if (!openMapsNavigation(activeDestination?.lat, activeDestination?.lng)) {
+        if (!openMapsNavigation(activeDestination?.lat, activeDestination?.lng, driverPosition)) {
             window.alert('Destination coordinates are not available.');
         }
     };
@@ -3151,6 +3152,8 @@ const ActiveTrip = () => {
                     )}
                 </AnimatePresence>
             </div>
+
+            <MapsNavigationOverlay />
 
             {/* Cancel button for the driver: shown when the admin allows it, until the trip ends */}
             <DriverCancelRide
