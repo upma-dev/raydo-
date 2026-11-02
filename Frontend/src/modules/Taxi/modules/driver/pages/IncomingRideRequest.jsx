@@ -65,6 +65,25 @@ const formatScheduledDateTime = (value) => {
   });
 };
 
+// What the driver earns on this request (fare minus the admin commission), not the customer's fare. The server sends the exact
+// figure for the original fare; when the fare changes while the request is open (bids, fare increase) it is worked out again
+// from the commission rate the server sent along. Works the same for bike, auto and car.
+const driverEarningLabel = (data = {}) => {
+  const raw = data.raw || {};
+  const fare = Number(raw.fare);
+  const exact = Number(raw.estimatedDriverEarning);
+  const forFare = Number(raw.estimatedForFare);
+  if (Number.isFinite(exact) && raw.estimatedDriverEarning !== null && (!Number.isFinite(forFare) || forFare === fare)) {
+    return `Rs ${exact}`;
+  }
+  const value = Number(raw.driverCommissionValue);
+  if (Number.isFinite(fare) && fare > 0 && raw.driverCommissionValue !== null && raw.driverCommissionValue !== undefined && Number.isFinite(value)) {
+    const commission = Number(raw.driverCommissionType) === 1 ? Math.min(Math.round(fare * value) / 100, fare) : Math.min(value, fare);
+    return `Rs ${Math.max(Math.round(fare - commission), 0)}`;
+  }
+  return '';
+};
+
 const IncomingRideRequest = ({
   visible,
   onAccept,
@@ -257,7 +276,7 @@ const IncomingRideRequest = ({
                   <Banknote size={13} />
                   <p className="text-[8px] font-black uppercase tracking-widest">Earn</p>
                 </div>
-                <p className="truncate text-[18px] font-black leading-none text-slate-950">{data.raw?.estimatedDriverEarning != null ? `Rs ${data.raw.estimatedDriverEarning}` : (data.fare || 'Rs 0')}</p>
+                <p className="truncate text-[18px] font-black leading-none text-slate-950">{driverEarningLabel(data) || data.fare || 'Rs 0'}</p>
               </div>
               <div className="px-3 py-3">
                 <div className="mb-1 flex items-center gap-1.5 text-slate-400">

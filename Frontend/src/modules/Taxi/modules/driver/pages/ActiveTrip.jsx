@@ -734,6 +734,17 @@ const buildPersistedTripState = (job = {}, overrides = {}) => {
     };
 };
 
+// One line of the final bill: label on the left, amount on the right (a list, not cards, so the whole bill fits one screen)
+const BillRow = ({ label, value, sub = '', strong = false, small = false, accent = '' }) => (
+    <div className={`flex items-center justify-between gap-3 border-b border-slate-100 last:border-b-0 ${small ? 'py-1' : 'py-1.5'}`}>
+        <div className="min-w-0">
+            <p className={`${strong ? 'font-black text-slate-900' : 'font-semibold text-slate-600'} ${small ? 'text-[11px]' : 'text-[13px]'}`}>{label}</p>
+            {sub ? <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{sub}</p> : null}
+        </div>
+        <p className={`shrink-0 text-right ${strong ? 'font-black' : 'font-bold text-slate-800'} ${small ? 'text-[11px]' : (strong ? 'text-[15px]' : 'text-[13px]')}`} style={accent ? { color: accent } : undefined}>{value}</p>
+    </div>
+);
+
 const buildDriverPaymentCollection = ({ mode = '', status = '', paymentQr = null } = {}) => {
     const normalizedMode = String(mode || '').trim().toLowerCase();
 
@@ -2960,178 +2971,22 @@ const ActiveTrip = () => {
                             initial={{ opacity: 0, y: 40 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 40 }}
-                            className="fixed inset-0 z-[400] overflow-y-auto bg-white px-6 pb-10 pt-14"
+                            className="fixed inset-0 z-[400] flex flex-col overflow-y-auto bg-white px-4 pb-4 pt-12"
                         >
-                            <div className="text-center mb-6">
-                                <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center mb-3 shadow-lg transition-all duration-500 text-white" style={{ backgroundColor: driverPaymentStatus === 'success' ? routeStrokeColor : '#0f172a' }}>
-                                    {driverPaymentStatus === 'success' ? <Check size={32} strokeWidth={4} /> : <QrCode size={32} strokeWidth={2} />}
+                            <div className="mb-3 flex items-end justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                        {driverPaymentStatus === 'success' ? 'Payment received' : `Final bill · collect from ${paymentCollectionLabel}`}
+                                    </p>
+                                    <p className="text-[40px] font-black leading-none text-slate-900">{collectibleFareLabel}</p>
                                 </div>
-                                <h2 className="text-2xl font-semibold text-slate-900 uppercase">
-                                    {driverPaymentStatus === 'success' ? 'Payment Success!' : tripSummaryTitle}
-                                </h2>
-                                <p className="text-[12px] font-bold text-slate-400 mt-1 uppercase tracking-wide">
-                                    {driverPaymentStatus === 'success' ? 'Ready to close this trip' : tripSummarySubtitle}
-                                </p>
-                                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Final bill · collect from {paymentCollectionLabel}</p>
-                                    <p className="mt-1 text-[34px] font-black leading-none text-slate-900">{collectibleFareLabel}</p>
-                                </div>
-                            </div>
-                            <div className="mb-6 overflow-hidden rounded-[28px] border border-slate-100 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_100%)] shadow-[0_18px_45px_rgba(15,23,42,0.07)]">
-                                <div className="border-b border-slate-100 px-5 py-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <p className="text-[10px] font-black uppercase tracking-[0.24em]" style={{ color: routeStrokeColor }}>
-                                                {tripSummaryTitle}
-                                            </p>
-                                            <p className="mt-2 text-[24px] font-black tracking-tight text-slate-900">{collectibleFareLabel}</p>
-                                            <p className="text-[11px] font-semibold text-slate-500">
-                                                {pickupWaitingSummary.waitingChargeTotal > 0
-                                                    ? `Includes Rs ${pickupWaitingSummary.waitingChargeTotal} waiting charge.`
-                                                    : (isParcel ? 'Parcel delivered and awaiting payment confirmation.' : 'Passenger reached destination and ready to complete.')}
-                                            </p>
-                                        </div>
-                                        <div className="rounded-2xl px-3 py-2 text-right" style={{ backgroundColor: routeAccentSoft }}>
-                                            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Payment</p>
-                                            <p className="mt-1 text-[13px] font-black text-slate-900">{paymentModeLabel}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 px-5 py-4">
-                                    <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
-                                        <div className="flex items-center gap-2 text-slate-500">
-                                            <Clock3 size={14} strokeWidth={2.5} />
-                                            <p className="text-[9px] font-black uppercase tracking-[0.2em]">Trip Started</p>
-                                        </div>
-                                        <p className="mt-2 text-[13px] font-bold leading-5 text-slate-900">{formatDateTimeLabel(tripStartedAt)}</p>
-                                    </div>
-                                    <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
-                                        <div className="flex items-center gap-2 text-slate-500">
-                                            <CheckCircle2 size={14} strokeWidth={2.5} />
-                                            <p className="text-[9px] font-black uppercase tracking-[0.2em]">Reached At</p>
-                                        </div>
-                                        <p className="mt-2 text-[13px] font-bold leading-5 text-slate-900">{formatDateTimeLabel(tripArrivedAt)}</p>
-                                    </div>
-                                    <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
-                                        <div className="flex items-center gap-2 text-slate-500">
-                                            <Clock3 size={14} strokeWidth={2.5} />
-                                            <p className="text-[9px] font-black uppercase tracking-[0.2em]">Waiting Time</p>
-                                        </div>
-                                        <p className="mt-2 text-[13px] font-bold leading-5 text-slate-900">
-                                            {pickupWaitingSummary.waitingSeconds > 0
-                                                ? formatTimerClock(pickupWaitingSummary.waitingSeconds)
-                                                : '--'}
-                                        </p>
-                                        {pickupWaitingSummary.chargeableMinutes > 0 && (
-                                            <p className="mt-1 text-[10px] font-semibold text-amber-600">
-                                                {pickupWaitingSummary.chargeableMinutes} billable min
-                                            </p>
-                                        )}
-                                    </div>
-                                    <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
-                                        <div className="flex items-center gap-2 text-slate-500">
-                                            <Banknote size={14} strokeWidth={2.5} />
-                                            <p className="text-[9px] font-black uppercase tracking-[0.2em]">Your Earnings</p>
-                                        </div>
-                                        <p className="mt-2 text-[13px] font-bold leading-5 text-slate-900">{formatCurrencyAmount(commissionSummary.driverEarnings)}</p>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 px-5 pb-4">
-                                    <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
-                                        <div className="flex items-center gap-2 text-slate-500">
-                                            <ArrowUpRight size={14} strokeWidth={2.5} />
-                                            <p className="text-[9px] font-black uppercase tracking-[0.2em]">Trip Duration</p>
-                                        </div>
-                                        <p className="mt-2 text-[13px] font-bold leading-5 text-slate-900">{tripDurationLabel}</p>
-                                    </div>
-                                    <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
-                                        <div className="flex items-center gap-2 text-slate-500">
-                                            <Banknote size={14} strokeWidth={2.5} />
-                                            <p className="text-[9px] font-black uppercase tracking-[0.2em]">Waiting Charge</p>
-                                        </div>
-                                        <p className="mt-2 text-[13px] font-bold leading-5 text-slate-900">
-                                            {pickupWaitingSummary.waitingChargeTotal > 0
-                                                ? formatCurrencyAmount(pickupWaitingSummary.waitingChargeTotal)
-                                                : formatCurrencyAmount(0)}
-                                        </p>
-                                        <p className="mt-1 text-[10px] font-semibold text-slate-400">
-                                            Free {formatWholeMinutes(freeWaitingBeforeMinutes)}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="border-t border-slate-100 px-5 py-4">
-                                    <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
-                                        <div className="flex items-start gap-3">
-                                            <div className="mt-1 flex flex-col items-center">
-                                                <span className="h-3 w-3 rounded-full bg-emerald-500" />
-                                                <span className="my-1 h-10 w-px border-l border-dashed border-slate-200" />
-                                                <span className="h-3 w-3 rounded-full bg-rose-500" />
-                                            </div>
-                                            <div className="min-w-0 flex-1 space-y-4">
-                                                <div>
-                                                    <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-400">Pickup</p>
-                                                    <p className="mt-1 text-[13px] font-bold leading-5 text-slate-900 break-words">{tripData.pickup}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-400">Destination</p>
-                                                    <p className="mt-1 text-[13px] font-bold leading-5 text-slate-900 break-words">{tripData.drop}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="mt-4 rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
-                                        <div className="flex items-center justify-between gap-3">
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white">
-                                                    {isParcel ? <Package size={18} strokeWidth={2.5} /> : <User size={18} strokeWidth={2.5} />}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">{destinationRoleLabel}</p>
-                                                    <p className="mt-1 text-[14px] font-black text-slate-900 truncate">{destinationContact?.name || '--'}</p>
-                                                    <p className="text-[11px] font-semibold text-slate-500">{destinationContact?.phone || 'Phone not available'}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={openGoogleMapsNavigation} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 text-slate-700" aria-label="Navigate to destination">
-                                                    <Navigation size={16} strokeWidth={2.5} />
-                                                </button>
-                                                <button onClick={() => callContact(destinationContact?.phone)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 text-slate-700" aria-label="Call destination contact">
-                                                    <Phone size={16} strokeWidth={2.5} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className={`grid gap-3 border-t border-slate-100 px-5 py-4 ${previousCancellationFee > 0 ? (pickupWaitingSummary.waitingChargeTotal > 0 ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4') : (pickupWaitingSummary.waitingChargeTotal > 0 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3')}`}>
-                                    <div className="rounded-2xl bg-white px-4 py-3 text-center shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
-                                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Trip Fare</p>
-                                        <p className="mt-2 text-[14px] font-black text-slate-900">{formatCurrencyAmount(baseRideFare)}</p>
-                                    </div>
-                                    {previousCancellationFee > 0 && (
-                                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
-                                            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-700">Prev Cancel Fee</p>
-                                            <p className="mt-2 text-[14px] font-black text-amber-900">{formatCurrencyAmount(previousCancellationFee)}</p>
-                                        </div>
-                                    )}
-                                    {pickupWaitingSummary.waitingChargeTotal > 0 && (
-                                        <div className="rounded-2xl bg-white px-4 py-3 text-center shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
-                                            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Waiting</p>
-                                            <p className="mt-2 text-[14px] font-black text-slate-900">{formatCurrencyAmount(pickupWaitingSummary.waitingChargeTotal)}</p>
-                                        </div>
-                                    )}
-                                    <div className="rounded-2xl bg-white px-4 py-3 text-center shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
-                                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Admin Cut</p>
-                                        <p className="mt-2 text-[14px] font-black text-slate-900">{formatCurrencyAmount(commissionSummary.commissionAmount)}</p>
-                                        <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{commissionSummary.commissionLabel}</p>
-                                    </div>
-                                    <div className="rounded-2xl px-4 py-3 text-center text-white shadow-[0_10px_24px_rgba(15,23,42,0.12)]" style={{ backgroundColor: routeStrokeColor }}>
-                                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/65">Driver Gets</p>
-                                        <p className="mt-2 text-[14px] font-black text-white">{formatCurrencyAmount(commissionSummary.driverEarnings)}</p>
-                                    </div>
+                                <div className="shrink-0 rounded-xl px-3 py-1.5 text-right" style={{ backgroundColor: routeAccentSoft }}>
+                                    <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Payment</p>
+                                    <p className="text-[12px] font-black text-slate-900">{paymentModeLabel}</p>
                                 </div>
                             </div>
                             {driverPaymentStatus === 'pending' && (
-                                <div className="grid grid-cols-2 gap-3 mb-6">
+                                <div className="grid grid-cols-2 gap-3 mb-3">
                                     {[
                                         { id: 'cash', label: 'Cash', icon: Banknote },
                                         { id: 'online', label: 'Online', icon: Scan }
@@ -3140,7 +2995,7 @@ const ActiveTrip = () => {
                                             key={mode.id}
                                             onClick={() => handlePaymentModeSelect(mode.id)}
                                             disabled={isGeneratingPaymentQr}
-                                            className="flex flex-col items-center justify-center py-4 rounded-2xl border-2 transition-all bg-slate-50/50"
+                                            className="flex flex-col items-center justify-center py-3 rounded-2xl border-2 transition-all bg-slate-50/50"
                                             style={selectedPaymentMode === mode.id ? { borderColor: routeStrokeColor, backgroundColor: routeAccentSoft } : undefined}
                                         >
                                             <mode.icon size={22} className={selectedPaymentMode === mode.id ? '' : 'text-slate-400'} style={selectedPaymentMode === mode.id ? { color: routeStrokeColor } : undefined} strokeWidth={2.5} />
@@ -3152,12 +3007,12 @@ const ActiveTrip = () => {
                                 </div>
                             )}
                             {paymentQrError && (
-                                <div className="mb-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-center">
+                                <div className="mb-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-center">
                                     <p className="text-[11px] font-bold text-red-500">{paymentQrError}</p>
                                 </div>
                             )}
                             {selectedPaymentMode === 'cash' && driverPaymentStatus === 'success' && (
-                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6 rounded-3xl border border-emerald-100 bg-emerald-50/80 p-5 text-center shadow-lg">
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-3 rounded-3xl border border-emerald-100 bg-emerald-50/80 p-5 text-center shadow-lg">
                                     <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg" style={{ backgroundColor: routeStrokeColor }}>
                                         <Banknote size={24} strokeWidth={2.5} />
                                     </div>
@@ -3179,7 +3034,7 @@ const ActiveTrip = () => {
                                 </motion.div>
                             )}
                             {driverPaymentStatus === 'qr_generated' && (
-                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-3xl p-5 mb-6 text-center shadow-2xl text-white" style={{ backgroundColor: routeStrokeColor }}>
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-3xl p-5 mb-3 text-center shadow-2xl text-white" style={{ backgroundColor: routeStrokeColor }}>
                                     <div className="bg-white p-3 rounded-2xl inline-block mb-3 relative overflow-hidden">
                                         <img
                                             src={paymentQr?.imageUrl}
@@ -3205,6 +3060,47 @@ const ActiveTrip = () => {
                                 <button onClick={() => setDriverPaymentStatus('success')} className="w-full py-3 bg-white/10 text-white rounded-xl text-[10px] font-semibold uppercase tracking-wide border border-white/5">Confirm Received</button>
                             </motion.div>
                             )}
+                            <div className="mb-3 rounded-xl border border-slate-100 px-3 py-1">
+                                <BillRow label="Trip fare" value={formatCurrencyAmount(baseRideFare)} />
+                                {previousCancellationFee > 0 && <BillRow label="Previous cancellation fee" value={formatCurrencyAmount(previousCancellationFee)} />}
+                                <BillRow label="Waiting charge" sub={pickupWaitingSummary.waitingChargeTotal > 0 ? `${pickupWaitingSummary.chargeableMinutes} billable min` : `Free ${formatWholeMinutes(freeWaitingBeforeMinutes)}`} value={formatCurrencyAmount(pickupWaitingSummary.waitingChargeTotal || 0)} />
+                                <BillRow label="Total to collect" value={collectibleFareLabel} strong />
+                                <BillRow label="Admin cut" sub={commissionSummary.commissionLabel} value={`- ${formatCurrencyAmount(commissionSummary.commissionAmount)}`} />
+                                <BillRow label="Your earnings" value={formatCurrencyAmount(commissionSummary.driverEarnings)} strong accent={routeStrokeColor} />
+                            </div>
+                            <div className="mb-3 rounded-xl border border-slate-100 px-3 py-1">
+                                <BillRow label="Trip started" value={formatDateTimeLabel(tripStartedAt)} small />
+                                <BillRow label="Reached at" value={formatDateTimeLabel(tripArrivedAt)} small />
+                                <BillRow label="Trip duration" value={tripDurationLabel} small />
+                                <BillRow label="Waiting time" value={pickupWaitingSummary.waitingSeconds > 0 ? formatTimerClock(pickupWaitingSummary.waitingSeconds) : '--'} small />
+                            </div>
+                            <div className="mb-3 flex items-start gap-3 rounded-xl border border-slate-100 px-3 py-2">
+                                <div className="mt-1 flex flex-col items-center">
+                                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                                    <span className="my-0.5 h-6 w-px border-l border-dashed border-slate-300" />
+                                    <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+                                </div>
+                                <div className="min-w-0 flex-1 space-y-1.5">
+                                    <p className="truncate text-[12px] font-bold text-slate-900"><span className="mr-1 text-[9px] font-black uppercase tracking-wide text-slate-400">Pickup</span>{tripData.pickup}</p>
+                                    <p className="truncate text-[12px] font-bold text-slate-900"><span className="mr-1 text-[9px] font-black uppercase tracking-wide text-slate-400">Drop</span>{tripData.drop}</p>
+                                </div>
+                            </div>
+                            <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2">
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white">
+                                        {isParcel ? <Package size={16} strokeWidth={2.5} /> : <User size={16} strokeWidth={2.5} />}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="truncate text-[13px] font-black text-slate-900">{destinationContact?.name || '--'}</p>
+                                        <p className="text-[11px] font-semibold text-slate-500">{destinationContact?.phone || 'Phone not available'}</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={openGoogleMapsNavigation} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-slate-700" aria-label="Navigate to destination"><Navigation size={15} strokeWidth={2.5} /></button>
+                                    <button onClick={() => callContact(destinationContact?.phone)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-slate-700" aria-label="Call destination contact"><Phone size={15} strokeWidth={2.5} /></button>
+                                </div>
+                            </div>
+                            <div className="mt-auto">
                             <motion.button
                                 whileTap={{ scale: 0.96 }}
                                 disabled={driverPaymentStatus !== 'success' || selectedPaymentMode === 'cash'}
@@ -3222,6 +3118,7 @@ const ActiveTrip = () => {
                                         ? 'Finalize Earnings'
                                         : 'Waiting...'} <ChevronRight size={18} strokeWidth={3} />
                             </motion.button>
+                            </div>
                         </motion.div>
                     )}
 

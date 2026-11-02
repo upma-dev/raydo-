@@ -127,7 +127,13 @@ export const estimateDriverEarning = async (ride) => {
       type: commissionConfig.type,
       value: commissionConfig.value,
     }));
-    return { earning: Math.max(baseRideFare - commissionAmount, 0), commission: commissionAmount };
+    return {
+      earning: Math.max(baseRideFare - commissionAmount, 0),
+      commission: commissionAmount,
+      commissionType: Number(commissionConfig.type ?? 1),
+      commissionValue: Number(commissionConfig.value ?? 0),
+      forFare: Number(ride?.fare || 0),
+    };
   } catch {
     return null;
   }

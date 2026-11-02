@@ -304,8 +304,10 @@ const buildMessagePayload = (payload = {}, token, ownerType = null) => {
         // A ring is an offer that lasts ~30s; a late delivery must not ring for an order that moved on
         ...(ring ? { ttl: '30s' } : {}),
         notification: {
-            ...(ring ? { notification_priority: 'PRIORITY_MAX', visibility: 'PUBLIC' } : {}),
-            channel_id: ring ? 'default' : 'silent_channel',
+            ...(ring ? { notification_priority: 'PRIORITY_MAX', visibility: 'PUBLIC', default_sound: !payload.sound || payload.sound === 'default' } : {}),
+            // The channel decides whether a locked phone rings. It is the app's own channel: if it was created silent (or low
+            // importance) on a phone, Android keeps it that way, so the ring channel id can be switched with one env value.
+            channel_id: ring ? (process.env.FCM_RING_CHANNEL_ID || 'default') : 'silent_channel',
             ...(ring ? { sound: payload.sound || 'default' } : {}),
             default_vibrate_timings: ring,
             default_light_settings: true,

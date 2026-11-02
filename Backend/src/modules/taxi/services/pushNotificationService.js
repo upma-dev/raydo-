@@ -200,7 +200,7 @@ const sendPushToTargets = async ({
         priority: 'high',
         ...(isRing ? { ttl: 60000 } : {}),
         notification: {
-          channelId: isRing ? 'default' : 'silent_channel',
+          channelId: isRing ? (process.env.FCM_RING_CHANNEL_ID || 'default') : 'silent_channel',
           ...(image ? { imageUrl: image } : {}),
           ...(isRing
             ? {
