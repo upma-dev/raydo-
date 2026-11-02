@@ -35,14 +35,31 @@ const readLanguage = () => {
   }
 };
 
+// Google Translate stores its own copy of the cookie on the parent domain (app.example.com -> .example.com). An old copy that
+// is not cleared there wins over the new choice and the language looks "stuck", so every domain level is cleared first.
+const cookieDomains = () => {
+  const host = window.location.hostname;
+  const parts = host.split('.');
+  const domains = [''];
+  const isIp = /^[0-9]+([.][0-9]+){3}$/.test(host);
+  if (parts.length > 1 && !isIp) {
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      const suffix = parts.slice(i).join('.');
+      domains.push(suffix, `.${suffix}`);
+    }
+  }
+  return domains;
+};
+
 const writeLanguage = (code) => {
-  const domains = ['', window.location.hostname, `.${window.location.hostname}`];
-  domains.forEach((domain) => {
+  const expired = 'expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  cookieDomains().forEach((domain) => {
     const scope = domain ? `; domain=${domain}` : '';
-    document.cookie = code === 'en'
-      ? `${COOKIE}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT${scope}`
-      : `${COOKIE}=/en/${code}; path=/; max-age=31536000${scope}`;
+    document.cookie = `${COOKIE}=; path=/; ${expired}${scope}`;
   });
+  if (code !== 'en') {
+    document.cookie = `${COOKIE}=/en/${code}; path=/; max-age=31536000`;
+  }
 };
 
 // Google Translate wraps text in <font> tags; React then fails with "removeChild / insertBefore on a node that is not a
