@@ -41,6 +41,8 @@ const DriverCancelRide = ({ rideId, phase, onCancelled, inline = false }) => {
         loadPolicy();
     }, [loadPolicy, phase]);
 
+    // At the end of the trip (final bill / payment) there is nothing left to cancel: the button must not sit on that page
+    if (phase === 'payment_confirm' || phase === 'review' || phase === 'done') return null;
     if (!policy?.allowed) return null;
 
     const confirm = async () => {
