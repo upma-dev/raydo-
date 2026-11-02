@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { socketService } from '@/modules/Taxi/shared/api/socket';
-import DriverRideRequestListener from '@/modules/Taxi/modules/driver/components/DriverRideRequestListener';
+import RideRequestCards from '@/modules/DeliveryV2/components/RideRequestCards';
 import { ensureRideToken } from '@/modules/DeliveryV2/utils/rideModeSession';
 
 const LOCATION_PING_MS = 5000;
@@ -11,7 +11,7 @@ const LOCATION_PING_MS = 5000;
  * request screen, sound and accept flow as the ride app; accepting a ride opens the ride screens, which have the way
  * back to food. Renders nothing for partners without a ride profile.
  */
-const RideRequestBridge = ({ enabled }) => {
+const RideRequestBridge = ({ enabled, inline = false }) => {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -50,7 +50,7 @@ const RideRequestBridge = ({ enabled }) => {
     };
   }, [ready]);
 
-  return ready ? <DriverRideRequestListener /> : null;
+  return ready ? <RideRequestCards inline={inline} /> : null;
 };
 
 export default RideRequestBridge;

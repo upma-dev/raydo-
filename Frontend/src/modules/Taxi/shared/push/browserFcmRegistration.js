@@ -176,6 +176,11 @@ const registerBrowserFcmToken = async ({ interactive = false } = {}) => {
     persistRegistration({ role, token, platform: 'web' });
   });
 
+  // Listen for pushes inside the open app too: rings and opens the ride request on its own
+  import('../../../Food/utils/firebaseMessaging')
+    .then((mod) => mod.attachForegroundListener(app))
+    .catch(() => {});
+
   return {
     ok: true,
     token,
@@ -200,4 +205,18 @@ export const installBrowserFcmRegistration = () => {
   });
 
   window.setTimeout(retryPassiveRegistration, 2000);
+
+  // Service-worker relay (ring + auto-open when the page is hidden) must be listening in the ride apps too
+  import('../../../Food/utils/firebaseMessaging')
+    .then((mod) => mod.initPushNotificationClient())
+    .catch(() => {});
+
+  // An already logged-in driver never sees the OTP screen again, so ask for notification permission on the first tap
+  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    const askOnce = () => {
+      window.removeEventListener('pointerdown', askOnce);
+      registerBrowserFcmToken({ interactive: true }).catch(() => {});
+    };
+    window.addEventListener('pointerdown', askOnce, { passive: true });
+  }
 };

@@ -50,6 +50,7 @@ const DeliveryV2Router = () => {
       <Route index element={<ProtectedRoute><DeliveryHomeV2 tab="feed" /></ProtectedRoute>} />
       <Route path="" element={<ProtectedRoute><DeliveryHomeV2 tab="feed" /></ProtectedRoute>} />
       <Route path="feed" element={<ProtectedRoute><DeliveryHomeV2 tab="feed" /></ProtectedRoute>} />
+      <Route path="orders" element={<ProtectedRoute><DeliveryHomeV2 tab="orders" /></ProtectedRoute>} />
       <Route path="pocket" element={<ProtectedRoute><DeliveryHomeV2 tab="pocket" /></ProtectedRoute>} />
       <Route path="history" element={<ProtectedRoute><DeliveryHomeV2 tab="history" /></ProtectedRoute>} />
       <Route path="profile" element={<ProtectedRoute><DeliveryHomeV2 tab="profile" /></ProtectedRoute>} />

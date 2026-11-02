@@ -34,7 +34,7 @@ import {
   Bell, HelpCircle, AlertTriangle,
   Wallet, History, User as UserIcon, LayoutGrid,
   Plus, Minus, Navigation2, Navigation, Target, Play, CheckCircle2, Clock, ChevronDown, Phone,
-  Contact, Package, Camera, MessageCircle, Compass, RefreshCw, MapPin
+  Contact, Package, Camera, MessageCircle, Compass, RefreshCw, MapPin, ListChecks
 } from 'lucide-react';
 
 import { getHaversineDistance, calculateETA, calculateHeading } from '@/modules/DeliveryV2/utils/geo';
@@ -260,6 +260,12 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
   const [incomingOrder, setIncomingOrder] = useState(null);
   const [currentTab, setCurrentTab] = useState(tab);
+  const [pendingRideCount, setPendingRideCount] = useState(0);
+  useEffect(() => {
+    const onCount = (e) => setPendingRideCount(Number(e?.detail) || 0);
+    window.addEventListener('ride-requests-count', onCount);
+    return () => window.removeEventListener('ride-requests-count', onCount);
+  }, []);
   const ignoredOrderIdsRef = useRef(new Set());
 
   // Track URL changes (Prop changes) to update sub-page content
@@ -1635,6 +1641,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
               </button>
             </div>
           </div>
+        ) : currentTab === 'orders' ? (
+          !isOnline ? <div className="pt-24 text-center text-sm font-medium text-gray-500">Go online to receive bike, ride and parcel requests.</div> : <div className="h-full" />
         ) : currentTab === 'pocket' ? (
           <PocketV2 />
         ) : currentTab === 'history' ? (
@@ -1950,7 +1958,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
       {/* Ride and parcel requests arrive on this same screen while online. Kept outside the header: its backdrop blur
           would trap the full-screen request card inside the header's box. */}
-      <RideRequestBridge enabled={isOnline} />
+      <RideRequestBridge enabled={isOnline} inline={currentTab === 'orders'} />
 
       {/* OVERLAYS & POPUPS */}
       <BottomPopup isOpen={showEmergencyPopup} title="Emergency Help" onClose={() => setShowEmergencyPopup(false)}>
@@ -2208,6 +2216,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
       <div className="bg-white border-t border-gray-100 px-8 py-3 pb-6 flex justify-between items-center z-[200] shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
         <button onClick={() => navigate('/food/delivery/feed')} className={`flex flex-col items-center gap-1 transition-all ${currentTab === 'feed' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
           <LayoutGrid className="w-6 h-6" /><span className="text-[11px] font-medium font-sans">Feed</span>
+        </button>
+        <button onClick={() => navigate('/food/delivery/orders')} className={`relative flex flex-col items-center gap-1 transition-all ${currentTab === 'orders' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
+          <ListChecks className="w-6 h-6" />{pendingRideCount > 0 && <span className="absolute -top-1 right-0 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{pendingRideCount}</span>}<span className="text-[11px] font-medium font-sans">Orders</span>
         </button>
         <button onClick={() => navigate('/food/delivery/pocket')} className={`flex flex-col items-center gap-1 transition-all ${currentTab === 'pocket' ? 'text-gray-950 scale-110' : 'text-gray-400 opacity-70'}`}>
           <Wallet className="w-6 h-6" /><span className="text-[11px] font-medium font-sans">Pocket</span>

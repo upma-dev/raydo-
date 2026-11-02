@@ -844,6 +844,22 @@ const dispatchAttempt = async (rideId, attemptIndex = 0) => {
 
     scheduleNextAttempt(rideId, attemptIndex + 1, dispatchConfig.retryDelayMs);
   } catch (error) {
+    // One failed attempt (a database blip, a push error ...) must not cancel the customer's ride: keep searching and
+    // only close it as unmatched when the last attempt has failed too
+    console.error(`[Dispatch] attempt ${attemptIndex + 1} failed for ride=${String(rideId)}`, error);
+    let maxAttempts = 20;
+    let retryDelayMs = 15000;
+    try {
+      const config = await resolveTransportDispatchConfig();
+      maxAttempts = config.maxAttempts;
+      retryDelayMs = config.retryDelayMs;
+    } catch {
+      // keep the fallbacks above
+    }
+    if (attemptIndex < maxAttempts - 1) {
+      scheduleNextAttempt(rideId, attemptIndex + 1, retryDelayMs);
+      return;
+    }
     await closeRideAsUnmatched(rideId);
     stopDispatchFlow(rideId);
     throw error;

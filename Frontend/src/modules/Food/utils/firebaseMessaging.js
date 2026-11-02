@@ -44,6 +44,50 @@ function normalizeModuleFromPath(pathname = window.location.pathname) {
   return "user";
 }
 
+// Taxi driver ("Sarthi") app lives under /taxi/driver: it is a rider-type app, never a customer, so it must ring for ride requests
+function isDriverAppPath(pathname = typeof window !== "undefined" ? window.location.pathname : "") {
+  return String(pathname || "").startsWith("/taxi/driver");
+}
+
+function isRideRequestPayload(payload = {}) {
+  const data = payload?.data || {};
+  const type = String(data.type || payload.type || "").toLowerCase();
+  const title = String(payload?.notification?.title || payload.title || "").toLowerCase();
+  return (
+    type === "ride_request" ||
+    type.includes("ride_request") ||
+    String(data.serviceType || "").toLowerCase() === "parcel" ||
+    title.includes("ride request") ||
+    title.includes("delivery request")
+  );
+}
+
+// A new ride/parcel push reached this page (open, even if hidden): ring and open the request screen by itself, no tap needed
+function openRideRequestFromPush(payload = {}) {
+  if (typeof window === "undefined") return;
+  try {
+    playRideRequestAlertSound();
+  } catch (e) {
+    pushDebugWarn(PUSH_DEBUG_PREFIX, "ride request ring failed", { error: e?.message });
+  }
+  const data = payload?.data || {};
+  const rideId = data.rideId || data.ride_id || "";
+  const rawTarget = data.targetUrl || data.link || (rideId ? `/taxi/driver/home?rideId=${encodeURIComponent(rideId)}` : "");
+  if (!rawTarget) return;
+  try {
+    const url = new URL(rawTarget, window.location.origin);
+    const next = `${url.pathname}${url.search}`;
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== next) {
+      window.history.pushState({}, "", next);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
+    window.dispatchEvent(new Event("focus"));
+  } catch {
+    // ignore bad target
+  }
+}
+
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -301,7 +345,7 @@ export function isPushRingEvent(payload = {}) {
   const moduleName = normalizeModuleFromPath();
 
   // The customer never hears an order ring (chat gets its own soft tone above)
-  if (moduleName === 'user') {
+  if (moduleName === 'user' && !isDriverAppPath()) {
     return false;
   }
 
@@ -837,6 +881,15 @@ function attachServiceWorkerMessageListener() {
       }
       pushDebugLog(PUSH_DEBUG_PREFIX, "Received service worker message in page", { payload: data.payload });
 
+      if (
+        isRideRequestPayload(data.payload) &&
+        isPayloadForThisModule(data.payload) &&
+        (isDriverAppPath() || normalizeModuleFromPath() === "delivery")
+      ) {
+        openRideRequestFromPush(data.payload);
+        if (isDriverAppPath()) return;
+      }
+
       const isHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
       if (isHidden) {
         // Tab is hidden (app backgrounded or screen locked): ALWAYS play sound and trigger native alarm if it is a ring event!
@@ -883,6 +936,9 @@ const MODULE_OWNER_TYPE = { restaurant: "RESTAURANT", delivery: "DELIVERY_PARTNE
 function isPayloadForThisModule(payload = {}) {
   const target = String(payload?.data?.ownerType || "").toUpperCase();
   if (!target) return true;
+  if (isDriverAppPath() && (target === "DRIVER" || target === "TAXI_DRIVER" || target === "DELIVERY_PARTNER")) {
+    return true;
+  }
   const currentModule = normalizeModuleFromPath();
   const mine = MODULE_OWNER_TYPE[currentModule];
   if (!mine) return true;
@@ -933,7 +989,7 @@ export function initPushNotificationClient() {
   attachServiceWorkerMessageListener();
 }
 
-async function attachForegroundListener(firebaseAppInstance) {
+export async function attachForegroundListener(firebaseAppInstance) {
   if (foregroundListenerAttached) return;
 
   const { getMessaging, onMessage, isSupported } = await import("firebase/messaging");
@@ -946,6 +1002,10 @@ async function attachForegroundListener(firebaseAppInstance) {
 
   onMessage(messaging, (payload) => {
     pushDebugLog(PUSH_DEBUG_PREFIX, "Received Firebase foreground message", { payload });
+    if (isDriverAppPath() && isRideRequestPayload(payload)) {
+      if (isPayloadForThisModule(payload)) openRideRequestFromPush(payload);
+      return;
+    }
     scheduleForegroundNotification(payload);
   });
 
