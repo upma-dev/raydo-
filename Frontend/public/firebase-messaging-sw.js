@@ -70,12 +70,13 @@ function getTargetPathFromPayload(payload = {}) {
   }
 }
 
-async function hasVisibleClientForTarget(payload = {}) {
+async function hasVisibleClientForTarget(payload = {}, requireFocus = false) {
   const windowClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
   const targetPath = getTargetPathFromPayload(payload);
   const targetRoot = `/${String(targetPath).split("/").filter(Boolean)[0] || ""}`;
   const visibleClient = windowClients.find((client) => {
-    const isVisible = client.visibilityState === "visible" || client.focused;
+    // A ring (ride / order request) is only skipped when the app is really in front: a locked screen or a background tab can still report "visible"
+    const isVisible = requireFocus ? Boolean(client.focused) : (client.visibilityState === "visible" || client.focused);
     if (!isVisible) return false;
     try {
       const clientUrl = new URL(client.url);
@@ -148,7 +149,7 @@ async function loadFirebaseWebConfig() {
   messaging.onBackgroundMessage(async (payload) => {
     pushDebugLog(PUSH_DEBUG_PREFIX, "Received Firebase background message", { payload });
 
-    const visibleClient = await hasVisibleClientForTarget(payload);
+    const visibleClient = await hasVisibleClientForTarget(payload, shouldPlaySound(payload));
 
     if (!visibleClient) {
       const title = payload?.notification?.title || payload?.data?.title || "New Notification";
@@ -211,7 +212,7 @@ self.addEventListener("push", (event) => {
       const notificationKey = getNotificationKey(payload);
 
       // Check if user has an active, focused tab open for this target
-      const visibleClient = await hasVisibleClientForTarget(payload);
+      const visibleClient = await hasVisibleClientForTarget(payload, shouldPlaySound(payload));
 
       // If app/tab is closed or in background, show native OS notification popup!
       if (!visibleClient) {

@@ -347,54 +347,60 @@ export async function tryAutoAssign(orderId, options = {}) {
       eligible.push(preferConnectedPartners(targets)[0]);
     }
 
-    // Pick the SINGLE CLOSEST delivery partner from eligible
-    const targetPartner = preferConnectedPartners(eligible)[0];
-    const liveSockets = liveSocketCount(targetPartner.partnerId);
-    logger.info(`tryAutoAssign: Offering order ${order._id} to partner ${targetPartner.partnerId} (${targetPartner.distanceKm} km, liveSockets=${liveSockets}).`);
-    if (liveSockets === 0) {
-      logger.warn(`tryAutoAssign: partner ${targetPartner.partnerId} marked online but has no live socket; request will only reach them via push.`);
-    }
+    // Offer to several partners at once: the first one to accept gets the order (accept is atomic). A manual resend
+    // goes to every online partner; the normal "ready" dispatch goes to the closest few and widens on each retry.
+    const fanOut = forceRebroadcast ? 15 : Math.min(3 + (attempt - 1) * 2, 10);
+    const pool = forceRebroadcast && codEligibleOnlinePartners.length ? codEligibleOnlinePartners : eligible;
+    const targetPartners = preferConnectedPartners(pool).filter(Boolean).slice(0, fanOut);
+    const targetPartner = targetPartners[0];
 
     const io = getIO();
     const payload = buildDeliverySocketPayload(order, order.restaurantId);
 
-    if (io) {
-      const roomName = rooms.delivery(targetPartner.partnerId);
-      io.to(roomName).emit('new_order', { ...payload, pickupDistanceKm: targetPartner.distanceKm, forceAlert: true });
-      io.to(roomName).emit('play_notification_sound', { ...payload, pickupDistanceKm: targetPartner.distanceKm });
-    }
+    for (const partnerTarget of targetPartners) {
+      const liveSockets = liveSocketCount(partnerTarget.partnerId);
+      logger.info(`tryAutoAssign: Offering order ${order._id} to partner ${partnerTarget.partnerId} (${partnerTarget.distanceKm} km, liveSockets=${liveSockets}).`);
 
-    try {
-      await notifyOwnersSafely(
-        [{ ownerType: 'DELIVERY_PARTNER', ownerId: targetPartner.partnerId }],
-        {
-          title: 'New order request! 🛵',
-          body: `Order #${order.order_id || order._id} is nearby (${targetPartner.distanceKm || 0} km). Accept now!`,
-          data: {
-            type: 'new_order',
-            ring: 'true',
-            link: '/food/delivery/feed',
-            targetUrl: '/food/delivery/feed',
-            orderId: order._id.toString(),
-            order_id: order.order_id || order.orderId || order._id.toString(),
-            displayOrderId: order.order_id || order.orderId || order._id.toString()
-          },
-        }
-      );
-    } catch (err) {
-      logger.warn(`Push notification failed for rider ${targetPartner.partnerId}: ${err.message}`);
+      if (io) {
+        const roomName = rooms.delivery(partnerTarget.partnerId);
+        io.to(roomName).emit('new_order', { ...payload, pickupDistanceKm: partnerTarget.distanceKm, forceAlert: true });
+        io.to(roomName).emit('play_notification_sound', { ...payload, pickupDistanceKm: partnerTarget.distanceKm });
+      }
+
+      try {
+        await notifyOwnersSafely(
+          [{ ownerType: 'DELIVERY_PARTNER', ownerId: partnerTarget.partnerId }],
+          {
+            title: 'New order request! 🛵',
+            body: `Order #${order.order_id || order._id} is nearby (${partnerTarget.distanceKm || 0} km). Accept now!`,
+            data: {
+              type: 'new_order',
+              ring: 'true',
+              link: '/food/delivery/feed',
+              targetUrl: '/food/delivery/feed',
+              orderId: order._id.toString(),
+              order_id: order.order_id || order.orderId || order._id.toString(),
+              displayOrderId: order.order_id || order.orderId || order._id.toString()
+            },
+          }
+        );
+      } catch (err) {
+        logger.warn(`Push notification failed for rider ${partnerTarget.partnerId}: ${err.message}`);
+      }
     }
 
     order.dispatch.status = 'unassigned';
     order.dispatch.deliveryPartnerId = null;
-    order.dispatch.offeredTo.push({
-      partnerId: targetPartner.partnerId,
-      at: new Date(),
-      action: 'offered'
-    });
+    for (const partnerTarget of targetPartners) {
+      order.dispatch.offeredTo.push({
+        partnerId: partnerTarget.partnerId,
+        at: new Date(),
+        action: 'offered'
+      });
+    }
     await order.save();
 
-    // Schedule 30-second timeout check for this driver. If they don't accept in 30s, dispatch to the next closest driver!
+    // Nobody accepted in 30s: widen to the next partners
     await addOrderJob({
       action: 'DISPATCH_TIMEOUT_CHECK',
       orderMongoId: order._id.toString(),

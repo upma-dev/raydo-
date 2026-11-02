@@ -4,7 +4,7 @@ import { initializeApp, getApp, getApps } from "firebase/app";
 import fallbackNotificationSound from "@food/assets/audio/alert.mp3";
 import rideRequestAlertSoundUrl from "@/modules/Taxi/assets/sounds/ride-request-alert.mp3";
 import { playChatNotificationSound } from "@/shared/utils/chatNotificationSound";
-import { playRideRequestAlertSound } from "@/modules/Taxi/modules/driver/utils/rideRequestAlertSound";
+import { playRideRequestAlertSound, stopRideRequestAlertSound } from "@/modules/Taxi/modules/driver/utils/rideRequestAlertSound";
 
 const pushNotificationSoundPath = "/zomato_sms.mp3";
 
@@ -434,12 +434,30 @@ async function playPushSound(payload = {}) {
       title.includes('delivery request') ||
       title.includes('ride request');
 
-    if (isRideOrParcel) {
+    // A new food order must keep ringing (looped) until someone taps the screen, not beep once and stop
+    const isNewOrderRing =
+      !isRideOrParcel &&
+      (type.includes('new_order') || type.includes('order_created') || type.includes('place_order') || title.includes('new order'));
+
+    if (isRideOrParcel || isNewOrderRing) {
       try {
         playRideRequestAlertSound();
       } catch (e) {
         pushDebugWarn(PUSH_DEBUG_PREFIX, "playRideRequestAlertSound fallback", { error: e?.message });
       }
+    }
+
+    if (isNewOrderRing && typeof window !== "undefined") {
+      const stop = () => {
+        window.clearTimeout(stopTimer);
+        window.removeEventListener("pointerdown", onTap, true);
+        window.removeEventListener("touchstart", onTap, true);
+        try { stopRideRequestAlertSound(); } catch { /* ignore */ }
+      };
+      const onTap = () => stop();
+      const stopTimer = window.setTimeout(stop, 45000);
+      window.addEventListener("pointerdown", onTap, true);
+      window.addEventListener("touchstart", onTap, true);
     }
 
     const usedNativeBridge = await triggerWebViewNativeNotification(payload);
@@ -453,6 +471,8 @@ async function playPushSound(payload = {}) {
       pushDebugLog(PUSH_DEBUG_PREFIX, "Push sound handled by native bridge");
       return;
     }
+
+    if (isNewOrderRing) return; // the looped alert above is the ring
 
     if (!pushSoundUnlocked) {
       pushDebugWarn(PUSH_DEBUG_PREFIX, "Push sound blocked because sound is not enabled/unlocked");

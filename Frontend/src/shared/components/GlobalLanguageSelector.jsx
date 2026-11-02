@@ -95,6 +95,12 @@ const loadTranslate = () => {
   return translateLoader;
 };
 
+// Used by screens that have their own language page (e.g. the driver app): same cookie, same reload
+export const applyAppLanguage = (code) => {
+  writeLanguage(code);
+  window.location.reload();
+};
+
 const GlobalLanguageSelector = ({ variant = 'dark', className = '', style = {} }) => {
   const [open, setOpen] = useState(false);
   const [alignLeft, setAlignLeft] = useState(false);

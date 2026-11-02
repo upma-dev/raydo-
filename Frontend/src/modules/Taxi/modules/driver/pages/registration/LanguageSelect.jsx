@@ -4,6 +4,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Check, Globe, ChevronRight } from 'lucide-react';
 import { useSettings } from '../../../../shared/context/SettingsContext';
 import { getLocalDriverToken, getStoredDriverRole } from '../../services/registrationService';
+import { applyAppLanguage } from '@/shared/components/GlobalLanguageSelector';
+
+const LANGUAGE_CODES = { english: 'en', hindi: 'hi', marathi: 'mr', gujarati: 'gu' };
 
 const LanguageSelect = () => {
     const navigate = useNavigate();
@@ -27,7 +30,10 @@ const LanguageSelect = () => {
 
     const handleConfirm = () => {
         localStorage.setItem('driver_lang', selectedLang);
-        navigate(isAuthenticatedDriver ? authenticatedHome : '/taxi/driver/reg-phone', { replace: true });
+        const next = isAuthenticatedDriver ? authenticatedHome : '/taxi/driver/reg-phone';
+        navigate(next, { replace: true });
+        // The chosen language is applied to the whole app (page text is translated), not only remembered
+        window.setTimeout(() => applyAppLanguage(LANGUAGE_CODES[selectedLang] || 'en'), 50);
     };
 
     return (

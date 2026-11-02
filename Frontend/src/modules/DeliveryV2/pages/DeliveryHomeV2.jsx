@@ -20,6 +20,7 @@ import { OrderSummaryModal } from '@/modules/DeliveryV2/components/modals/OrderS
 import { SelfieVerificationModal } from '@/modules/DeliveryV2/components/modals/SelfieVerificationModal';
 import FoodOrderChatScreen from '@food/pages/user/orders/FoodOrderChatScreen';
 import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
+import GlobalLanguageSelector from '@/shared/components/GlobalLanguageSelector';
 import FoodOrdersToggle from '@/modules/DeliveryV2/components/FoodOrdersToggle';
 import ActiveRideCard from '@/modules/DeliveryV2/components/ActiveRideCard';
 import RideRequestBridge from '@/modules/DeliveryV2/components/RideRequestBridge';
@@ -1501,7 +1502,8 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 <motion.div animate={{ x: isOnline ? 59 : 0 }} className="absolute left-1 w-6 h-6 bg-white rounded-full shadow-sm" />
               </button>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <GlobalLanguageSelector variant="dark" />
               <button onClick={() => setShowEmergencyPopup(true)} className="w-9 h-9 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 border border-red-500/20 active:scale-95 transition-all shadow-lg"><AlertTriangle className="w-4 h-4" /></button>
               <button onClick={() => navigate('/food/delivery/help/id-card')} className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 border border-blue-500/20 active:scale-95 transition-all shadow-lg"><Contact className="w-4 h-4" /></button>
               <button onClick={() => navigate('/food/delivery/notifications')} className="relative w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white border border-white/10 active:scale-95 transition-all shadow-lg"><Bell className="w-4 h-4" />{notificationUnreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-orange-400 border border-[#1f1f1f]" />}</button>
@@ -1577,7 +1579,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                   </div>
                 ) : (
                   <div className="bg-white/5 rounded-2xl p-3.5 flex items-center justify-between border border-white/5 shadow-sm backdrop-blur-md">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <div className="w-9 h-9 bg-green-500/10 rounded-full flex items-center justify-center">
                         <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
                       </div>
