@@ -8,6 +8,7 @@ import { setAuthData as storeAuthData, isModuleAuthenticated } from "@food/utils
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { motion, AnimatePresence } from "framer-motion"
 import logoImg from "@food/assets/raydo-logo.png"
+import { registerWebPushForCurrentModule } from "@food/utils/firebaseMessaging"
 
 export default function DeliveryOTP() {
   const companyName = useCompanyName()
@@ -202,6 +203,8 @@ export default function DeliveryOTP() {
         setIsNavigating(true)
         storeAuthData("delivery", accessToken, user, refreshToken)
         window.dispatchEvent(new Event("deliveryAuthChanged"))
+        // Right after login (still inside the tap): ask for notification permission and save this phone's push token for this id
+        registerWebPushForCurrentModule("/food/delivery/feed").catch(() => {})
         navigate("/food/delivery", { replace: true })
       }
     } catch (err) {
@@ -222,6 +225,8 @@ export default function DeliveryOTP() {
         setIsNavigating(true)
         storeAuthData("delivery", accessToken, user, refreshToken)
         window.dispatchEvent(new Event("deliveryAuthChanged"))
+        // Right after login (still inside the tap): ask for notification permission and save this phone's push token for this id
+        registerWebPushForCurrentModule("/food/delivery/feed").catch(() => {})
         navigate("/food/delivery", { replace: true })
       }
     } catch (err) { setError("Failed to complete setup."); setIsLoading(false); setIsNavigating(false); }

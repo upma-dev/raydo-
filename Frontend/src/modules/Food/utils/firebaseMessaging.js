@@ -1099,6 +1099,8 @@ export async function registerWebPushForCurrentModule(pathname = window.location
       }
 
       if (!token) return;
+      // Remembered so the next login (a new id on this phone) sends it with the OTP and rings from the first minute
+      try { localStorage.setItem(`fcm_web_registered_token_${moduleName}`, token); } catch { /* storage blocked */ }
       pushDebugLog(PUSH_DEBUG_PREFIX, "FCM token resolved", {
         moduleName,
       });

@@ -1126,8 +1126,13 @@ export const getActiveEarningAddonsForPartner = async (deliveryPartnerId) => {
         .sort({ endDate: 1, createdAt: 1 })
         .lean();
 
+    const partnerDoc = await FoodDeliveryPartner.findById(partnerId).select('lastLat lastLng').lean();
+    const { buildAddonZoneMatcher } = await import('./earningAddonZone.js');
+    const inAddonZone = await buildAddonZoneMatcher(partnerDoc);
+
     const liveAddons = (addons || []).filter((addon) => {
         if (!addon) return false;
+        if (!inAddonZone(addon)) return false;
         const maxRedemptions = Number(addon.maxRedemptions);
         if (!Number.isFinite(maxRedemptions) || maxRedemptions <= 0) return true;
         return Number(addon.currentRedemptions || 0) < maxRedemptions;
@@ -1170,6 +1175,7 @@ export const getActiveEarningAddonsForPartner = async (deliveryPartnerId) => {
                 targetOrders,
                 currentOrders: Number(currentOrders) || 0,
                 currentEarnings,
+                isCompleted: targetOrders > 0 && currentOrders >= targetOrders,
                 startDate,
                 endDate,
                 validTill: endDate ? endDate.toISOString() : null,

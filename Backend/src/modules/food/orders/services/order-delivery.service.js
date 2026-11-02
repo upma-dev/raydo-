@@ -1025,6 +1025,17 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
   }
 
   emitOrderUpdate(order, deliveryPartnerId);
+
+  // Incentive ("complete N orders, earn Rs X"): checked right now, credited at once, and the rider's screen is updated live
+  (async () => {
+    try {
+      const { refreshEarningAddonProgress } = await import('../../delivery/services/earningAddonRealtime.service.js');
+      await refreshEarningAddonProgress(deliveryPartnerId);
+    } catch (err) {
+      logger.warn(`[EarningAddon] realtime refresh failed for partner ${deliveryPartnerId}: ${err?.message || err}`);
+    }
+  })();
+
   enqueueOrderEvent('delivery_completed', {
     orderMongoId: order._id?.toString?.(),
     orderId: order._id.toString(),

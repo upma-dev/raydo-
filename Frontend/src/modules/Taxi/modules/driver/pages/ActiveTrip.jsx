@@ -25,6 +25,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { homeAfterTrip } from '@/modules/DeliveryV2/utils/rideModeSession';
 import { GoogleMap, MarkerF, OverlayView, OverlayViewF, PolylineF } from '@react-google-maps/api';
+import { openMapsNavigation } from '../utils/openMapsNavigation';
 import { HAS_VALID_GOOGLE_MAPS_KEY, useAppGoogleMapsLoader } from '../../admin/utils/googleMaps';
 import { socketService } from '../../../shared/api/socket';
 import { pushDriverLocationRealtime } from '../../../shared/services/rideRealtime';
@@ -1834,10 +1835,7 @@ const ActiveTrip = () => {
     };
 
     const openGoogleMapsNavigation = () => {
-        if (activeDestination && activeDestination.lat && activeDestination.lng) {
-            const url = `https://www.google.com/maps/dir/?api=1&destination=${activeDestination.lat},${activeDestination.lng}&travelmode=driving`;
-            window.open(url, '_blank');
-        } else {
+        if (!openMapsNavigation(activeDestination?.lat, activeDestination?.lng)) {
             window.alert('Destination coordinates are not available.');
         }
     };
@@ -2906,7 +2904,10 @@ const ActiveTrip = () => {
                                         <p className="text-[8px] font-semibold text-slate-400 uppercase tracking-wide">{isParcel ? 'Receiver' : 'Passenger'}</p>
                                     </div>
                                 </div>
-                                <button onClick={() => callContact(destinationContact?.phone)} className="shrink-0 w-8 h-8 bg-white rounded-lg border border-slate-100 flex items-center justify-center" style={{ color: routeStrokeColor }} aria-label="Call destination contact"><Phone size={15} strokeWidth={2.5} /></button>
+                                <div className="flex shrink-0 gap-1.5">
+                                    <button onClick={openGoogleMapsNavigation} className="w-8 h-8 bg-white rounded-lg border border-slate-100 flex items-center justify-center text-slate-600 active:scale-95 transition-transform" aria-label="Navigate to destination"><Navigation size={15} strokeWidth={2.5} /></button>
+                                    <button onClick={() => callContact(destinationContact?.phone)} className="shrink-0 w-8 h-8 bg-white rounded-lg border border-slate-100 flex items-center justify-center" style={{ color: routeStrokeColor }} aria-label="Call destination contact"><Phone size={15} strokeWidth={2.5} /></button>
+                                </div>
                             </div>
                             {isParcel && (
                                 <div className="mb-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-1.5">
@@ -3086,9 +3087,14 @@ const ActiveTrip = () => {
                                                     <p className="text-[11px] font-semibold text-slate-500">{destinationContact?.phone || 'Phone not available'}</p>
                                                 </div>
                                             </div>
-                                            <button onClick={() => callContact(destinationContact?.phone)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 text-slate-700" aria-label="Call destination contact">
-                                                <Phone size={16} strokeWidth={2.5} />
-                                            </button>
+                                            <div className="flex gap-2">
+                                                <button onClick={openGoogleMapsNavigation} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 text-slate-700" aria-label="Navigate to destination">
+                                                    <Navigation size={16} strokeWidth={2.5} />
+                                                </button>
+                                                <button onClick={() => callContact(destinationContact?.phone)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 text-slate-700" aria-label="Call destination contact">
+                                                    <Phone size={16} strokeWidth={2.5} />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

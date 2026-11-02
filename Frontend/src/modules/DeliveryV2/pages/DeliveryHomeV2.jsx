@@ -21,6 +21,7 @@ import { SelfieVerificationModal } from '@/modules/DeliveryV2/components/modals/
 import FoodOrderChatScreen from '@food/pages/user/orders/FoodOrderChatScreen';
 import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
 import GlobalLanguageSelector from '@/shared/components/GlobalLanguageSelector';
+import IncentiveProgressStrip from '@/modules/DeliveryV2/components/IncentiveProgressStrip';
 import FoodOrdersToggle from '@/modules/DeliveryV2/components/FoodOrdersToggle';
 import ActiveRideCard from '@/modules/DeliveryV2/components/ActiveRideCard';
 import RideRequestBridge from '@/modules/DeliveryV2/components/RideRequestBridge';
@@ -1515,6 +1516,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
               <button onClick={() => navigate('/food/delivery/notifications')} className="relative w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white border border-white/10 active:scale-95 transition-all shadow-lg"><Bell className="w-4 h-4" />{notificationUnreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-orange-400 border border-[#1f1f1f]" />}</button>
             </div>
           </div>
+
+          {/* Admin-set incentive: complete N orders, earn a fixed amount (live counter) */}
+          <IncentiveProgressStrip />
 
           {/* A ride / parcel that is already running stays visible here until it is finished */}
           {currentTab === 'feed' && <ActiveRideCard />}

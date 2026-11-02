@@ -4680,9 +4680,13 @@ export async function checkEarningAddonCompletions(deliveryPartnerId, _force = f
     if (partnerIds.length === 0) return { completionsFound: 0 };
 
     let globalCompletions = 0;
+    const { buildAddonZoneMatcher } = await import('../../delivery/services/earningAddonZone.js');
 
     for (const pId of partnerIds) {
+        const partnerDoc = await FoodDeliveryPartner.findById(pId).select('lastLat lastLng').lean();
+        const inAddonZone = await buildAddonZoneMatcher(partnerDoc);
         for (const offer of activeOffers) {
+            if (!inAddonZone(offer)) continue;
             // Find existing history so we don't grant it twice for the same offer.
             const existing = await FoodEarningAddonHistory.findOne({
                 deliveryPartnerId: pId,
@@ -4886,6 +4890,18 @@ export async function approveDeliveryPartner(id) {
                             null
                         )
                     ]);
+
+                    try {
+                        const { getIO, rooms } = await import('../../../../config/socket.js');
+                        const io = getIO();
+                        io?.to(rooms.delivery(String(referrer._id))).emit('referral_credited', {
+                            amount: reward,
+                            refereeName: partner.name || '',
+                            message: `Referral bonus of Rs ${reward} added to your pocket`
+                        });
+                    } catch (emitErr) {
+                        console.warn('referral_credited emit failed:', emitErr?.message || emitErr);
+                    }
                 } else {
                     await FoodReferralLog.create({
                         referrerId: new mongoose.Types.ObjectId(referrerId),

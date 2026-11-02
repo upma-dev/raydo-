@@ -8,6 +8,9 @@ const earningAddonSchema = new mongoose.Schema(
         earningAmount: { type: Number, required: true, min: 0 },
         startDate: { type: Date, required: true, index: true },
         endDate: { type: Date, required: true, index: true },
+        // Optional: only partners inside this zone (e.g. Indore) get this incentive; empty = everyone
+        zoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodZone', default: null, index: true },
+        zoneName: { type: String, trim: true, default: '' },
         maxRedemptions: { type: Number, min: 1, default: null },
         currentRedemptions: { type: Number, default: 0 },
         status: { type: String, enum: ['active', 'inactive'], default: 'active', index: true }

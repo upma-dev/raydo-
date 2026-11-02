@@ -443,6 +443,19 @@ export const upsertFirebaseDeviceToken = async ({ ownerType, ownerId, token, pla
     const updateValue = Array.isArray(doc[field]) ? tokens : (tokens[tokens.length - 1] || '');
 
     await model.updateOne({ _id: normalizedOwnerId }, { $set: { [field]: updateValue } });
+
+    // One physical device = one push token. When another account of the SAME role signs in on this device (a new rider id,
+    // a second restaurant login), the token moves to it: the earlier account must not keep receiving (or stealing) the ring.
+    // Other roles are left alone on purpose: one browser can be restaurant, rider and customer at once.
+    try {
+        const isArrayField = model.schema?.path(field)?.instance === 'Array';
+        await model.updateMany(
+            { _id: { $ne: normalizedOwnerId }, [field]: normalizedToken },
+            isArrayField ? { $pull: { [field]: normalizedToken } } : { $set: { [field]: '' } },
+        );
+    } catch (dedupeError) {
+        logger.warn(`[FCM Service] could not release token from other ${normalizeOwnerType(ownerType)} accounts: ${dedupeError?.message || dedupeError}`);
+    }
     logger.info(
         `[FCM Service] upsert success ownerType=${normalizeOwnerType(ownerType)} ownerId=${ownerId} platform=${normalizedPlatform} field=${field} newCount=${tokens.length} tokenPresent=${tokens.includes(normalizedToken)}`
     );

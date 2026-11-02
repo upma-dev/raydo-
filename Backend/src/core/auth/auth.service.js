@@ -153,6 +153,10 @@ export const verifyUserOtpAndLogin = async (
         { _id: userDoc._id },
         { $addToSet: { [tokenField]: String(fcmToken).trim() } },
       );
+      await FoodUser.updateMany(
+        { _id: { $ne: userDoc._id }, [tokenField]: String(fcmToken).trim() },
+        { $pull: { [tokenField]: String(fcmToken).trim() } },
+      );
       const refreshedUser = await FoodUser.findById(userDoc._id)
         .select(`${tokenField}`)
         .lean();
@@ -510,6 +514,8 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
     const known = deliveryPartner[field] || [];
     if (!known.includes(fcmToken)) {
       await FoodDeliveryPartner.updateOne({ _id: deliveryPartner._id }, { $addToSet: { [field]: fcmToken } });
+      // This device now belongs to this rider: an earlier rider id used on the same phone must stop receiving its rings
+      await FoodDeliveryPartner.updateMany({ _id: { $ne: deliveryPartner._id }, [field]: fcmToken }, { $pull: { [field]: fcmToken } });
       deliveryPartner[field] = [...known, fcmToken];
     }
   }

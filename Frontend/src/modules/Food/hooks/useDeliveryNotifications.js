@@ -917,6 +917,17 @@ export const useDeliveryNotifications = () => {
       void recoverDeliveryState();
     });
 
+    // Incentive progress and bonuses arrive live; the delivery home listens to these window events
+    socketRef.current.on('earning_addon_progress', (progress) => {
+      window.dispatchEvent(new CustomEvent('earning-addon-progress', { detail: progress }));
+    });
+    socketRef.current.on('earning_addon_credited', (info) => {
+      window.dispatchEvent(new CustomEvent('earning-addon-credited', { detail: info }));
+    });
+    socketRef.current.on('referral_credited', (info) => {
+      window.dispatchEvent(new CustomEvent('referral-credited', { detail: info }));
+    });
+
     socketRef.current.on('new_order', (orderData) => {
       debugLog('New order received via socket', {
         orderId: orderData?.orderId || orderData?.orderMongoId || orderData?._id,
