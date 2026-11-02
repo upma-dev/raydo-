@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
-import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
 import CountdownRing from '@/modules/DeliveryV2/components/CountdownRing';
 import FoodOrderRequestCard from '@/modules/DeliveryV2/components/FoodOrderRequestCard';
 import api from '@/modules/Taxi/shared/api/axiosInstance';
@@ -69,6 +68,7 @@ const RequestCard = ({ job, now, driverPos, onAccept, onDecline, accepting }) =>
     ? Number(job.estimatedDistanceMeters) / 1000
     : pickup && drop ? haversineKm(pickup.lat, pickup.lng, drop.lat, drop.lng) : NaN;
   const remaining = Math.max(0, job.expiresAt - now);
+  const isCashPayment = String(job.paymentMethod || 'cash').toLowerCase().includes('cash');
 
   return (
     <div className="rounded-2xl border-2 border-green-400 bg-white p-4 shadow-lg">
@@ -79,7 +79,9 @@ const RequestCard = ({ job, now, driverPos, onAccept, onDecline, accepting }) =>
         <div className="text-3xl font-extrabold text-gray-900">
           ₹{Number(job.fare || 0)}
         </div>
-        <div className="text-xs font-medium text-gray-500">{job.paymentMethod || 'Cash'}</div>
+      </div>
+      <div className={`mt-1 inline-block rounded-md px-2 py-0.5 text-xs font-bold ${isCashPayment ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-700'}`}>
+        {isCashPayment ? `Cash · collect ₹${Number(job.fare || 0)}` : 'Prepaid (Online) · no cash to collect'}
       </div>
 
       <div className="mt-3 flex gap-3">
@@ -106,15 +108,14 @@ const RequestCard = ({ job, now, driverPos, onAccept, onDecline, accepting }) =>
 
       <div className="mt-4 flex items-center gap-3">
         <CountdownRing remainingMs={remaining} totalMs={job.totalMs} onDecline={() => onDecline(job)} />
-        <div className="flex-1">
-          <ActionSlider
-            label={accepting ? 'Accepting...' : 'Slide to accept'}
-            color="bg-green-600"
-            disabled={accepting}
-            disabledLabel="Accepting..."
-            onConfirm={() => onAccept(job)}
-          />
-        </div>
+        <button
+          type="button"
+          disabled={accepting}
+          onClick={() => onAccept(job)}
+          className="flex-1 h-12 rounded-xl bg-[#FFC107] text-base font-extrabold text-gray-900 shadow-sm active:scale-[0.98] transition-transform disabled:opacity-60"
+        >
+          {accepting ? 'Accepting...' : 'Accept'}
+        </button>
       </div>
     </div>
   );
@@ -306,6 +307,13 @@ const RideRequestCards = ({ inline = false, foodOrder = null, onFoodAccept, onFo
       <div className={inline
         ? "mx-auto max-w-md space-y-3 pb-4"
         : "pointer-events-auto mx-auto max-h-[65vh] max-w-md space-y-3 overflow-y-auto pb-2"}>
+        {inline && (
+          <div className="flex items-center justify-between px-1 pt-1">
+            <div className="text-xl font-extrabold text-gray-900">
+              {requests.length + (foodOrder ? 1 : 0)} {requests.length + (foodOrder ? 1 : 0) === 1 ? 'Order' : 'Orders'}
+            </div>
+          </div>
+        )}
         {foodOrder && onFoodAccept && onFoodReject && (
           <FoodOrderRequestCard
             key={String(foodOrder?.orderId || foodOrder?._id || foodOrder?.orderMongoId || 'food')}

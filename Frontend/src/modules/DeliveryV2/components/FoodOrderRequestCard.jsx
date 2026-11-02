@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
 import CountdownRing from '@/modules/DeliveryV2/components/CountdownRing';
 import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import { getHaversineDistance } from '@/modules/DeliveryV2/utils/geo';
@@ -108,6 +107,15 @@ const FoodOrderRequestCard = ({ order, onAccept, onReject }) => {
     return base + surge + tip;
   }, [order]);
 
+  const orderTotal = Number(order?.total ?? order?.pricing?.total ?? 0);
+  const method = String(order?.paymentMethod || order?.payment?.method || 'cash').toLowerCase();
+  const paymentLabel = method === 'cash'
+    ? `Cash on delivery · collect ₹${Math.round(orderTotal * 100) / 100}`
+    : method === 'razorpay_qr'
+      ? 'Online (QR) · no cash'
+      : 'Prepaid (Online) · no cash to collect';
+  const isCash = method === 'cash';
+
   const restaurantName =
     order?.restaurantName || order?.restaurant_name || order?.restaurantId?.restaurantName || order?.restaurantId?.name || 'Restaurant';
   const restaurantAddress =
@@ -134,13 +142,16 @@ const FoodOrderRequestCard = ({ order, onAccept, onReject }) => {
   };
 
   return (
-    <div className="rounded-2xl border-2 border-orange-400 bg-white p-4 shadow-lg">
-      <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700">
-        Food order #{order?.orderId || ''}
+    <div className="rounded-2xl border-2 border-green-400 bg-white p-4 shadow-lg">
+      <span className="inline-block rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+        Food · #{order?.orderId || ''}
       </span>
       <div className="mt-1 flex items-baseline justify-between">
-        <div className="text-3xl font-extrabold text-gray-900">₹{Math.round(earnings * 100) / 100}</div>
-        <div className="text-xs font-medium text-gray-500">{order?.paymentMethod || order?.payment?.method || ''}</div>
+        <div className="text-3xl font-extrabold text-gray-900">₹{Math.round(orderTotal * 100) / 100}</div>
+        {earnings > 0 && <div className="text-xs font-semibold text-green-600">You earn ₹{Math.round(earnings * 100) / 100}</div>}
+      </div>
+      <div className={`mt-1 inline-block rounded-md px-2 py-0.5 text-xs font-bold ${isCash ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-700'}`}>
+        {paymentLabel}
       </div>
 
       <div className="mt-3 flex gap-3">
@@ -167,15 +178,14 @@ const FoodOrderRequestCard = ({ order, onAccept, onReject }) => {
 
       <div className="mt-4 flex items-center gap-3">
         <CountdownRing remainingMs={secondsLeft * 1000} totalMs={OFFER_SECONDS * 1000} onDecline={() => onReject(order)} />
-        <div className="flex-1">
-          <ActionSlider
-            label={accepting ? 'Accepting...' : 'Slide to accept'}
-            color="bg-green-600"
-            disabled={accepting}
-            disabledLabel="Accepting..."
-            onConfirm={handleAccept}
-          />
-        </div>
+        <button
+          type="button"
+          disabled={accepting}
+          onClick={handleAccept}
+          className="flex-1 h-12 rounded-xl bg-[#FFC107] text-base font-extrabold text-gray-900 shadow-sm active:scale-[0.98] transition-transform disabled:opacity-60"
+        >
+          {accepting ? 'Accepting...' : 'Accept'}
+        </button>
       </div>
     </div>
   );
