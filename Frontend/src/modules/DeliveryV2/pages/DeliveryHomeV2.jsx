@@ -268,6 +268,12 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
     return () => window.removeEventListener('ride-requests-count', onCount);
   }, []);
   const ignoredOrderIdsRef = useRef(new Set());
+  // A dismissed or timed-out offer is hidden only for a short while: the server offers the same order again if nobody took it
+  const ignoreOrderTemporarily = (orderId) => {
+    const key = String(orderId);
+    ignoredOrderIdsRef.current.add(key);
+    window.setTimeout(() => ignoredOrderIdsRef.current.delete(key), 40000);
+  };
 
   // Track URL changes (Prop changes) to update sub-page content
   useEffect(() => {
@@ -1667,7 +1673,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                 await acceptOrder(o);
               } catch (err) {
                 const oId = String(o?.orderId || o?._id || o?.id || '');
-                if (oId) ignoredOrderIdsRef.current.add(oId);
+                if (oId) ignoreOrderTemporarily(oId);
               } finally {
                 setIncomingOrder(null);
                 clearNewOrder();
@@ -1675,7 +1681,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
             }}
             onReject={(o) => {
               const oId = String(o?.orderId || o?._id || o?.id || '');
-              if (oId) ignoredOrderIdsRef.current.add(oId);
+              if (oId) ignoreOrderTemporarily(oId);
               setIncomingOrder(null);
               clearNewOrder();
             }}
@@ -1713,7 +1719,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                     }}
                     unreadChatCount={partnerUnreadChatCount}
                     onHandoverSuccess={(handedOrderId) => {
-                      if (handedOrderId) ignoredOrderIdsRef.current.add(String(handedOrderId));
+                      if (handedOrderId) ignoreOrderTemporarily(String(handedOrderId));
                       resetTrip();
                       clearActiveOrder();
                       setIncomingOrder(null);

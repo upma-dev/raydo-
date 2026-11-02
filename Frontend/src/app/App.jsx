@@ -37,6 +37,22 @@ function FloatingLanguageSelector() {
 
 function App() {
   const { pathname } = useLocation()
+
+  // A page that locked body scrolling and left without unlocking (modal open during navigation) must not freeze the next page
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const { style } = document.body
+      if (style.overflow === 'hidden' && !document.querySelector('[data-scroll-lock], [role="dialog"]')) {
+        style.overflow = ''
+        if (style.position === 'fixed') {
+          style.position = ''
+          style.top = ''
+          style.width = ''
+        }
+      }
+    }, 600)
+    return () => window.clearTimeout(timer)
+  }, [pathname])
   return (
     // resetKey: navigating to another page clears a previous crash instead of keeping the error screen
     <ErrorBoundary resetKey={pathname}>

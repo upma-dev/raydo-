@@ -218,6 +218,24 @@ export async function updateDispatchSettings(dispatchMode, adminId) {
   return getDispatchSettings();
 }
 
+// The retry normally runs as a queue job. When the queue is not available (no Redis / BullMQ off) the order would be offered
+// once and never again, so the retry is then run from a plain timer.
+async function scheduleDispatchRetry(data, delayMs) {
+  let queued = null;
+  try {
+    queued = await addOrderJob(data, { delay: delayMs });
+  } catch {
+    queued = null;
+  }
+  if (queued) return;
+  logger.warn(`Dispatch retry for order ${data.orderId} runs from an in-process timer (queue unavailable).`);
+  setTimeout(() => {
+    processDispatchTimeout(data.orderId, data.partnerId).catch((error) => {
+      logger.error(`In-process dispatch retry failed for order ${data.orderId}: ${error?.message || error}`);
+    });
+  }, delayMs);
+}
+
 export async function tryAutoAssign(orderId, options = {}) {
   const attempt = options.attempt || 1;
   const lockTimeout = 55000; // 55 seconds lock interval
@@ -335,12 +353,12 @@ export async function tryAutoAssign(orderId, options = {}) {
       }
       if (targets.length === 0) {
         logger.info(`tryAutoAssign: No available online partners for order ${order._id}. Retrying in 15s...`);
-        await addOrderJob({
+        await scheduleDispatchRetry({
           action: 'DISPATCH_TIMEOUT_CHECK',
           orderMongoId: order._id.toString(),
           orderId: order._id.toString(),
           attempt: attempt + 1
-        }, { delay: 15000 });
+        }, 15000);
         return order;
       }
       // Pick closest available partner, preferring one whose app is actually connected
@@ -401,13 +419,13 @@ export async function tryAutoAssign(orderId, options = {}) {
     await order.save();
 
     // Nobody accepted in 30s: widen to the next partners
-    await addOrderJob({
+    await scheduleDispatchRetry({
       action: 'DISPATCH_TIMEOUT_CHECK',
       orderMongoId: order._id.toString(),
       orderId: order._id.toString(),
       partnerId: targetPartner.partnerId.toString(),
       attempt: attempt + 1
-    }, { delay: 30000 });
+    }, 30000);
 
     return order;
   } finally {

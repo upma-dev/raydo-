@@ -136,6 +136,29 @@ async function loadFirebaseWebConfig() {
   return null;
 }
 
+// A page that is frozen in the background cannot loop a ringtone, and the phone gives a new-order notification only one short
+// chime. So a ring notification is re-alerted (sound + vibration) every few seconds for ~25s, until the rider opens or
+// dismisses it. Returns a promise that settles when the repeating is over; callers keep the worker alive with it.
+const ringLoops = new Set();
+async function showNotificationWithRing(title, options, isRing) {
+  await self.registration.showNotification(title, options);
+  const tag = options && options.tag;
+  if (!isRing || !tag || ringLoops.has(tag)) return;
+  ringLoops.add(tag);
+  try {
+    for (let i = 0; i < 5; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const stillShown = await self.registration.getNotifications({ tag });
+      if (!stillShown.length) break;
+      await self.registration.showNotification(title, { ...options, renotify: true, silent: false });
+    }
+  } catch {
+    // the notification is a best-effort alert
+  } finally {
+    ringLoops.delete(tag);
+  }
+}
+
 (async () => {
   const config = await loadFirebaseWebConfig();
   if (!config || !config.apiKey || !config.projectId || !config.appId || !config.messagingSenderId) {
@@ -150,6 +173,7 @@ async function loadFirebaseWebConfig() {
     pushDebugLog(PUSH_DEBUG_PREFIX, "Received Firebase background message", { payload });
 
     const visibleClient = await hasVisibleClientForTarget(payload, shouldPlaySound(payload));
+    let ringLoopPromise = null;
 
     if (!visibleClient) {
       const title = payload?.notification?.title || payload?.data?.title || "New Notification";
@@ -169,7 +193,7 @@ async function loadFirebaseWebConfig() {
       });
 
       const isRing = shouldPlaySound(payload);
-      self.registration.showNotification(title, {
+      ringLoopPromise = showNotificationWithRing(title, {
         body,
         icon: "/raydo-logo.png",
         badge: "/raydo-logo.png",
@@ -180,11 +204,12 @@ async function loadFirebaseWebConfig() {
         requireInteraction: isRing,
         vibrate: isRing ? [500, 200, 500, 200, 500, 200, 800, 300, 500] : [200, 100, 200],
         data: payload?.data || {},
-      });
+      }, isRing);
     }
 
     // Always notify clients regardless of visibility
     await notifyOpenClients(payload);
+    await ringLoopPromise;
   });
 })();
 
@@ -215,9 +240,10 @@ self.addEventListener("push", (event) => {
       const visibleClient = await hasVisibleClientForTarget(payload, shouldPlaySound(payload));
 
       // If app/tab is closed or in background, show native OS notification popup!
+      let ringLoopPromise = null;
       if (!visibleClient) {
         const isRing = shouldPlaySound(payload);
-        await self.registration.showNotification(title, {
+        ringLoopPromise = showNotificationWithRing(title, {
           body,
           icon: "/raydo-logo.png",
           badge: "/raydo-logo.png",
@@ -228,10 +254,11 @@ self.addEventListener("push", (event) => {
           requireInteraction: isRing,
           vibrate: isRing ? [500, 200, 500, 200, 500, 200, 800, 300, 500] : [200, 100, 200],
           data: payload?.data || {},
-        });
+        }, isRing);
       }
 
       await notifyOpenClients(payload);
+      await ringLoopPromise;
     } catch (err) {
       console.error("[push-sw] Error processing push event:", err);
     }

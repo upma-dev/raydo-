@@ -31,8 +31,7 @@
   --shadow-panel: 0 12px 32px rgba(23, 32, 51, 0.06), 0 2px 8px rgba(23, 32, 51, 0.02);
 }
 
-html,
-body {
+body.landing-page-active {
   background-color: #070A1F !important;
   color: #F8FAFC !important;
   font-family: var(--font-sans);
@@ -45,7 +44,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-#root,
+body.landing-page-active #root,
 .redigo-landing-root,
 .landing-root {
   background-color: #070A1F !important;

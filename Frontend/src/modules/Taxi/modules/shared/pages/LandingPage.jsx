@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import RaydoNavbar from "./components/RaydoNavbar";
 import HeroSection from "./components/HeroSection";
@@ -11,6 +11,12 @@ import "./LandingPage.css";
 
 export default function LandingPage() {
   const heroWrapperRef = useRef(null);
+
+  // The landing page paints the whole page dark; scoped to this page so it does not break scrolling and colours elsewhere
+  useEffect(() => {
+    document.body.classList.add("landing-page-active");
+    return () => document.body.classList.remove("landing-page-active");
+  }, []);
 
   // Scroll-linked animation for Hero exit and Next Section entrance
   const { scrollYProgress } = useScroll({
