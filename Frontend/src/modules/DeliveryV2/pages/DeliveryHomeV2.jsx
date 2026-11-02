@@ -1664,7 +1664,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
       {/* INCOMING ORDER REQUEST MODAL - High priority overlay above all tabs */}
       <AnimatePresence>
-        {incomingOrder && !isModalMinimized && (
+        {false && incomingOrder && !isModalMinimized && (
           <NewOrderModal
             key={`incoming-${incomingOrder?.orderId || incomingOrder?._id || incomingOrder?.orderMongoId || 'active'}`}
             order={incomingOrder}
@@ -1966,7 +1966,28 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
       {/* Ride and parcel requests arrive on this same screen while online. Kept outside the header: its backdrop blur
           would trap the full-screen request card inside the header's box. */}
-      <RideRequestBridge enabled={isOnline} inline={currentTab === 'orders'} />
+      <RideRequestBridge
+        enabled={isOnline}
+        inline={currentTab === 'orders'}
+        foodOrder={incomingOrder}
+        onFoodAccept={async (o) => {
+          try {
+            await acceptOrder(o);
+          } catch (err) {
+            const oId = String(o?.orderId || o?._id || o?.id || '');
+            if (oId) ignoreOrderTemporarily(oId);
+          } finally {
+            setIncomingOrder(null);
+            clearNewOrder();
+          }
+        }}
+        onFoodReject={(o) => {
+          const oId = String(o?.orderId || o?._id || o?.id || '');
+          if (oId) ignoreOrderTemporarily(oId);
+          setIncomingOrder(null);
+          clearNewOrder();
+        }}
+      />
 
       {/* OVERLAYS & POPUPS */}
       <BottomPopup isOpen={showEmergencyPopup} title="Emergency Help" onClose={() => setShowEmergencyPopup(false)}>

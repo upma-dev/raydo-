@@ -476,6 +476,27 @@ const Home = ({ embedded = false }) => {
     };
   }, []);
 
+  // A trip that is running opens its screen on its own (once per trip per session), so the customer never sits on Home
+  // while the captain is already on the way. Back from the trip screen still lands on Home without being sent again.
+  useEffect(() => {
+    const rideId = String(currentRide?.rideId || currentRide?._id || '');
+    if (!rideId) return;
+    const stage = String(currentRide?.liveStatus || currentRide?.status || '').toLowerCase();
+    if (!['accepted', 'arriving', 'arrived', 'started', 'ongoing', 'assigned'].includes(stage)) return;
+    const scheduledAt = currentRide?.scheduledAt ? new Date(currentRide.scheduledAt).getTime() : NaN;
+    if (Number.isFinite(scheduledAt) && scheduledAt > Date.now()) return;
+    const type = String(currentRide?.serviceType || currentRide?.type || 'ride').toLowerCase();
+    const target = type === 'parcel' ? `${routePrefix}/parcel/tracking` : type === 'rental' ? `${routePrefix}/rental/confirmed` : `${routePrefix}/ride/tracking`;
+    const key = `autoOpenedTrip:${rideId}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch {
+      // without storage it still opens once per mount
+    }
+    navigate(target, { state: currentRide });
+  }, [currentRide, navigate, routePrefix]);
+
   const driverName = currentRide?.driver?.name || 'Captain';
   const serviceType = String(currentRide?.serviceType || currentRide?.type || 'ride').toLowerCase();
   const vehicleLabel = currentRide?.driver?.vehicle || currentRide?.driver?.vehicleType || (serviceType === 'parcel' ? 'Parcel' : serviceType === 'rental' ? 'Rental' : 'Taxi');

@@ -11,7 +11,7 @@ const LOCATION_PING_MS = 5000;
  * request screen, sound and accept flow as the ride app; accepting a ride opens the ride screens, which have the way
  * back to food. Renders nothing for partners without a ride profile.
  */
-const RideRequestBridge = ({ enabled, inline = false }) => {
+const RideRequestBridge = ({ enabled, inline = false, foodOrder = null, onFoodAccept, onFoodReject }) => {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -50,7 +50,18 @@ const RideRequestBridge = ({ enabled, inline = false }) => {
     };
   }, [ready]);
 
-  return ready ? <RideRequestCards inline={inline} /> : null;
+  // Food offers are shown here too (as cards), also for partners without a ride profile
+  if (!enabled) return null;
+  if (!ready && !foodOrder && !inline) return null;
+  return (
+    <RideRequestCards
+      inline={inline}
+      ridesDisabled={!ready}
+      foodOrder={foodOrder}
+      onFoodAccept={onFoodAccept}
+      onFoodReject={onFoodReject}
+    />
+  );
 };
 
 export default RideRequestBridge;

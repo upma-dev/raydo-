@@ -35,6 +35,19 @@ const ActiveRideCard = () => {
     };
   }, [check]);
 
+  // A running trip opens its screen on its own, once per trip per session (Back from it lands on Home, not into the trip again)
+  useEffect(() => {
+    if (!ride?.rideId) return;
+    const key = `autoOpenedTrip:${ride.rideId}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch {
+      // without storage it still opens once per mount
+    }
+    openActiveRide(navigate, ride);
+  }, [ride, navigate]);
+
   if (!ride) return null;
 
   const isParcel = String(ride.serviceType || '').toLowerCase() === 'parcel' || String(ride.serviceType || '').toLowerCase() === 'delivery';

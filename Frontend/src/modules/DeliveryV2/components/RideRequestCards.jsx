@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useDeliveryStore } from '@/modules/DeliveryV2/store/useDeliveryStore';
 import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
+import CountdownRing from '@/modules/DeliveryV2/components/CountdownRing';
+import FoodOrderRequestCard from '@/modules/DeliveryV2/components/FoodOrderRequestCard';
 import api from '@/modules/Taxi/shared/api/axiosInstance';
 import { socketService } from '@/modules/Taxi/shared/api/socket';
 import { getLocalDriverToken, getDriverPendingDispatch } from '@/modules/Taxi/modules/driver/services/registrationService';
@@ -58,38 +60,6 @@ const normalize = (job) => ({
   totalMs: Math.max(5000, expiryMs(job) - Date.now()),
 });
 
-const CountdownRing = ({ remainingMs, totalMs, onDecline }) => {
-  const size = 52;
-  const stroke = 4;
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const ratio = Math.max(0, Math.min(1, remainingMs / totalMs));
-  return (
-    <button
-      type="button"
-      onClick={onDecline}
-      aria-label="Decline request"
-      className="relative shrink-0 flex items-center justify-center"
-      style={{ width: size, height: size }}
-    >
-      <svg width={size} height={size} className="-rotate-90 absolute inset-0">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={stroke} />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="#16a34a"
-          strokeWidth={stroke}
-          strokeDasharray={c}
-          strokeDashoffset={c * (1 - ratio)}
-          strokeLinecap="round"
-        />
-      </svg>
-      <span className="text-gray-700 text-2xl font-bold leading-none">–</span>
-    </button>
-  );
-};
 
 const RequestCard = ({ job, now, driverPos, onAccept, onDecline, accepting }) => {
   const pickup = readPoint(job.pickupLocation);
@@ -154,7 +124,7 @@ const RequestCard = ({ job, now, driverPos, onAccept, onDecline, accepting }) =>
  * Ride, bike and parcel requests shown as cards inside the delivery partner screen (no full-screen popup): several can
  * be listed together, each with live distance to pickup, trip distance and a slide-to-accept.
  */
-const RideRequestCards = ({ inline = false }) => {
+const RideRequestCards = ({ inline = false, foodOrder = null, onFoodAccept, onFoodReject, ridesDisabled = false }) => {
   const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [acceptingId, setAcceptingId] = useState('');
@@ -181,8 +151,8 @@ const RideRequestCards = ({ inline = false }) => {
 
   // The Orders tab badge follows the number of waiting requests
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('ride-requests-count', { detail: requests.length }));
-  }, [requests.length]);
+    window.dispatchEvent(new CustomEvent('ride-requests-count', { detail: requests.length + (foodOrder ? 1 : 0) }));
+  }, [requests.length, foodOrder]);
   useEffect(() => () => window.dispatchEvent(new CustomEvent('ride-requests-count', { detail: 0 })), []);
 
   // Ring while at least one request is waiting
@@ -219,7 +189,7 @@ const RideRequestCards = ({ inline = false }) => {
   useEffect(() => {
     let active = true;
     const check = async () => {
-      if (!getLocalDriverToken()) return;
+      if (ridesDisabled || !getLocalDriverToken()) return;
       try {
         const params = new URLSearchParams(window.location.search);
         const rideId = params.get('rideId') || params.get('openRideId') || '';
@@ -240,9 +210,10 @@ const RideRequestCards = ({ inline = false }) => {
       window.removeEventListener('focus', check);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [addRequest]);
+  }, [addRequest, ridesDisabled]);
 
   useEffect(() => {
+    if (ridesDisabled) return undefined;
     const socket = socketService.connect({ role: 'driver' });
     if (!socket) return undefined;
 
@@ -310,7 +281,7 @@ const RideRequestCards = ({ inline = false }) => {
       socketService.off('errorMessage', onError);
       socketService.off('rideAccepted', onAccepted);
     };
-  }, [addRequest, navigate]);
+  }, [addRequest, navigate, ridesDisabled]);
 
   const handleAccept = useCallback((job) => {
     if (acceptingRef.current) return Promise.resolve();
@@ -326,7 +297,7 @@ const RideRequestCards = ({ inline = false }) => {
     setRequests((list) => list.filter((item) => item.rideId !== job.rideId));
   }, []);
 
-  if (requests.length === 0 && !inline) return null;
+  if (requests.length === 0 && !foodOrder && !inline) return null;
 
   return (
     <div className={inline
@@ -335,11 +306,19 @@ const RideRequestCards = ({ inline = false }) => {
       <div className={inline
         ? "mx-auto max-w-md space-y-3 pb-4"
         : "pointer-events-auto mx-auto max-h-[65vh] max-w-md space-y-3 overflow-y-auto pb-2"}>
-        {requests.length === 0 ? (
+        {foodOrder && onFoodAccept && onFoodReject && (
+          <FoodOrderRequestCard
+            key={String(foodOrder?.orderId || foodOrder?._id || foodOrder?.orderMongoId || 'food')}
+            order={foodOrder}
+            onAccept={onFoodAccept}
+            onReject={onFoodReject}
+          />
+        )}
+        {requests.length === 0 && !foodOrder ? (
           <div className="pt-16 text-center text-sm font-medium text-gray-500">
             No requests right now. New bike, ride and parcel requests will show here, and the first partner to accept gets the trip.
           </div>
-        ) : (
+        ) : requests.length === 0 ? null : (
         <div className="px-1 text-sm font-bold text-gray-900 drop-shadow">
           {requests.length} {requests.length === 1 ? "new request" : "new requests"}
         </div>
