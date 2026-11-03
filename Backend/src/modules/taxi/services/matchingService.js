@@ -407,9 +407,10 @@ const findDriversForZone = async ({
   const { filterLinkedDriversForDispatch } = await import('../../food/delivery/services/hybridRide.service.js');
   // Two-wheeler (bike) requests go to delivery partners only (the delivery app); every other request goes to the driver app
   const isTwoWheelerRequest = !heavyParcel && allowedVehicles.some((v) => isTwoWheelerVehicle(v.name, v.vehicle_type, v.icon_types));
-  const audienceDrivers = uniqueDrivers.filter((driver) => (isTwoWheelerRequest
-    ? Boolean(driver.linkedDeliveryPartnerId)
-    : !driver.linkedDeliveryPartnerId));
+  // (linked drivers are bike-only and already matched by vehicle type, so other requests are left untouched)
+  const audienceDrivers = isTwoWheelerRequest
+    ? uniqueDrivers.filter((driver) => Boolean(driver.linkedDeliveryPartnerId))
+    : uniqueDrivers;
   const linkedOk = await filterLinkedDriversForDispatch(audienceDrivers, { serviceType });
   // Subscription-only mode: only drivers with a live pass get requests
   const eligibleDrivers = await filterDriversBySubscription(linkedOk);
