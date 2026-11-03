@@ -207,9 +207,16 @@ const emitRideRequestToDrivers = async ({
   const { estimateDriverEarning } = await import('../driver/services/walletService.js');
   const earningEstimate = await estimateDriverEarning(ride);
 
+  // A delivery partner's linked ride profile shares the driver socket room with the driver app, so every request says which
+  // app it is for and the other app ignores it
+  const linkedRows = await Driver.find({ _id: { $in: targetDrivers.map((d) => d._id) }, linkedDeliveryPartnerId: { $ne: null } })
+    .select('_id').lean();
+  const linkedIds = new Set(linkedRows.map((row) => String(row._id)));
+
   for (const driver of targetDrivers) {
     console.log(`[DISPATCH_SERVICE] Emitting 'rideRequest' to Driver: ${driver._id} (Room: ${getDriverRoom(driver._id)}) for Ride: ${ride._id}`);
     emitToDriver(driver._id, 'rideRequest', {
+      targetApp: linkedIds.has(String(driver._id)) ? 'delivery' : 'driver',
       rideId: String(ride._id),
       type: ride.serviceType || 'ride',
       serviceType: ride.serviceType || 'ride',
@@ -269,37 +276,47 @@ const emitRideRequestToDrivers = async ({
   }
 
   const isParcel = ride.serviceType === 'parcel';
-  const targetUrl = isParcel ? `/food/delivery/feed?rideId=${String(ride._id)}` : `/taxi/driver/home?rideId=${String(ride._id)}`;
+  const pushGroups = [
+    { toDelivery: true, ids: targetDrivers.filter((d) => linkedIds.has(String(d._id))) },
+    { toDelivery: false, ids: targetDrivers.filter((d) => !linkedIds.has(String(d._id))) },
+  ].filter((group) => group.ids.length > 0);
 
-  sendPushNotificationToEntities({
-    driverIds: targetDrivers.map((driver) => String(driver._id)),
-    title: isParcel ? 'New parcel delivery request' : 'New ride request',
-    body: ride.pickupAddress
-      ? `Pickup: ${ride.pickupAddress}`
-      : 'A new booking is waiting for your response.',
-    data: {
-      type: 'ride_request',
-      // The service worker only rings and keeps the notification on screen when ring === "true".
-      ring: 'true',
-      rideId: String(ride._id),
-      serviceType: ride.serviceType || 'ride',
-      pickupAddress: ride.pickupAddress || '',
-      dropAddress: ride.dropAddress || '',
-      fare: String(ride.fare || 0),
-      paymentMethod: ride.paymentMethod || 'Cash',
-      distance: String(ride.estimatedDistanceMeters || 0),
-      userId: String(ride.userId?._id || ride.userId || ''),
-      targetUrl,
-      link: targetUrl,
-      click_action: targetUrl,
-      ownerType: isParcel ? 'DELIVERY_PARTNER' : 'DRIVER',
-    },
-  }).then((result) => {
-    // One line per request, so "no notification on a closed app" can be traced to tokens (targets) or delivery (delivered)
-    console.log(`[RidePush] ride=${String(ride._id)} drivers=${targetDrivers.length} targets=${result?.targetCount ?? 0} delivered=${result?.deliveredCount ?? 0} failed=${result?.failedCount ?? 0}${result?.reason ? ` reason=${result.reason}` : ''}`);
-  }).catch((error) => {
-    console.error('Failed to send driver ride-request push notification', error);
-  });
+  for (const { toDelivery, ids } of pushGroups) {
+    // Delivery partners always open the delivery app (rides and parcels); drivers open the driver app (parcels excepted)
+    const openDelivery = toDelivery || isParcel;
+    const targetUrl = openDelivery ? `/food/delivery/feed?rideId=${String(ride._id)}` : `/taxi/driver/home?rideId=${String(ride._id)}`;
+
+    sendPushNotificationToEntities({
+      driverIds: ids.map((driver) => String(driver._id)),
+      linkedPartnerTokensOnly: toDelivery,
+      title: isParcel ? 'New parcel delivery request' : 'New ride request',
+      body: ride.pickupAddress
+        ? `Pickup: ${ride.pickupAddress}`
+        : 'A new booking is waiting for your response.',
+      data: {
+        type: 'ride_request',
+        // The service worker only rings and keeps the notification on screen when ring === "true".
+        ring: 'true',
+        rideId: String(ride._id),
+        serviceType: ride.serviceType || 'ride',
+        pickupAddress: ride.pickupAddress || '',
+        dropAddress: ride.dropAddress || '',
+        fare: String(ride.fare || 0),
+        paymentMethod: ride.paymentMethod || 'Cash',
+        distance: String(ride.estimatedDistanceMeters || 0),
+        userId: String(ride.userId?._id || ride.userId || ''),
+        targetUrl,
+        link: targetUrl,
+        click_action: targetUrl,
+        ownerType: openDelivery ? 'DELIVERY_PARTNER' : 'DRIVER',
+      },
+    }).then((result) => {
+      // One line per request, so "no notification on a closed app" can be traced to tokens (targets) or delivery (delivered)
+      console.log(`[RidePush] ride=${String(ride._id)} app=${toDelivery ? 'delivery' : 'driver'} drivers=${ids.length} targets=${result?.targetCount ?? 0} delivered=${result?.deliveredCount ?? 0} failed=${result?.failedCount ?? 0}${result?.reason ? ` reason=${result.reason}` : ''}`);
+    }).catch((error) => {
+      console.error('Failed to send driver ride-request push notification', error);
+    });
+  }
 };
 
 export const markDriverRejectedFromDispatch = (rideId, driverId, reason = 'rejected') => {
@@ -1295,10 +1312,16 @@ export const notifyRideBiddingUpdated = async (ride) => {
   }
 };
 
-export const getActivePendingDispatchForDriver = async (driverId, requestedRideId = null) => {
+export const getActivePendingDispatchForDriver = async (driverId, requestedRideId = null, { app = '' } = {}) => {
   if (!driverId) return null;
 
   const driverKey = String(driverId);
+  // The delivery app and the driver app share one driver login: a linked delivery partner's requests belong to the
+  // delivery app only, so the driver app never gets an (old) card for them
+  const linkedDriver = await Driver.findById(driverId).select('linkedDeliveryPartnerId').lean();
+  const targetApp = linkedDriver?.linkedDeliveryPartnerId ? 'delivery' : 'driver';
+  const askingApp = String(app || '').trim().toLowerCase();
+  if (askingApp ? askingApp !== targetApp : targetApp === 'delivery') return null;
   let candidateRideIds = [];
 
   if (requestedRideId) {
@@ -1379,6 +1402,7 @@ export const getActivePendingDispatchForDriver = async (driverId, requestedRideI
       const { estimateDriverEarning: estimatePendingEarning } = await import('../driver/services/walletService.js');
       const pendingEarning = await estimatePendingEarning(ride);
       return {
+        targetApp,
         rideId: String(ride._id),
         type: ride.serviceType || 'ride',
         serviceType: ride.serviceType || 'ride',

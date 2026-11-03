@@ -1737,6 +1737,8 @@ const DriverHome = () => {
 
             const onRideRequest = (data) => {
                 console.info('[driver-home] rideRequest received', data);
+                // Bike requests for a delivery partner are shown in the delivery app only
+                if (data?.targetApp === 'delivery') return;
                 const requestType = normalizeJobType(data);
                 const request = {
                     type: requestType,

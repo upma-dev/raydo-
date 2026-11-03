@@ -2364,10 +2364,10 @@ export const getDriverEarningsFilter = async (req, res) => {
 
 export const getPendingDriverDispatch = async (req, res) => {
   const driverId = req.auth.sub;
-  const { rideId, openRideId } = req.query;
+  const { rideId, openRideId, app } = req.query;
   const targetRideId = rideId || openRideId || null;
 
-  const pendingRequest = await getActivePendingDispatchForDriver(driverId, targetRideId);
+  const pendingRequest = await getActivePendingDispatchForDriver(driverId, targetRideId, { app });
 
   res.json({
     success: true,

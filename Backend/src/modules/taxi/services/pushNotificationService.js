@@ -279,7 +279,7 @@ const sendPushToTargets = async ({
   };
 };
 
-const collectDirectTargets = async ({ userIds = [], driverIds = [] }) => {
+const collectDirectTargets = async ({ userIds = [], driverIds = [], linkedPartnerTokensOnly = false }) => {
   const normalizedUserIds = [...new Set((Array.isArray(userIds) ? userIds : []).map((id) => String(id || '').trim()).filter(Boolean))];
   const normalizedDriverIds = [...new Set((Array.isArray(driverIds) ? driverIds : []).map((id) => String(id || '').trim()).filter(Boolean))];
   const targets = [];
@@ -313,6 +313,15 @@ const collectDirectTargets = async ({ userIds = [], driverIds = [] }) => {
     const partnerById = new Map(linkedPartners.map((partner) => [String(partner._id), partner]));
 
     drivers.forEach((driver) => {
+      const linkedPartner = partnerById.get(String(driver.linkedDeliveryPartnerId || ''));
+      // Ride / parcel requests for a delivery partner belong to the delivery app only: the tokens saved on the driver
+      // record may come from the driver app and would open the wrong app with an old card
+      if (linkedPartnerTokensOnly && linkedPartner) {
+        listEntityPushTokens(linkedPartner, 'partner').forEach((tokenEntry) => {
+          targets.push({ ...tokenEntry, entityId: String(linkedPartner._id) });
+        });
+        return;
+      }
       // The driver keeps its web token in fcmTokenWeb; the token list helper reads it as fcmTokens
       listEntityPushTokens({ fcmTokens: driver.fcmTokenWeb, fcmTokenMobile: driver.fcmTokenMobile }, 'driver').forEach((tokenEntry) => {
         targets.push({
@@ -452,8 +461,9 @@ export const sendPushNotificationToEntities = async ({
   body,
   image = '',
   data = {},
+  linkedPartnerTokensOnly = false,
 }) => {
-  const targets = await collectDirectTargets({ userIds, driverIds });
+  const targets = await collectDirectTargets({ userIds, driverIds, linkedPartnerTokensOnly });
   return sendPushToTargets({
     targets,
     title,

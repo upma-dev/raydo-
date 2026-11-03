@@ -148,10 +148,10 @@ const DriverRideRequestListener = () => {
         try {
             const searchParams = new URLSearchParams(window.location.search);
             const rideId = targetRideId || searchParams.get('rideId') || searchParams.get('openRideId') || sessionStorage.getItem('pendingRideId') || localStorage.getItem('pendingRideId') || '';
-            const response = await getDriverPendingDispatch(rideId ? { rideId } : {});
+            const response = await getDriverPendingDispatch(rideId ? { rideId, app: 'driver' } : { app: 'driver' });
             const data = unwrapApiPayload(response);
 
-            if (data && data.rideId && !requestRef.current) {
+            if (data && data.rideId && data.targetApp !== 'delivery' && !requestRef.current) {
                 const requestType = normalizeJobType(data);
                 const request = {
                     type: requestType,
@@ -229,6 +229,8 @@ const DriverRideRequestListener = () => {
         }
 
         const onRideRequest = (data) => {
+            // Bike requests for a delivery partner are shown in the delivery app only
+            if (data?.targetApp === 'delivery') return;
             const requestType = normalizeJobType(data);
             const request = {
                 type: requestType,

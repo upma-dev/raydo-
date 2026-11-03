@@ -184,7 +184,7 @@ const RideRequestCards = ({ inline = false, foodOrder = null, onFoodAccept, onFo
   }, [requests.length]);
 
   const addRequest = useCallback((data) => {
-    if (!data?.rideId) return;
+    if (!data?.rideId || data.targetApp === 'driver') return;
     const job = normalize(data);
     setRequests((list) => (list.some((item) => item.rideId === job.rideId)
       ? list.map((item) => (item.rideId === job.rideId ? { ...item, ...job } : item))
@@ -199,7 +199,7 @@ const RideRequestCards = ({ inline = false, foodOrder = null, onFoodAccept, onFo
       try {
         const params = new URLSearchParams(window.location.search);
         const rideId = params.get('rideId') || params.get('openRideId') || '';
-        const data = unwrap(await getDriverPendingDispatch(rideId ? { rideId } : {}));
+        const data = unwrap(await getDriverPendingDispatch(rideId ? { rideId, app: 'delivery' } : { app: 'delivery' }));
         if (active && data?.rideId) addRequest(data);
       } catch {
         // nothing pending
