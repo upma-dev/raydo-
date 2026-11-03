@@ -321,6 +321,16 @@ const driverSchema = new mongoose.Schema(
         default: [0, 0],
       },
     },
+    // "Return trip": the driver is heading back to this zone and wants rides that end there (see returnTripService.js)
+    returnTrip: {
+      enabled: { type: Boolean, default: false },
+      destinationZoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'TaxiZone', default: null },
+      label: { type: String, default: '', trim: true },
+      startedAt: { type: Date, default: null },
+      expiresAt: { type: Date, default: null },
+      source: { type: String, enum: ['manual', 'suggestion'], default: 'manual' },
+      fromRideId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    },
     routeBooking: {
       enabled: {
         type: Boolean,

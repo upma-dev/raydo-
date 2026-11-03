@@ -90,6 +90,7 @@ import {
   updateCurrentDriverDocument,
 } from "../controllers/driverController.js";
 import { buyDriverSubscription, getMyDriverSubscriptions } from "../controllers/driverSubscriptionController.js";
+import { getMyReturnTrip, setMyReturnTrip } from "../controllers/driverReturnTripController.js";
 import { triggerDriverSosAlert } from '../../safety/controllers/safetyController.js';
 import { createSupportTicket } from '../../support/controllers/supportController.js';
 
@@ -208,6 +209,16 @@ driverRouter.get(
   "/subscriptions/me",
   authenticate(["driver"]),
   asyncHandler(getMyDriverSubscriptions),
+);
+driverRouter.get(
+  "/return-trip",
+  authenticate(["driver"]),
+  asyncHandler(getMyReturnTrip),
+);
+driverRouter.put(
+  "/return-trip",
+  authenticate(["driver"]),
+  asyncHandler(setMyReturnTrip),
 );
 driverRouter.post(
   "/subscriptions/purchase",

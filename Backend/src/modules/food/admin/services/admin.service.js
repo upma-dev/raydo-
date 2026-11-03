@@ -4047,7 +4047,9 @@ export async function getDeliveryPartners(query) {
         email: doc.email || '',
         phone: doc.phone || '',
         deliveryId: doc._id ? `DP-${doc._id.toString().slice(-8).toUpperCase()}` : null,
-        zone: doc.city || doc.state || doc.address || '',
+        // The zone follows the partner's live location (see partnerZone.service.js); sign-up city only if no zone is known
+        zone: doc.zoneName || doc.city || doc.state || doc.address || '',
+        zoneUpdatedAt: doc.zoneUpdatedAt || null,
         vehicleType: doc.vehicleType || '',
         status: doc.status,
         availabilityStatus: doc.availabilityStatus || 'offline',

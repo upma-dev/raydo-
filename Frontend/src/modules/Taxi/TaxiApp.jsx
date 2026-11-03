@@ -147,6 +147,8 @@ const OwnerBusBookingsPage = lazy(() => import('./modules/driver/pages/OwnerBusB
 const ActiveTrip = lazy(() => import('./modules/driver/pages/ActiveTrip'));
 const DriverWallet = lazy(() => import('./modules/driver/pages/DriverWallet'));
 const DriverSubscription = lazy(() => import('./modules/driver/pages/DriverSubscription'));
+const DriverReturnTrip = lazy(() => import('./modules/driver/pages/DriverReturnTrip'));
+const AdminReturnTripSettings = lazy(() => import('./modules/admin/pages/drivers/ReturnTripSettings'));
 const OwnerWallet = lazy(() => import('./modules/driver/pages/OwnerWallet'));
 const DriverEarnings = lazy(() => import('./modules/driver/pages/DriverEarnings'));
 const DriverProfile = lazy(() => import('./modules/driver/pages/DriverProfile'));
@@ -1123,6 +1125,7 @@ function TaxiApp() {
                 <Route path="chat" element={<Chat />} />
                 <Route path="wallet" element={<DriverWallet />} />
                 <Route path="subscription" element={<DriverSubscription />} />
+                <Route path="return-trip" element={<DriverReturnTrip />} />
                 <Route path="earnings" element={<DriverEarnings />} />
                 <Route path="profile" element={<MergedPartnerRedirect to="/food/delivery/profile"><DriverProfile /></MergedPartnerRedirect>} />
                 {RENTAL_ENABLED ? (
@@ -1305,6 +1308,7 @@ function TaxiApp() {
                   path="drivers/subscription"
                   element={<AdminDriverSubscriptions />}
                 />
+                <Route path="drivers/return-trip" element={<AdminReturnTripSettings />} />
                 <Route
                   path="drivers/subscription/create"
                   element={<AdminDriverSubscriptionCreate />}

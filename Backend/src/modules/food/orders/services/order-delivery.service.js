@@ -19,6 +19,7 @@ import * as dispatchService from './order-dispatch.service.js';
 import { isPartnerInActiveZoneSync } from './order-dispatch.service.js';
 import * as paymentService from './order-payment.service.js';
 import { assertRiderCanTakeCod } from '../../delivery/services/riderCash.service.js';
+import { assertPartnerMayWork } from '../../delivery/services/deliverySubscriptionCore.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { creditFoodOrder } from '../../admin/services/franchiseLedger.service.js';
 
@@ -316,6 +317,9 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
 
   const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
 
+  // Food is subscription-only: no live food pass, no accepting orders (an offer sent earlier must not get around it)
+  await assertPartnerMayWork(partnerId, 'food');
+
   // COD: an offer sent earlier (or a direct call) must not take the rider above the admin's cash limit
   const orderToAccept = await FoodOrder.findOne(identity).select('payment.method pricing.total').lean();
   if (orderToAccept) await assertRiderCanTakeCod(partnerId, orderToAccept);
@@ -333,7 +337,8 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
       const targetZoneId = restaurant?.zoneId || restaurant?.zone;
       const isInZone = isPartnerInActiveZoneSync(partner.lastLat, partner.lastLng, targetZoneId, activeZones);
       if (!isInZone) {
-        logger.warn(`[AcceptOrder] Rider ${partnerId} accepted order while outside zone, allowing accept.`);
+        // Strictly zone-wise: orders are only offered inside the restaurant's zone, so accepting from outside is refused
+        throw new ValidationError('This order is outside your delivery zone.');
       }
     }
   }

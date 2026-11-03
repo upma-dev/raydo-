@@ -32,6 +32,7 @@ import NotificationsV2 from './pages/NotificationsV2';
 
 const FoodOrderChatScreen = lazy(() => import('@food/pages/user/orders/FoodOrderChatScreen'));
 const RideModeV2 = lazy(() => import('./pages/rideMode/RideModeV2'));
+const SubscriptionV2 = lazy(() => import('./pages/SubscriptionV2'));
 
 const DeliveryV2Router = () => {
   return (
@@ -59,6 +60,7 @@ const DeliveryV2Router = () => {
       <Route path="profile/details" element={<ProtectedRoute><ProfileDetailsV2 /></ProtectedRoute>} />
       <Route path="profile/bank" element={<ProtectedRoute><ProfileBankV2 /></ProtectedRoute>} />
       <Route path="profile/documents" element={<ProtectedRoute><ProfileDocsV2 /></ProtectedRoute>} />
+      <Route path="profile/subscription" element={<ProtectedRoute><Suspense fallback={<Loader />}><SubscriptionV2 /></Suspense></ProtectedRoute>} />
       <Route path="ride-mode" element={<ProtectedRoute><Suspense fallback={<Loader />}><RideModeV2 /></Suspense></ProtectedRoute>} />
 
       {/* Support Systems */}

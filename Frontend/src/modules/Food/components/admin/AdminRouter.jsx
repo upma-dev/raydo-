@@ -74,6 +74,7 @@ const DeliverymanReviews = lazy(() => import("@food/pages/admin/delivery-partner
 const DeliverymanBonus = lazy(() => import("@food/pages/admin/delivery-partners/DeliverymanBonus"));
 const EarningAddon = lazy(() => import("@food/pages/admin/delivery-partners/EarningAddon"));
 const EarningAddonHistory = lazy(() => import("@food/pages/admin/delivery-partners/EarningAddonHistory"));
+const DeliverySubscription = lazy(() => import("@food/pages/admin/delivery-partners/DeliverySubscription"));
 const DeliveryEarnings = lazy(() => import("@food/pages/admin/delivery-partners/DeliveryEarnings"));
 const GigsManagement = lazy(() => import("@food/pages/admin/management/GigsManagement"));
 const SelfieLogs = lazy(() => import("@food/pages/admin/management/SelfieLogs"));
@@ -278,6 +279,7 @@ export default function AdminRouter() {
             <Route path="delivery-partners/bonus" element={<DeliverymanBonus />} />
             <Route path="delivery-partners/earning-addon" element={<EarningAddon />} />
             <Route path="delivery-partners/earning-addon-history" element={<EarningAddonHistory />} />
+            <Route path="delivery-partners/subscription" element={<DeliverySubscription />} />
             <Route path="delivery-partners/earnings" element={<DeliveryEarnings />} />
             <Route path="delivery-partners/gigs" element={<GigsManagement />} />
             <Route path="delivery-partners/selfie-logs" element={<SelfieLogs />} />

@@ -40,6 +40,7 @@ import { cancelScheduledRideByDriver, emitToDriver, emitToAdmins } from "../../s
 import { calculateCancellationBill, getCancellationPolicy } from "../../services/cancellationService.js";
 import { notifyLateAvailableDriver, getActivePendingDispatchForDriver } from "../../services/dispatchService.js";
 import { findZoneByPickup } from "../services/locationService.js";
+import { turnOffReturnTripIfArrived } from "../../services/returnTripService.js";
 import { listDriverServiceLocations } from "../services/serviceLocationService.js";
 import {
   applyDriverWalletAdjustment,
@@ -2392,6 +2393,8 @@ export const updateDriverLocation = async (req, res) => {
     },
     { returnDocument: 'after' }
   );
+  // Reached the zone he was heading back to: Return trip mode ends
+  if (driver) turnOffReturnTripIfArrived(driver, zone?._id).catch(() => {});
 
   if (!driver) {
     throw new ApiError(404, "Driver not found");
@@ -7588,6 +7591,8 @@ export const goOffline = async (req, res) => {
     {
       isOnline: false,
       socketId: null,
+      // Going offline ends Return trip mode
+      'returnTrip.enabled': false,
       incentiveTracking: {
         ...finalizedTracking,
         currentOnlineStartedAt: null,

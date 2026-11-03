@@ -5,6 +5,7 @@ import { FoodDeliveryWithdrawal } from '../models/foodDeliveryWithdrawal.model.j
 import { FoodDeliveryCashDeposit } from '../models/foodDeliveryCashDeposit.model.js';
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { HybridWalletTransfer } from '../models/hybridWalletTransfer.model.js';
+import { FoodDeliveryPartnerSubscription } from '../models/deliveryPartnerSubscription.model.js';
 import { Driver } from '../../../taxi/driver/models/Driver.js';
 import { Ride } from '../../../taxi/user/models/Ride.js';
 import { withPartnerWalletLock } from './rideWalletLock.js';
@@ -82,7 +83,7 @@ export const getDeliveryPocketTotals = async (deliveryPartnerId) => {
     }
     const partnerId = new mongoose.Types.ObjectId(String(deliveryPartnerId));
 
-    const [earningsAgg, cashCollectedAgg, cashDepositsAgg, bonusAgg, withdrawalAgg, ledgerExtraEarnings, rideTransfers] = await Promise.all([
+    const [earningsAgg, cashCollectedAgg, cashDepositsAgg, bonusAgg, withdrawalAgg, ledgerExtraEarnings, rideTransfers, subscriptionAgg] = await Promise.all([
         // 1. Total Earnings from Delivered Orders
         FoodOrder.aggregate([
             { $match: { 'dispatch.deliveryPartnerId': partnerId, orderStatus: 'delivered' } },
@@ -117,6 +118,11 @@ export const getDeliveryPocketTotals = async (deliveryPartnerId) => {
         riderLedgerExtraEarnings(partnerId),
         // Ride & Parcel mode: taxi earnings swept into the Pocket, minus cash-ride commission dues paid from it
         rideWalletTransferTotals(partnerId),
+        // 6. Subscription passes bought from the Pocket (passes an admin gave for free cost nothing)
+        FoodDeliveryPartnerSubscription.aggregate([
+            { $match: { partnerId, purchaseSource: 'pocket' } },
+            { $group: { _id: null, total: { $sum: { $ifNull: ['$amount', 0] } } } }
+        ]),
     ]);
 
     const totalEarned = Number(earningsAgg?.[0]?.totalEarned) || 0;
@@ -126,9 +132,10 @@ export const getDeliveryPocketTotals = async (deliveryPartnerId) => {
     const totalBonus = Number(bonusAgg?.[0]?.total) || 0;
     const totalWithdrawn = Number(withdrawalAgg?.[0]?.totalWithdrawn) || 0;
     const pendingWithdrawals = Number(withdrawalAgg?.[0]?.pendingWithdrawals) || 0;
+    const subscriptionSpent = Number(subscriptionAgg?.[0]?.total) || 0;
 
-    // Pocket Balance = (Earnings + Bonus + ride earnings) - Withdrawn (approved) - Pending Withdrawals - ride dues
-    const rawGrossPocket = round2((totalEarned + ledgerExtraEarnings + totalBonus + rideTransfers.mergedIn) - (totalWithdrawn + pendingWithdrawals + rideTransfers.duesRecovered));
+    // Pocket Balance = (Earnings + Bonus + ride earnings) - Withdrawn (approved) - Pending Withdrawals - ride dues - subscription passes
+    const rawGrossPocket = round2((totalEarned + ledgerExtraEarnings + totalBonus + rideTransfers.mergedIn) - (totalWithdrawn + pendingWithdrawals + rideTransfers.duesRecovered + subscriptionSpent));
     const grossPocketBalance = Math.max(0, rawGrossPocket);
 
     // COD cash the rider is still holding belongs to the platform. It is netted against earnings, so a rider cannot
@@ -139,7 +146,7 @@ export const getDeliveryPocketTotals = async (deliveryPartnerId) => {
 
     return {
         totalEarned, ledgerExtraEarnings, totalBonus, totalWithdrawn, pendingWithdrawals, cashInHand,
-        rideTransfers, grossPocketBalance, pocketBalance, rawPocketBalance,
+        subscriptionSpent, rideTransfers, grossPocketBalance, pocketBalance, rawPocketBalance,
     };
 };
 
@@ -170,7 +177,7 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
 
     const {
         totalEarned, ledgerExtraEarnings, totalBonus, totalWithdrawn, pendingWithdrawals, cashInHand,
-        rideTransfers, grossPocketBalance, pocketBalance, rawPocketBalance,
+        subscriptionSpent, rideTransfers, grossPocketBalance, pocketBalance, rawPocketBalance,
     } = totals;
 
     const totalCashLimit = Number(cashLimitSettings.deliveryCashLimit) || 0;
@@ -289,6 +296,7 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
         unifiedBalance: round2(pocketBalance + rideBalance),
         rideEarningsMerged: rideTransfers.mergedIn,
         rideDuesRecovered: rideTransfers.duesRecovered,
+        subscriptionSpent: round2(subscriptionSpent), // Passes bought from the Pocket (Profile > Subscription)
         pocketBalance, // Available to withdraw (earnings minus COD cash still in hand)
         rawPocketBalance,
         grossPocketBalance, // Earnings not yet withdrawn, before the COD cash in hand is netted off

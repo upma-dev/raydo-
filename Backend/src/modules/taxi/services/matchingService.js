@@ -34,7 +34,9 @@ const normalizeVehicleTypeIds = (vehicleTypeIds = [], vehicleTypeId = null) => {
 
 import { TWO_WHEELER_KEYS, TRUCK_MOVER_KEYS, TWO_WHEELER_RE, TRUCK_MOVER_RE } from './vehicleClass.js';
 import { SELFIE_VALIDITY_MS } from './driverSelfiePolicy.js';
-import { filterDriversBySubscription } from '../driver/services/driverSubscriptionCore.js';
+import { driversWithLivePass, filterDriversBySubscription } from '../driver/services/driverSubscriptionCore.js';
+import { compareDispatchPriority, effectiveRating } from './dispatchPriority.js';
+import { getReturnTripConfig, isReturnTripMatch } from './returnTripService.js';
 // Cycle / electric scooter captains only take short trips; anything longer than this goes to bike / car / etc.
 export const SHORT_RANGE_MAX_METERS = 7000;
 const SHORT_RANGE_VEHICLE_RE = /cycle|bicycle|e-?scooter|electric|e-?bike|ev/i;
@@ -330,20 +332,27 @@ const getDispatchAnchorCoordinates = (driver = {}) => {
   return Array.isArray(driver?.location?.coordinates) ? driver.location.coordinates : [];
 };
 
-const sortDriversByDispatchAnchorDistance = (drivers = [], pickupCoords) =>
-  [...drivers]
+// Everyone inside the search range is a candidate; the first ones asked are chosen by priority (see dispatchPriority.js):
+// running subscription pass first, then higher rating, then the nearer one.
+const CANDIDATE_POOL = 100;
+
+const sortDriversByDispatchPriority = async (drivers = [], pickupCoords, serviceType = 'ride', { dropZoneId = null, tripDistanceMeters = 0 } = {}) => {
+  const passSet = await driversWithLivePass(drivers, serviceType);
+  const returnConfig = dropZoneId ? await getReturnTripConfig() : null;
+  return drivers
     .map((driver) => {
       const anchorCoordinates = getDispatchAnchorCoordinates(driver);
       return {
         driver,
-        distanceMeters:
-          anchorCoordinates.length === 2
-            ? getDistanceBetweenMeters(pickupCoords, anchorCoordinates)
-            : Number.POSITIVE_INFINITY,
+        hasPass: passSet.has(String(driver._id)),
+        isReturn: returnConfig ? isReturnTripMatch(driver, { dropZoneId, serviceType, tripDistanceMeters }, returnConfig) : false,
+        rating: effectiveRating(driver.rating, driver.ratingCount),
+        distance: anchorCoordinates.length === 2 ? getDistanceBetweenMeters(pickupCoords, anchorCoordinates) : Number.POSITIVE_INFINITY,
       };
     })
-    .sort((left, right) => left.distanceMeters - right.distanceMeters)
+    .sort(compareDispatchPriority)
     .map(({ driver }) => driver);
+};
 
 const findDriversForZone = async ({
   zoneId,
@@ -356,7 +365,10 @@ const findDriversForZone = async ({
   serviceType = 'ride',
   tripDistanceMeters = 0,
   heavyParcel = false,
+  dropZoneId = null,
 }) => {
+  // Fetch everyone in range (not just the nearest few) so the priority order below really applies to all of them
+  const candidatePool = Math.max(limit, CANDIDATE_POOL);
   const commonFilters = buildDriverMatchFilters({
     heavyParcel,
     tripDistanceMeters,
@@ -367,7 +379,7 @@ const findDriversForZone = async ({
     serviceType,
   });
   const selectedFields =
-    'name phone socketId vehicleTypeId vehicleType vehicleIconType vehicleNumber vehicleColor vehicleMake vehicleModel rating ratingCount location zoneId isOnline isOnRide routeBooking serviceCategories registerFor linkedDeliveryPartnerId';
+    'name phone socketId vehicleTypeId vehicleType vehicleIconType vehicleNumber vehicleColor vehicleMake vehicleModel rating ratingCount location zoneId isOnline isOnRide routeBooking returnTrip serviceCategories registerFor linkedDeliveryPartnerId';
 
   const [liveLocationDrivers, routeBookingDrivers] = await Promise.all([
     Driver.find({
@@ -375,7 +387,7 @@ const findDriversForZone = async ({
       'routeBooking.enabled': { $ne: true },
       ...buildGeoNearFilter('location', coordinates, effectiveMaxDistance),
     })
-      .limit(limit)
+      .limit(candidatePool)
       .select(selectedFields),
     Driver.find({
       ...commonFilters,
@@ -384,7 +396,7 @@ const findDriversForZone = async ({
       'routeBooking.anchorLocation.coordinates.1': { $exists: true },
       ...buildGeoNearFilter('routeBooking.anchorLocation', coordinates, effectiveMaxDistance),
     })
-      .limit(limit)
+      .limit(candidatePool)
       .select(selectedFields),
   ]);
 
@@ -393,11 +405,11 @@ const findDriversForZone = async ({
   );
   // Delivery partners linked to a ride profile: only while online in the delivery app and not busy with a food order
   const { filterLinkedDriversForDispatch } = await import('../../food/delivery/services/hybridRide.service.js');
-  const linkedOk = await filterLinkedDriversForDispatch(uniqueDrivers);
+  const linkedOk = await filterLinkedDriversForDispatch(uniqueDrivers, { serviceType });
   // Subscription-only mode: only drivers with a live pass get requests
   const eligibleDrivers = await filterDriversBySubscription(linkedOk);
 
-  return sortDriversByDispatchAnchorDistance(eligibleDrivers, coordinates).slice(0, limit);
+  return (await sortDriversByDispatchPriority(eligibleDrivers, coordinates, serviceType, { dropZoneId, tripDistanceMeters })).slice(0, limit);
 };
 
 export const matchDrivers = async (pickupCoords, options = {}) => {
@@ -410,6 +422,7 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
     serviceType = 'ride',
     tripDistanceMeters = 0,
     heavyParcel = false,
+    dropCoordinates = null,
   } = options;
   const normalizedVehicleTypeIds = normalizeVehicleTypeIds(vehicleTypeIds, vehicleTypeId);
   const allowedVehicles = normalizedVehicleTypeIds.length
@@ -419,6 +432,16 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
 
   const zone = await findZoneByPickup(coordinates);
   const effectiveMaxDistance = Math.max(1, Math.round(maxDistance));
+
+  // Zones are authoritative: a pickup outside every zone has no drivers (the ride ends with "no driver found")
+  if (!zone) {
+    return { zone: null, drivers: [], searchRadiusMeters: effectiveMaxDistance };
+  }
+
+  // The zone the ride ends in: drivers heading back to it (Return trip) are asked first
+  const dropZone = Array.isArray(dropCoordinates) && dropCoordinates.length === 2 && (await getReturnTripConfig()).enabled
+    ? await findZoneByPickup(dropCoordinates).catch(() => null)
+    : null;
 
   let drivers = await findDriversForZone({
     zoneId: zone?._id || undefined,
@@ -431,33 +454,13 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
     serviceType,
     tripDistanceMeters,
     heavyParcel,
+    dropZoneId: dropZone?._id || null,
   });
 
   const blockedDriverIds = await getDriverIdsBlockedByUpcomingScheduledRides(
     drivers.map((driver) => String(driver?._id || '')),
   );
   drivers = drivers.filter((driver) => !blockedDriverIds.has(String(driver?._id || '')));
-
-  if (drivers.length === 0) {
-    const fallbackRadius = Math.max(effectiveMaxDistance, 35000);
-    drivers = await findDriversForZone({
-      zoneId: undefined,
-      coordinates,
-      effectiveMaxDistance: fallbackRadius,
-      limit,
-      normalizedVehicleTypeIds,
-      vehicleTypeKeys,
-      allowedVehicles,
-      serviceType,
-      tripDistanceMeters,
-      heavyParcel,
-    });
-
-    const fallbackBlockedDriverIds = await getDriverIdsBlockedByUpcomingScheduledRides(
-      drivers.map((driver) => String(driver?._id || '')),
-    );
-    drivers = drivers.filter((driver) => !fallbackBlockedDriverIds.has(String(driver?._id || '')));
-  }
 
   return {
     zone,

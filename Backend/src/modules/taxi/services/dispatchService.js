@@ -769,6 +769,7 @@ const dispatchAttempt = async (rideId, attemptIndex = 0) => {
       vehicleTypeIds: dispatchVehicleTypeIds,
       serviceType: ride.serviceType || 'ride',
       tripDistanceMeters: ride.estimatedDistanceMeters || 0,
+      dropCoordinates: ride.dropLocation?.coordinates || null,
       heavyParcel: isHeavyParcel(ride),
     });
     const effectiveRadius = Number.isFinite(searchRadiusMeters) && searchRadiusMeters > 0
@@ -1086,6 +1087,7 @@ export const notifyLateAvailableDriver = async (driverId) => {
       vehicleTypeIds: dispatchVehicleTypeIds,
       serviceType: ride.serviceType || 'ride',
       tripDistanceMeters: ride.estimatedDistanceMeters || 0,
+      dropCoordinates: ride.dropLocation?.coordinates || null,
       heavyParcel: isHeavyParcel(ride),
     });
 
@@ -1358,6 +1360,7 @@ export const getActivePendingDispatchForDriver = async (driverId, requestedRideI
           vehicleTypeIds: dispatchVehicleTypeIds,
           serviceType: ride.serviceType || 'ride',
           tripDistanceMeters: ride.estimatedDistanceMeters || 0,
+      dropCoordinates: ride.dropLocation?.coordinates || null,
           heavyParcel: isHeavyParcel(ride),
         });
 

@@ -12,6 +12,8 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
 import { getRiderCashPosition } from './riderCash.service.js';
 import { emitToAdmins } from '../../../taxi/services/dispatchService.js';
+import { findZoneByPickup } from '../../../taxi/services/matchingService.js';
+import { resolvePartnerZoneChange } from './partnerZone.service.js';
 
 export const registerDeliveryPartner = async (payload, files) => {
     const {
@@ -308,12 +310,14 @@ export const getSupportTicketByIdAndPartner = async (ticketId, deliveryPartnerId
 };
 
 const rideResyncAt = new Map();
+const rideZoneCheckedAt = new Map();
+const RIDE_ZONE_CHECK_MS = 60000;
 const RIDE_RESYNC_INTERVAL_MS = 60000;
 
 export const updateDeliveryAvailability = async (userId, payload) => {
     // Location pings arrive every few seconds per online partner: read only the two fields they use. The full document
     // (photos / documents, megabytes while images are still inline base64) on every ping slowed down the whole server.
-    const loadForPing = (query) => query.select('availabilityStatus rideMode.taxiDriverId').lean();
+    const loadForPing = (query) => query.select('availabilityStatus rideMode.taxiDriverId zoneId').lean();
     const pingOnly = payload?.locationOnly === true;
     let partner = await (pingOnly ? loadForPing(FoodDeliveryPartner.findById(userId)) : FoodDeliveryPartner.findById(userId));
     if (!partner && mongoose.Types.ObjectId.isValid(userId)) {
@@ -337,20 +341,33 @@ export const updateDeliveryAvailability = async (userId, payload) => {
         const pingLng = Number(longitude);
         const pingHasCoords = Number.isFinite(pingLat) && Number.isFinite(pingLng) && Math.abs(pingLat) <= 90 && Math.abs(pingLng) <= 180;
         if (partner.availabilityStatus === 'online' && pingHasCoords) {
+            // Moved to another zone (signed up in Dewas, now working in Indore): the partner's zone follows
+            const zoneChange = await resolvePartnerZoneChange(partner.zoneId, pingLat, pingLng);
             await FoodDeliveryPartner.updateOne(
                 { _id: partner._id },
                 { $set: {
                     lastLocation: { type: 'Point', coordinates: [pingLng, pingLat] },
                     lastLat: pingLat,
                     lastLng: pingLng,
-                    lastLocationAt: new Date()
+                    lastLocationAt: new Date(),
+                    ...(zoneChange || {})
                 } }
             );
             if (partner.rideMode?.taxiDriverId && (pingLat || pingLng)) {
                 const { Driver } = await import('../../../taxi/driver/models/Driver.js');
+                // The ride profile's zone decides which ride requests it gets, so it follows the location too (checked
+                // at most once a minute per partner: it is a map query)
+                const zoneKey = String(partner._id);
+                let rideZone = {};
+                if (Date.now() - (rideZoneCheckedAt.get(zoneKey) || 0) > RIDE_ZONE_CHECK_MS) {
+                    if (rideZoneCheckedAt.size > 5000) rideZoneCheckedAt.clear();
+                    rideZoneCheckedAt.set(zoneKey, Date.now());
+                    const taxiZone = await findZoneByPickup([pingLng, pingLat]).catch(() => null);
+                    rideZone = { zoneId: taxiZone?._id || null };
+                }
                 const driverUpdate = await Driver.updateOne(
                     { _id: partner.rideMode.taxiDriverId, isOnline: true },
-                    { $set: { location: { type: 'Point', coordinates: [pingLng, pingLat] } } }
+                    { $set: { location: { type: 'Point', coordinates: [pingLng, pingLat] }, ...rideZone } }
                 ).catch(() => null);
 
                 // The partner is online but the ride profile is not (the switch-on failed once, e.g. a busy wallet lock):
@@ -533,6 +550,8 @@ export const updateDeliveryAvailability = async (userId, payload) => {
         partner.lastLat = numLat;
         partner.lastLng = numLng;
         partner.lastLocationAt = new Date();
+        const zoneChange = await resolvePartnerZoneChange(partner.zoneId, numLat, numLng);
+        if (zoneChange) Object.assign(partner, zoneChange);
     } else if (validStatus === 'online') {
         partner.lastLocationAt = new Date();
     }

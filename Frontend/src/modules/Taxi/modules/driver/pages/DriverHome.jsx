@@ -57,6 +57,7 @@ import { cancelDriverScheduledRide, getCurrentDriver, getDriverDocumentTemplates
 import { addLocalDriverNotification, getUnreadDriverNotificationCount, getVisibleDriverNotifications } from '../utils/notificationState';
 import { getScheduledRideCountdown } from '../utils/scheduledRideTime';
 import RideModeReturnBar from '../components/RideModeReturnBar';
+import ReturnTripPrompt from '../components/ReturnTripPrompt';
 import {
     playRideRequestAlertSound,
     stopRideRequestAlertSound,
@@ -2397,6 +2398,7 @@ const DriverHome = () => {
 
             {/* Delivery partner in Ride & Parcel mode: switch back to food delivery */}
             <RideModeReturnBar />
+            <ReturnTripPrompt />
 
             {/* --- TOP FLOATING UI --- */}
             <div className="fixed top-0 left-0 right-0 z-40 mx-auto max-w-md flex items-center justify-between p-3 pt-10 pointer-events-none">

@@ -22,6 +22,7 @@ import {
 const supportOrFranchise = (req, res, next) =>
     (req.adminContext?.franchiseId ? next() : requireFoodResourceAccess('support', 'support')(req, res, next));
 const PLATFORM_ONLY = 'This is a platform setting. Contact the Raydo admin.';
+import * as deliverySubscriptionController from '../controllers/deliverySubscription.controller.js';
 import * as foodAdminManagementController from '../controllers/foodAdminManagement.controller.js';
 import * as franchiseAdminController from '../controllers/franchise.controller.js';
 import * as franchiseFinanceController from '../controllers/franchiseFinance.controller.js';
@@ -249,6 +250,17 @@ router.put('/delivery/zone-surge', requireFoodResourceAccess('delivery', 'delive
 router.patch('/delivery/zone-surge/:zoneId/status', requireFoodResourceAccess('delivery', 'delivery'), adminController.toggleDeliveryZoneSurgeStatus);
 router.get('/delivery/reviews', requireFoodResourceAccess('delivery', 'delivery'), adminController.getDeliverymanReviews);
 router.get('/contact-messages', requireFoodResourceAccess('support', 'support'), adminController.getContactMessages);
+// Delivery partner subscriptions (food / two-wheeler ride / parcel): platform-wide, so not for franchise logins
+const DELIVERY_SUBSCRIPTION_ONLY = 'Delivery subscriptions are a platform setting. Contact the Raydo admin.';
+const deliverySubscriptionAccess = [requireFoodResourceAccess('delivery', 'delivery'), denyFranchise(DELIVERY_SUBSCRIPTION_ONLY)];
+router.get('/delivery/subscriptions', ...deliverySubscriptionAccess, deliverySubscriptionController.getOverview);
+router.put('/delivery/subscriptions/modes', ...deliverySubscriptionAccess, deliverySubscriptionController.updateModes);
+router.post('/delivery/subscriptions/plans', ...deliverySubscriptionAccess, deliverySubscriptionController.createPlan);
+router.patch('/delivery/subscriptions/plans/:id', ...deliverySubscriptionAccess, deliverySubscriptionController.updatePlan);
+router.get('/delivery/subscriptions/subscribers', ...deliverySubscriptionAccess, deliverySubscriptionController.listSubscribers);
+router.post('/delivery/subscriptions/subscribers/grant', ...deliverySubscriptionAccess, deliverySubscriptionController.grantSubscription);
+router.post('/delivery/subscriptions/subscribers/:id/cancel', ...deliverySubscriptionAccess, deliverySubscriptionController.cancelSubscription);
+
 router.get('/delivery/earning-addons', requireFoodResourceAccess('delivery', 'delivery'), adminController.getEarningAddons);
 router.post('/delivery/earning-addons', requireFoodResourceAccess('delivery', 'delivery'), adminController.createEarningAddon);
 router.patch('/delivery/earning-addons/:id', requireFoodResourceAccess('delivery', 'delivery'), adminController.updateEarningAddon);

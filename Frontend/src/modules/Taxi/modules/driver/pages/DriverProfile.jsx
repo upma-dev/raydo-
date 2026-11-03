@@ -23,6 +23,7 @@ import {
     Shield,
     Languages,
     BadgePercent,
+    Repeat,
     Check
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -261,6 +262,7 @@ const DriverProfile = () => {
                 { id: 'wallet', label: 'Wallet', icon: <Wallet size={20} />, path: `${routePrefix}/wallet` },
                 ...(!isOwner ? [
                     { id: 'subscription', label: 'Subscription', icon: <BadgePercent size={20} />, path: `${routePrefix}/subscription` },
+                    { id: 'return-trip', label: 'Return Trip', sub: 'Get rides that take you back', icon: <Repeat size={20} />, path: `${routePrefix}/return-trip` },
                     { id: 'vehicle', label: 'My Vehicle', icon: <Car size={20} />, path: `${routePrefix}/vehicle-fleet` },
                 ] : []),
                 { id: 'docs', label: 'Documents', icon: <FileText size={20} />, path: `${routePrefix}/documents` },

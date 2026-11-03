@@ -5,6 +5,7 @@ import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
 import { registerDeliveryPartnerController, updateDeliveryPartnerProfileController, updateDeliveryPartnerBankDetailsController, listSupportTicketsController, createSupportTicketController, getSupportTicketByIdController, updateDeliveryPartnerDetailsController, updateDeliveryPartnerProfilePhotoBase64Controller, updateAvailabilityController, getWalletController, createWithdrawalRequestController, createCashDepositOrderController, verifyCashDepositPaymentController, getEarningsController, getTripHistoryController, getPocketDetailsController, getEmergencyHelpController, getCashLimitController, getDeliveryReferralStatsController, getActiveEarningAddonsController, deleteDeliveryPartnerAccountController, getDeliveryPartnerReviewsController, requestEmergencyOfflineController, getEmergencyOfflineStatusController } from '../controllers/delivery.controller.js';
 
+import { getMySubscriptionsController, purchaseSubscriptionController } from '../controllers/deliverySubscription.controller.js';
 import { applyForRideModeController, getRideDocumentRequirementsController, getRideModeStatusController, issueRideSessionController, listRideModeVehicleTypesController, setFoodOrdersController, switchRideModeController } from '../controllers/rideMode.controller.js';
 
 const router = express.Router();
@@ -76,6 +77,10 @@ router.post('/ride-mode/apply', authMiddleware, requireRoles('DELIVERY_PARTNER')
 router.post('/ride-mode/switch', authMiddleware, requireRoles('DELIVERY_PARTNER'), switchRideModeController);
 router.put('/ride-mode/food-orders', authMiddleware, requireRoles('DELIVERY_PARTNER'), setFoodOrdersController);
 router.post('/ride-mode/session', authMiddleware, requireRoles('DELIVERY_PARTNER'), issueRideSessionController);
+
+// Subscription (food / two-wheeler ride / parcel passes, bought from the Pocket)
+router.get('/subscriptions/me', authMiddleware, requireRoles('DELIVERY_PARTNER'), getMySubscriptionsController);
+router.post('/subscriptions/purchase', authMiddleware, requireRoles('DELIVERY_PARTNER'), purchaseSubscriptionController);
 
 // Pocket / requests page – wallet, earnings, and admin-set delivery settings
 router.get('/wallet', authMiddleware, requireRoles('DELIVERY_PARTNER'), getWalletController);

@@ -219,7 +219,7 @@ export const serializeDriverWallet = async (driver) => {
   };
 };
 
-export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session } = {}) => {
+export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session, serviceType = null } = {}) => {
   const driver =
     typeof driverOrId === 'object' && driverOrId?._id
       ? driverOrId
@@ -230,7 +230,7 @@ export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session } = 
   }
 
   // Subscription-only mode: no live pass, no going online and no accepting rides
-  await assertDriverMaySubscriptionWork(driver, { session });
+  await assertDriverMaySubscriptionWork(driver, { session, serviceType });
 
   const wallet = await getWalletSnapshot(driver);
   const isBlocked = wallet.isBlocked;
@@ -395,7 +395,7 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
     const commissionableFare = Math.max(0, Math.round(baseRideFare - surgeAmount));
     const commissionConfig = await resolveCommissionConfigForRide(ride, session);
     // A live driver subscription replaces the per-ride commission (checked at the moment the ride was completed)
-    const subscriptionWaived = await subscriptionWaivesCommission(ride.driverId, ride.completedAt || new Date(), { session });
+    const subscriptionWaived = await subscriptionWaivesCommission(ride.driverId, ride.completedAt || new Date(), { session, serviceType: ride.serviceType });
     const commissionAmount = subscriptionWaived
       ? 0
       : Math.round(computeCommissionAmount({

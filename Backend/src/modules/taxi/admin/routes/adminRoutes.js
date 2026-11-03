@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireTaxiPanelAdmin } from '../../middlewares/adminPanelAccess.js';
 import { authenticate } from '../../middlewares/authMiddleware.js';
+import { getReturnTripSettings, saveReturnTripSettings } from '../controllers/returnTripSettingsController.js';
 import {
   approveOwner,
   approveOwnerSignupFromDriver,
@@ -300,6 +301,9 @@ adminRouter.patch('/admin/wallet/drivers/withdrawals/:requestId/approve', authen
 adminRouter.patch('/admin/wallet/drivers/withdrawals/:requestId/reject', authenticate(['admin']), rejectDriverWithdrawalRequest);
 adminRouter.get('/admin/driver-ratings', authenticate(['admin']), getDriverRatings);
 adminRouter.get('/admin/driver-ratings/:id', authenticate(['admin']), getDriverRatingDetail);
+
+adminRouter.get('/admin/return-trip/settings', authenticate(['admin']), getReturnTripSettings);
+adminRouter.put('/admin/return-trip/settings', authenticate(['admin']), saveReturnTripSettings);
 
 adminRouter.get('/admin/driver-subscriptions/plans/list', getSubscriptionPlans);
 adminRouter.post('/admin/driver-subscriptions/plans/create', createSubscriptionPlan);

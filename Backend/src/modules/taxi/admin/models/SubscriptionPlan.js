@@ -3,7 +3,10 @@ import mongoose from 'mongoose';
 const subscriptionPlanSchema = new mongoose.Schema({
   audience: {
     type: String,
-    enum: ['driver', 'user'],
+    // driver   = Raydo Sarthi (taxi / parcel driver app)
+    // user     = rider (customer) ride pass
+    // delivery = delivery partner app: food orders, two-wheeler rides and parcels (see service_type)
+    enum: ['driver', 'user', 'delivery'],
     default: 'driver',
     index: true,
   },
@@ -12,6 +15,13 @@ const subscriptionPlanSchema = new mongoose.Schema({
   amount: Number,
   duration: Number, // in days
   transport_type: String,
+  // Only for audience "delivery": which work the pass unlocks
+  service_type: {
+    type: String,
+    enum: ['', 'food', 'ride', 'parcel'],
+    default: '',
+    index: true,
+  },
   vehicle_type_id: { type: mongoose.Schema.Types.ObjectId, ref: 'TaxiVehicle' },
   benefit_type: {
     type: String,

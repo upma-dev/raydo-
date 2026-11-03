@@ -13,6 +13,7 @@ import { hashPassword } from '../../../taxi/driver/services/authService.js';
 import { signAccessToken } from '../../../taxi/services/tokenService.js';
 import { findZoneByPickup } from '../../../taxi/services/matchingService.js';
 import { getDeliveryPocketTotals } from './deliveryFinance.service.js';
+import { partnerIdsMissingPass, passServiceForRide } from './deliverySubscriptionCore.js';
 import { withPartnerWalletLock } from './rideWalletLock.js';
 import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
@@ -679,7 +680,7 @@ const assertRideWalletReady = async (partner, driver) => {
 };
 
 /** What the linked ride profile takes over from the delivery profile when the partner starts working rides. */
-const driverSyncUpdate = (partner, payload = {}) => {
+const driverSyncUpdate = async (partner, payload = {}) => {
     const update = {
         // The selfie the partner verified for food today also counts for rides (same person, same shift)
         ...(partner.onlineSelfie?.verifiedStatus === 'verified' && (partner.onlineSelfie?.forDate === todayKey() || (partner.onlineSelfie?.capturedAt && Date.now() - new Date(partner.onlineSelfie.capturedAt).getTime() < 12 * 60 * 60 * 1000)) && partner.onlineSelfie?.imageUrl
@@ -699,6 +700,9 @@ const driverSyncUpdate = (partner, payload = {}) => {
     const lng = Number(payload.longitude);
     if (Number.isFinite(lat) && Number.isFinite(lng) && (lat || lng)) {
         update.location = { type: 'Point', coordinates: [lng, lat] };
+        // Ride requests are matched by the zone the driver is in right now, not the one from sign-up
+        const rideZone = await findZoneByPickup([lng, lat]).catch(() => null);
+        update.zoneId = rideZone?._id || null;
     }
     return update;
 };
@@ -723,7 +727,7 @@ export const switchRideMode = async (partnerId, payload = {}) => {
         }
 
         await assertRideWalletReady(partner, driver);
-        const update = driverSyncUpdate(partner, payload);
+        const update = await driverSyncUpdate(partner, payload);
         if (Object.keys(update).length) await Driver.updateOne({ _id: driver._id }, { $set: update });
 
         const wasOnline = partner.availabilityStatus === 'online';
@@ -843,8 +847,9 @@ export const assertLinkedDriverMayGoOnline = async (driver) => {
 /**
  * Taxi dispatch: drops linked drivers whose partner is offline in the delivery app or is busy with a food order, so one
  * person is never offered a ride while delivering food. Drivers without a linked partner pass through untouched.
+ * In subscription-only mode for this kind of work (ride / parcel) a partner without a live pass is dropped too.
  */
-export const filterLinkedDriversForDispatch = async (drivers = []) => {
+export const filterLinkedDriversForDispatch = async (drivers = [], { serviceType = 'ride' } = {}) => {
     const linkedIds = [...new Set(drivers.map((d) => d?.linkedDeliveryPartnerId).filter(Boolean).map(String))];
     if (linkedIds.length === 0) return drivers;
     try {
@@ -855,11 +860,12 @@ export const filterLinkedDriversForDispatch = async (drivers = []) => {
         ]);
         const partnerById = new Map(partners.map((p) => [String(p._id), p]));
         const busy = new Set(busyOrders.map((o) => String(o.dispatch?.deliveryPartnerId)));
+        const noPass = await partnerIdsMissingPass(linkedIds, passServiceForRide(serviceType));
         return drivers.filter((d) => {
             if (!d?.linkedDeliveryPartnerId) return true;
             const id = String(d.linkedDeliveryPartnerId);
             const partner = partnerById.get(id);
-            return partnerAllowsRides(partner) && !busy.has(id);
+            return partnerAllowsRides(partner) && !busy.has(id) && !noPass.has(id);
         });
     } catch (err) {
         logger.warn(`[RideMode] dispatch filter skipped: ${err?.message || err}`);
@@ -887,6 +893,8 @@ export const partnerIdsBlockedForFood = async (partnerIds = []) => {
             const onRide = await Driver.find({ _id: { $in: [...driverToPartner.keys()] }, isOnRide: true }).select('_id').lean();
             onRide.forEach((d) => blocked.add(driverToPartner.get(String(d._id))));
         }
+        // Food is subscription-only: partners without a live food pass are not offered food orders
+        (await partnerIdsMissingPass(ids, 'food')).forEach((id) => blocked.add(id));
     } catch (err) {
         logger.warn(`[RideMode] food dispatch filter skipped: ${err?.message || err}`);
     }
@@ -916,7 +924,7 @@ export const syncRidesWithOnline = async (partnerId, online, { latitude, longitu
         driver = await ensureEnrolledForRides(partner);
         driver = await requireApprovedDriver(partner, driver);
         await assertRideWalletReady(partner, driver);
-        const update = { ...driverSyncUpdate(partner, { latitude, longitude }), isOnline: true };
+        const update = { ...(await driverSyncUpdate(partner, { latitude, longitude })), isOnline: true };
         await Driver.updateOne({ _id: driver._id }, { $set: update });
         return { active: true };
     } catch (err) {

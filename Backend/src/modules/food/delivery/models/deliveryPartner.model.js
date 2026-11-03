@@ -74,6 +74,8 @@ const deliveryPartnerSchema = new mongoose.Schema(
             type: String,
             default: ''
         },
+        // Set when the zone was last changed automatically because the partner's live location moved to another zone
+        zoneUpdatedAt: { type: Date, default: null },
         aadharPhoto: {
             type: String
         },

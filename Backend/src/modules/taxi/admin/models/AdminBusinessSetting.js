@@ -15,6 +15,8 @@ const adminBusinessSettingSchema = new mongoose.Schema(
     // Taxi tax (GST): { enabled, rate, label, gstin }. Included in the fare; see services/taxiTaxService.js
     tax: { type: mongoose.Schema.Types.Mixed, default: { enabled: false, rate: 0, label: 'GST', gstin: '' } },
     subscription: { type: mongoose.Schema.Types.Mixed, default: { mode: 'commissionOnly' } },
+    // Return trip (driver heading back to a zone): see services/returnTripService.js
+    return_trip: { type: mongoose.Schema.Types.Mixed, default: undefined },
     referral: {
       type: mongoose.Schema.Types.Mixed,
       default: {

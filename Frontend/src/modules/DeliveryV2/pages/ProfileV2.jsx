@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
-import { Gift, Siren, Trophy, CarFront, User, ArrowRight, Bike, Ticket, ChevronRight, Share2, LogOut, X, Loader2, Briefcase, Star, MessageSquare, FileText, Landmark, Bell, Car, ShieldCheck, UserCog } from 'lucide-react'
+import { BadgePercent, Repeat, Gift, Siren, Trophy, CarFront, User, ArrowRight, Bike, Ticket, ChevronRight, Share2, LogOut, X, Loader2, Briefcase, Star, MessageSquare, FileText, Landmark, Bell, Car, ShieldCheck, UserCog } from 'lucide-react'
 import { deliveryAPI } from "@food/api"
 import DeleteAccountModal from "@food/components/DeleteAccountModal";
 import { Trash2 } from "lucide-react";
@@ -220,12 +220,14 @@ export const ProfileV2 = () => {
               {[
                 { icon: UserCog, label: "Personal details", sub: "Name, phone, address", to: "/food/delivery/profile/details" },
                 { icon: Car, label: "Ride & Parcel", sub: "Ride mode, vehicle and wallet", to: "/food/delivery/ride-mode" },
+                { icon: BadgePercent, label: "Subscription", sub: "Food, ride and parcel passes", to: "/food/delivery/profile/subscription" },
                 { icon: FileText, label: "Documents", sub: "Delivery and ride documents, expiry", to: "/food/delivery/profile/documents" },
                 { icon: Landmark, label: "Bank & payout", sub: "Account for withdrawals", to: "/food/delivery/profile/bank" },
                 { icon: Bell, label: "Notifications", sub: "Orders, rides and payouts", to: "/food/delivery/notifications" },
                 { icon: CarFront, label: "Vehicle & fleet", sub: "Your ride vehicle details", ride: "/taxi/driver/vehicle-fleet" },
                 { icon: Siren, label: "Safety & SOS", sub: "Emergency contacts and SOS", ride: "/taxi/driver/security" },
                 { icon: Trophy, label: "Ride incentives", sub: "Targets and bonuses on rides", ride: "/taxi/driver/incentives" },
+                { icon: Repeat, label: "Return trip", sub: "Get rides that take you back home", ride: "/taxi/driver/return-trip" },
                 { icon: Gift, label: "Ride referral", sub: "Invite drivers and earn", ride: "/taxi/driver/referral" },
                 { icon: ShieldCheck, label: "Terms & privacy", sub: "Policies for partners", to: "/food/delivery/profile/terms" },
               ].map((item) => (

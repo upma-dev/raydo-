@@ -19,6 +19,8 @@ import {
 } from './order.helpers.js';
 
 import { FoodZone } from '../../admin/models/zone.model.js';
+import { partnerIdsWithLivePass } from '../../delivery/services/deliverySubscriptionCore.js';
+import { compareDispatchPriority, effectiveRating } from '../../../taxi/services/dispatchPriority.js';
 
 function isPointInPolygon(lat, lng, polygon = []) {
   if (!Array.isArray(polygon) || polygon.length < 3) return false;
@@ -71,7 +73,7 @@ async function listNearbyOnlineDeliveryPartners(
   let allOnline = await FoodDeliveryPartner.find({
     availabilityStatus: "online",
   })
-    .select("_id status lastLat lastLng lastLocationAt name")
+    .select("_id status lastLat lastLng lastLocationAt name rating totalRatings")
     .lean();
 
   allOnline = allOnline.filter(p => !p.status || p.status === 'approved' || p.status === 'pending');
@@ -83,16 +85,21 @@ async function listNearbyOnlineDeliveryPartners(
     if (blocked.size) allOnline = allOnline.filter((p) => !blocked.has(String(p._id)));
   }
 
+  // Strictly zone-wise: with zones set up, a partner outside the restaurant's zone is never offered the order
+  const passIds = await partnerIdsWithLivePass(allOnline.map((p) => p._id), 'food');
+  const priorityOf = (p) => ({ hasPass: passIds.has(String(p._id)), rating: effectiveRating(p.rating, p.totalRatings) });
+
   if (!restaurant?.location?.coordinates?.length) {
-    let partners = allOnline;
-    if (hasActiveZones) {
-      const inZone = partners.filter((p) => isPartnerInActiveZoneSync(p.lastLat, p.lastLng, targetZoneId, activeZones));
-      if (inZone.length > 0) partners = inZone;
-    }
+    const partners = hasActiveZones
+      ? allOnline.filter((p) => isPartnerInActiveZoneSync(p.lastLat, p.lastLng, targetZoneId, activeZones))
+      : allOnline;
 
     return {
       restaurant: null,
-      partners: partners.slice(0, limit).map((p) => ({ partnerId: p._id, distanceKm: null, status: p.status })),
+      partners: partners
+        .map((p) => ({ partnerId: p._id, distanceKm: null, status: p.status, ...priorityOf(p) }))
+        .sort(compareDispatchPriority)
+        .slice(0, limit),
     };
   }
 
@@ -100,35 +107,26 @@ async function listNearbyOnlineDeliveryPartners(
   const scored = [];
 
   for (const p of allOnline) {
-    let isInZone = true;
-    if (hasActiveZones && p.lastLat != null && p.lastLng != null) {
-      isInZone = isPartnerInActiveZoneSync(p.lastLat, p.lastLng, targetZoneId, activeZones);
-    }
+    // 1. Must be inside the restaurant's zone (a partner whose location is unknown cannot be placed, so is left out)
+    const isInZone = !hasActiveZones || isPartnerInActiveZoneSync(p.lastLat, p.lastLng, targetZoneId, activeZones);
+    if (!isInZone) continue;
 
-    let d = 999;
+    // 2. Must be inside the current search radius (15 km, widening on each retry, never beyond the zone)
+    let d = null;
     if (p.lastLat != null && p.lastLng != null) {
       const calcD = haversineKm(rLat, rLng, p.lastLat, p.lastLng);
       if (Number.isFinite(calcD)) d = calcD;
     }
+    if (d != null && d > maxKm) continue;
 
-    // Include if within distance or inside active zone, or fallback
-    if (d <= maxKm || isInZone || p.lastLat == null) {
-      scored.push({ partnerId: p._id, distanceKm: Number.isFinite(d) ? d : 0, status: p.status, isInZone });
-    }
+    scored.push({ partnerId: p._id, distanceKm: d ?? 0, distance: d ?? 0, status: p.status, isInZone, ...priorityOf(p) });
   }
 
-  scored.sort((a, b) => a.distanceKm - b.distanceKm);
-  let picked = scored.slice(0, Math.max(1, limit));
+  // Of those in range: running pass first, then higher rating, then nearer (see dispatchPriority.js)
+  scored.sort(compareDispatchPriority);
 
-  if (picked.length === 0 && allOnline.length > 0) {
-    picked = allOnline.slice(0, limit).map((p) => ({
-      partnerId: p._id,
-      distanceKm: null,
-      status: p.status,
-    }));
-  }
-
-  return { partners: picked };
+  // No fallback to partners outside the zone / radius: if nobody is in range the order simply stays unassigned and retries
+  return { partners: scored.slice(0, Math.max(1, limit)) };
 }
 
 // Cycle / scooter riders only get short orders; anything above this road distance goes to bike / car riders.
@@ -192,10 +190,13 @@ function liveSocketCount(partnerId) {
   }
 }
 
-// Stable sort: partners with a live socket first, keeping distance order within each group.
+// Priority first (pass, rating, distance); among equal priority, partners with a live socket first. Stable sort.
 function preferConnectedPartners(list = []) {
   return [...list].sort(
-    (a, b) => Number(liveSocketCount(b.partnerId) > 0) - Number(liveSocketCount(a.partnerId) > 0),
+    (a, b) => compareDispatchPriority(
+      { hasPass: a.hasPass, rating: a.rating, distance: 0 },
+      { hasPass: b.hasPass, rating: b.rating, distance: 0 },
+    ) || (Number(liveSocketCount(b.partnerId) > 0) - Number(liveSocketCount(a.partnerId) > 0)),
   );
 }
 

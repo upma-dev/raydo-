@@ -10,6 +10,7 @@ import { Zone } from '../driver/models/Zone.js';
 import { WalletTransaction } from '../driver/models/WalletTransaction.js';
 import { incrementDriverTodaySummaryForCompletedRide } from '../driver/services/driverTodaySummaryService.js';
 import { applyDriverWalletAdjustment, ensureDriverWalletCanAcceptRide, settleCompletedRideWallet } from '../driver/services/walletService.js';
+import { turnOffReturnTripIfRideGoesThere } from './returnTripService.js';
 import { Delivery } from '../user/models/Delivery.js';
 import { RideBid } from '../user/models/RideBid.js';
 import { Ride } from '../user/models/Ride.js';
@@ -1823,7 +1824,9 @@ export const acceptRideAssignment = async ({ rideId, driverId }) => {
         throw new ApiError(409, 'Driver already has another scheduled trip in a similar time range');
       }
 
-      await ensureDriverWalletCanAcceptRide(driver, { session });
+      await ensureDriverWalletCanAcceptRide(driver, { session, serviceType: ride.serviceType });
+      // Accepting a ride that goes where he was heading back to ends his Return trip mode
+      await turnOffReturnTripIfRideGoesThere(driver, ride);
 
       ride.driverId = driver._id;
       if (!ride.zoneId && driver.zoneId) ride.zoneId = driver.zoneId;
@@ -2354,7 +2357,9 @@ export const acceptRideBidAssignment = async ({ rideId, bidId, userId }) => {
         throw new ApiError(409, 'Driver already has another scheduled trip in a similar time range');
       }
 
-      await ensureDriverWalletCanAcceptRide(driver, { session });
+      await ensureDriverWalletCanAcceptRide(driver, { session, serviceType: ride.serviceType });
+      // Accepting a ride that goes where he was heading back to ends his Return trip mode
+      await turnOffReturnTripIfRideGoesThere(driver, ride);
 
       ride.driverId = driver._id;
       if (!ride.zoneId && driver.zoneId) ride.zoneId = driver.zoneId;

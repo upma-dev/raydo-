@@ -24,6 +24,7 @@ import {
   startDispatchFlow,
 } from '../services/dispatchService.js';
 import { findZoneByPickup } from '../services/matchingService.js';
+import { turnOffReturnTripIfArrived } from '../services/returnTripService.js';
 import { acceptRideAssignment, createRideRecord, getActiveRideForIdentity, getRideRoom, submitRideBid } from '../services/rideService.js';
 import { SOCKET_EVENTS } from './events.js';
 import { registerRideSocketHandlers } from './handlers/rideSocketHandler.js';
@@ -205,12 +206,14 @@ const registerTaxiSocketConnectionHandlers = (io) => {
 
       // A delivery partner's linked ride profile only counts as online while the partner is online in the delivery app
       const mayGoOnline = await linkedDriverInRideMode(identity.sub);
-      await Driver.findByIdAndUpdate(identity.sub, {
+      const before = await Driver.findByIdAndUpdate(identity.sub, {
         socketId: socket.id,
         ...(mayGoOnline ? { isOnline: true } : {}),
         location: toPoint(normalizedCoords, 'coordinates'),
         zoneId: zone?._id || null,
       });
+      // Reached the zone he was heading back to: Return trip mode ends
+      if (before) turnOffReturnTripIfArrived(before, zone?._id).catch(() => {});
       if (!mayGoOnline) return;
       notifyLateAvailableDriver(identity.sub).catch((error) => {
         console.error('Failed to notify late-available driver on location update', error);

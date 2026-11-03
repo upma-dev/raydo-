@@ -732,6 +732,22 @@ export const adminAPI = {
       { contextModule: "admin" },
     ),
 
+  /** Delivery partner subscriptions (admin): food / two-wheeler ride / parcel passes */
+  getDeliverySubscriptions: () =>
+    apiClient.get("/food/admin/delivery/subscriptions", { contextModule: "admin" }),
+  updateDeliverySubscriptionModes: (body) =>
+    apiClient.put("/food/admin/delivery/subscriptions/modes", body ?? {}, { contextModule: "admin" }),
+  createDeliverySubscriptionPlan: (body) =>
+    apiClient.post("/food/admin/delivery/subscriptions/plans", body ?? {}, { contextModule: "admin" }),
+  updateDeliverySubscriptionPlan: (id, body) =>
+    apiClient.patch(`/food/admin/delivery/subscriptions/plans/${String(id)}`, body ?? {}, { contextModule: "admin" }),
+  getDeliverySubscribers: (params = {}) =>
+    apiClient.get("/food/admin/delivery/subscriptions/subscribers", { params, contextModule: "admin" }),
+  grantDeliverySubscription: (body) =>
+    apiClient.post("/food/admin/delivery/subscriptions/subscribers/grant", body ?? {}, { contextModule: "admin" }),
+  cancelDeliverySubscription: (id, reason = "") =>
+    apiClient.post(`/food/admin/delivery/subscriptions/subscribers/${String(id)}/cancel`, { reason }, { contextModule: "admin" }),
+
   /** Earning Addon Offers (admin) */
   getEarningAddons: (params = {}) =>
     apiClient.get("/food/admin/delivery/earning-addons", {
@@ -2003,6 +2019,11 @@ export const deliveryAPI = {
     apiClient.get(`/food/delivery/support-tickets/${id}`, {
       contextModule: "delivery",
     }),
+  /** Subscription passes (food / two-wheeler ride / parcel), bought from the Pocket */
+  getSubscriptions: () =>
+    apiClient.get("/food/delivery/subscriptions/me", { contextModule: "delivery" }),
+  purchaseSubscription: (planId) =>
+    apiClient.post("/food/delivery/subscriptions/purchase", { planId }, { contextModule: "delivery" }),
   /** Ride & Parcel mode: the partner also takes taxi rides / parcels through a linked ride profile. */
   getRideMode: () =>
     apiClient.get("/food/delivery/ride-mode", { contextModule: "delivery" }),
