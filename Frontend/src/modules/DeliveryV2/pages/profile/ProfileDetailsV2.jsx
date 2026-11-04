@@ -50,6 +50,7 @@ export const ProfileDetailsV2 = () => {
   const [bankDetailsErrors, setBankDetailsErrors] = useState({})
   const [isUpdatingBankDetails, setIsUpdatingBankDetails] = useState(false)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const [avatarFailed, setAvatarFailed] = useState(false)
   const fileInputRef = useRef(null)
   const profileCameraInputRef = useRef(null)
   const [uploadTarget, setUploadTarget] = useState(null) // 'profilePhoto' only for instant picker
@@ -207,6 +208,7 @@ export const ProfileDetailsV2 = () => {
     const response = await deliveryAPI.getProfile()
     if (response?.data?.success && response?.data?.data?.profile) {
       setProfile(response.data.data.profile)
+      setAvatarFailed(false)
       const pd = response.data.data.profile
       setBankDetails({
         accountHolderName: pd?.documents?.bankDetails?.accountHolderName || "",
@@ -452,8 +454,8 @@ export const ProfileDetailsV2 = () => {
         {/* ─── PROFILE AVATAR BLOCK ─── */}
         <div className="relative group">
            <div className="w-32 h-32 rounded-[2.5rem] bg-gray-100 border-2 border-white shadow-2xl mx-auto overflow-hidden relative">
-              {profileImageUrl ? (
-                <img src={profileImageUrl} alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+              {profileImageUrl && !avatarFailed ? (
+                <img src={profileImageUrl} alt="" onError={() => setAvatarFailed(true)} className="w-full h-full object-cover text-transparent" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center"><User className="w-12 h-12 text-gray-300" /></div>
               )}
@@ -493,16 +495,16 @@ export const ProfileDetailsV2 = () => {
            </div>
         </div>
 
-        <div className="text-center pt-6">
-           <h2 className="text-2xl font-black text-gray-900 leading-none">{profile?.name}</h2>
-           <p className="text-[11px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-2 mb-4">Delivery Partner • {profile?.location?.city}</p>
-           
-           <div className="flex items-center justify-center gap-2">
-              <div className="bg-[#10B981]/10 text-[#10B981] px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest border border-[#10B981]/20 flex items-center gap-2">
-                 <CheckCircle className="w-4 h-4" /> {profile?.status}
+        <div className="text-center pt-10">
+           <h2 className="text-2xl font-black text-gray-900 leading-tight">{profile?.name}</h2>
+           <p className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.15em] mt-2 mb-4">Delivery Partner{profile?.location?.city ? ` • ${profile.location.city}` : ""}</p>
+
+           <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider border border-emerald-200 flex items-center gap-1.5">
+                 <CheckCircle className="w-3.5 h-3.5" /> {profile?.status}
               </div>
-              <div className="bg-orange-500/10 text-orange-500 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest border border-orange-500/20 flex items-center gap-2">
-                 <Smartphone className="w-4 h-4" /> {profile?.phone}
+              <div className="bg-orange-50 text-orange-700 px-3 py-1.5 rounded-full text-[11px] font-black tracking-wider border border-orange-200 flex items-center gap-1.5">
+                 <Smartphone className="w-3.5 h-3.5" /> {profile?.phone}
               </div>
            </div>
         </div>
@@ -580,26 +582,29 @@ export const ProfileDetailsV2 = () => {
            </div>
            
            <div className="space-y-3">
-              <div className="bg-[#121212] rounded-3xl p-6 text-white shadow-2xl relative overflow-hidden group">
-                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-white/10 transition-colors" />
+              <div className="bg-gradient-to-br from-orange-50 via-white to-amber-50 rounded-3xl p-5 border border-orange-100 shadow-sm relative overflow-hidden">
+                 <div className="absolute top-0 right-0 w-28 h-28 bg-orange-200/30 rounded-full -mr-12 -mt-12" />
                  <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-10">
-                       <div>
-                          <p className="text-white/40 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Bank Account</p>
-                          <h4 className="text-lg font-bold tracking-tight">{bankDetails.bankName || "Link Account"}</h4>
+                    <div className="flex justify-between items-start mb-6">
+                       <div className="min-w-0">
+                          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.15em] mb-1">Bank Account</p>
+                          <h4 className="text-lg font-black text-gray-900 truncate">{bankDetails.bankName || "Link Account"}</h4>
                        </div>
-                       <Banknote className="w-8 h-8 text-orange-500/50" />
+                       <div className="w-10 h-10 shrink-0 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-md shadow-orange-500/20">
+                          <Banknote className="w-5 h-5" />
+                       </div>
                     </div>
-                    <div className="flex justify-between items-end">
-                       <div>
-                          <p className="text-xs font-mono font-medium text-white/60 tracking-[0.2em]">
-                             {bankDetails.accountNumber ? `•••• •••• •••• ${bankDetails.accountNumber.slice(-4)}` : "XXXX XXXX XXXX XXXX"}
-                          </p>
-                          <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mt-2">{bankDetails.accountHolderName || "Account Holder"}</p>
+                    <p className="text-base font-mono font-bold text-gray-800 tracking-[0.18em] mb-4">
+                       {bankDetails.accountNumber ? `•••• •••• ${bankDetails.accountNumber.slice(-4)}` : "XXXX XXXX XXXX"}
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 border-t border-orange-100 pt-3">
+                       <div className="min-w-0">
+                          <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-0.5">Account Holder</p>
+                          <p className="text-xs font-bold text-gray-900 truncate">{bankDetails.accountHolderName || "Not added"}</p>
                        </div>
                        <div className="text-right">
-                          <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1">IFSC Code</p>
-                          <p className="text-sm font-black tracking-widest">{bankDetails.ifscCode || "—"}</p>
+                          <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-0.5">IFSC Code</p>
+                          <p className="text-xs font-bold text-gray-900 tracking-wider">{bankDetails.ifscCode || "Not added"}</p>
                        </div>
                     </div>
                  </div>

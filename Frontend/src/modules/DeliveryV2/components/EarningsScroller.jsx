@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, XCircle, Wallet, IndianRupee, CalendarDays, Star, Package, Banknote } from 'lucide-react';
+import { ChevronDown, Wallet, IndianRupee, CalendarDays, Star, Banknote } from 'lucide-react';
 import { deliveryAPI } from '@food/api';
 
 const REFRESH_MS = 60000;
@@ -55,14 +55,9 @@ const EarningsScroller = () => {
     };
   }, [load]);
 
-  // orders taken today = completed + cancelled + still running
-  const taken = Math.max(stats.todayTaken, stats.todayOrders + stats.todayCancelled + stats.todayPending);
-
   const cards = [
     { key: 'balance', label: 'Wallet balance', value: money(stats.balance), Icon: Wallet },
     { key: 'today', label: "Today's earnings", value: money(stats.today), Icon: IndianRupee },
-    { key: 'orders', label: 'Orders completed', value: `${stats.todayOrders}/${taken}`, Icon: Package },
-    { key: 'cancelled', label: 'Cancelled / running', value: `${stats.todayCancelled} / ${stats.todayPending}`, Icon: XCircle },
     { key: 'week', label: 'This week', value: money(stats.week), Icon: CalendarDays },
     { key: 'rating', label: 'Rating', value: stats.rating > 0 ? stats.rating.toFixed(1) : '—', Icon: Star },
     { key: 'cash', label: 'Cash in hand', value: money(stats.cashInHand), Icon: Banknote },
@@ -81,7 +76,6 @@ const EarningsScroller = () => {
         </span>
         <span className="flex items-center gap-2 text-xs font-extrabold text-[#FFC107]">
           {money(stats.today)}
-          <span className="text-[10px] font-semibold text-white/60">· {stats.todayOrders}/{taken} done</span>
           <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
         </span>
       </button>

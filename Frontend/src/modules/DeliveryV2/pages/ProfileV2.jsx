@@ -25,6 +25,9 @@ export const ProfileV2 = () => {
   const [showReviewsModal, setShowReviewsModal] = useState(false);
   const [reviewsData, setReviewsData] = useState({ rating: 0, totalRatings: 0, reviews: [] });
   const [loadingReviews, setLoadingReviews] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
+  const [orderStats, setOrderStats] = useState({ completed: 0, taken: 0, cancelled: 0, pending: 0, earnings: 0 });
+  const takenOrders = Math.max(orderStats.taken, orderStats.completed + orderStats.cancelled + orderStats.pending);
 
   // Fetch profile data
   useEffect(() => {
@@ -62,6 +65,17 @@ export const ProfileV2 = () => {
       if (res?.data?.success && res?.data?.data) {
         setReviewsData(res.data.data);
       }
+    }).catch(() => {});
+
+    deliveryAPI.getEarnings({ period: 'today' }).then(res => {
+      const s = res?.data?.data?.summary || {};
+      setOrderStats({
+        completed: Number(s.completedOrders ?? s.totalOrders) || 0,
+        taken: Number(s.takenOrders) || 0,
+        cancelled: Number(s.cancelledOrders) || 0,
+        pending: Number(s.pendingOrders) || 0,
+        earnings: Number(s.totalEarnings) || 0,
+      });
     }).catch(() => {});
 
     return () => { cancelled = true }
@@ -148,8 +162,8 @@ export const ProfileV2 = () => {
             <p className="text-gray-600 text-sm md:text-base mb-3 font-medium">{profile?.deliveryId || ""}</p>
           </div>
           <div className="relative shrink-0 ml-4">
-            {profile?.profileImage?.url ? (
-              <img src={profile.profileImage.url} alt="Profile" className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border-2 border-gray-200" />
+            {profile?.profileImage?.url && !imgFailed ? (
+              <img src={profile.profileImage.url} alt="" onError={() => setImgFailed(true)} className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border-2 border-gray-200 text-transparent" />
             ) : (
               <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gray-100 flex items-center justify-center border-2 border-gray-200">
                 <User className="w-10 h-10 md:w-12 md:h-12 text-gray-400" />
@@ -163,6 +177,28 @@ export const ProfileV2 = () => {
       </div>
 
       <div className="px-4 py-6">
+        {/* Today's orders summary */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Today's Orders</h3>
+            <span className="text-xs font-extrabold text-gray-900">₹{Math.round(orderStats.earnings).toLocaleString('en-IN')} earned</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-emerald-50 py-3 text-center">
+              <p className="text-xl font-black text-emerald-600 leading-none">{orderStats.completed}<span className="text-sm text-emerald-400">/{takenOrders}</span></p>
+              <p className="mt-1 text-[10px] font-bold text-gray-500">Completed</p>
+            </div>
+            <div className="rounded-xl bg-red-50 py-3 text-center">
+              <p className="text-xl font-black text-red-500 leading-none">{orderStats.cancelled}</p>
+              <p className="mt-1 text-[10px] font-bold text-gray-500">Cancelled</p>
+            </div>
+            <div className="rounded-xl bg-amber-50 py-3 text-center">
+              <p className="text-xl font-black text-amber-600 leading-none">{orderStats.pending}</p>
+              <p className="mt-1 text-[10px] font-bold text-gray-500">Running</p>
+            </div>
+          </div>
+        </div>
+
         {/* Navigation Buttons */}
         <div className="grid grid-cols-2 gap-3 mb-6">
           <button
