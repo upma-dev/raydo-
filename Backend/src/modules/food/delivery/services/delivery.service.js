@@ -699,7 +699,10 @@ export const getDeliveryPartnerEarnings = async (deliveryPartnerId, query = {}) 
 
     let range = null;
     if (period === 'today') {
-        range = { start: toStartOfDay(date), end: toEndOfDay(date) };
+        // "Today" is the IST calendar day, whatever timezone the server runs in
+        const IST_OFFSET_MS = 330 * 60 * 1000;
+        const istDayStart = Math.floor((date.getTime() + IST_OFFSET_MS) / 86400000) * 86400000 - IST_OFFSET_MS;
+        range = { start: new Date(istDayStart), end: new Date(istDayStart + 86400000 - 1) };
     } else if (period === 'week') {
         range = getWeekRange(date);
     } else if (period === 'month') {
@@ -719,7 +722,11 @@ export const getDeliveryPartnerEarnings = async (deliveryPartnerId, query = {}) 
         match['deliveryState.deliveredAt'] = { $gte: range.start, $lte: range.end };
     }
 
-    const [totalOrders, agg] = await Promise.all([
+    // How many orders this partner took in the period and how they ended (completed / cancelled / still running)
+    const takenMatch = { 'dispatch.deliveryPartnerId': partnerId };
+    if (range) takenMatch.createdAt = { $gte: range.start, $lte: range.end };
+
+    const [totalOrders, agg, takenRows] = await Promise.all([
         FoodOrder.countDocuments(match),
         FoodOrder.aggregate([
             { $match: match },
@@ -729,8 +736,20 @@ export const getDeliveryPartnerEarnings = async (deliveryPartnerId, query = {}) 
                     totalEarnings: { $sum: { $ifNull: ['$riderEarning', '$pricing.deliveryFee'] } }
                 }
             }
-        ])
+        ]),
+        FoodOrder.aggregate([
+            { $match: takenMatch },
+            { $group: { _id: '$orderStatus', count: { $sum: 1 } } }
+        ]).catch(() => [])
     ]);
+
+    let cancelledOrders = 0;
+    let runningOrders = 0;
+    for (const row of takenRows || []) {
+        const status = String(row._id || '').toLowerCase();
+        if (status.startsWith('cancelled')) cancelledOrders += row.count;
+        else if (status !== 'delivered') runningOrders += row.count;
+    }
 
     const foodEarnings = Number(agg?.[0]?.totalEarnings) || 0;
     // One panel: the earnings of a period are food deliveries plus the bike rides / parcels done in the same period
@@ -744,6 +763,11 @@ export const getDeliveryPartnerEarnings = async (deliveryPartnerId, query = {}) 
         foodEarnings,
         rideEarnings: rideTotals.rideEarnings,
         rideTrips: rideTotals.rideTrips,
+        completedOrders: totalOrders + rideTotals.rideTrips,
+        cancelledOrders,
+        // everything taken in the period: finished food orders + cancelled + still running, plus finished rides
+        takenOrders: totalOrders + cancelledOrders + runningOrders + rideTotals.rideTrips,
+        pendingOrders: runningOrders,
         totalHours: 0,
         totalMinutes: 0,
         orderEarning: foodEarnings,

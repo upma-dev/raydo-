@@ -22,6 +22,7 @@ import FoodOrderChatScreen from '@food/pages/user/orders/FoodOrderChatScreen';
 import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
 import GlobalLanguageSelector from '@/shared/components/GlobalLanguageSelector';
 import IncentiveProgressStrip from '@/modules/DeliveryV2/components/IncentiveProgressStrip';
+import EarningsScroller from '@/modules/DeliveryV2/components/EarningsScroller';
 import FoodOrdersToggle from '@/modules/DeliveryV2/components/FoodOrdersToggle';
 import ActiveRideCard from '@/modules/DeliveryV2/components/ActiveRideCard';
 import RideRequestBridge from '@/modules/DeliveryV2/components/RideRequestBridge';
@@ -1517,6 +1518,9 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
             </div>
           </div>
 
+          {/* Rapido style scroller: wallet, today's earnings, rating, orders */}
+          {currentTab === 'feed' && <EarningsScroller />}
+
           {/* Admin-set incentive: complete N orders, earn a fixed amount (live counter) */}
           <IncentiveProgressStrip />
 
@@ -1587,27 +1591,7 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="bg-white/5 rounded-2xl p-3.5 flex items-center justify-between border border-white/5 shadow-sm backdrop-blur-md">
-                    <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 bg-green-500/10 rounded-full flex items-center justify-center">
-                        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
-                      </div>
-                      <div>
-                        <h3 className="text-white font-black text-[11px] uppercase tracking-widest leading-none mb-1">{isOnline ? 'System Online' : 'System Offline'}</h3>
-                        <p className="text-gray-400 text-[10px] font-bold uppercase tracking-tight">{isOnline ? 'Waiting for order requests' : 'Ready to accept delivery orders'}</p>
-                      </div>
-                    </div>
-                    {/* Book Gig button commented out
-                    <button
-                      onClick={() => setShowBookGigModal(true)}
-                      className="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition-all shadow-lg active:scale-95 shrink-0 border border-emerald-400/30"
-                    >
-                      Book Gig
-                    </button>
-                    */}
-                  </div>
-                )}
+                ) : null}
               </motion.div>
             )}
           </AnimatePresence>

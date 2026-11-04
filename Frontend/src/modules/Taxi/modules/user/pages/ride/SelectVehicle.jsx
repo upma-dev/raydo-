@@ -1015,11 +1015,12 @@ const getAvailabilityBadge = (availability) => {
   return null;
 };
 
-// Rapido style service tabs: a rider books from one tab (Cab / Auto / Bike) and sees only that kind of vehicle
+// Rapido style service tabs: a rider books from one tab (Bike / Cab / Auto) and sees only that kind of vehicle
+// Order matters: the first available tab is selected by default, so Bike comes first.
 const VEHICLE_CATEGORIES = [
+  { id: 'bike', label: 'Bike' },
   { id: 'cab', label: 'Cab' },
   { id: 'auto', label: 'Auto' },
-  { id: 'bike', label: 'Bike' },
 ];
 
 const getVehicleCategoryId = (vehicle) => {
