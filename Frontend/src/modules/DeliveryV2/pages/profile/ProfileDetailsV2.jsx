@@ -469,7 +469,7 @@ export const ProfileDetailsV2 = () => {
            <div className="flex items-center justify-center absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 gap-2">
               <button 
                 onClick={() => handleTakeCameraPhoto('profilePhoto')}
-                className="bg-black text-white p-3 rounded-2xl shadow-xl hover:bg-gray-900 transition-all active:scale-95 border-4 border-white flex items-center justify-center"
+                className="bg-white text-gray-700 p-3 rounded-2xl shadow-lg hover:bg-gray-50 transition-all active:scale-95 border-4 border-white ring-1 ring-gray-200 flex items-center justify-center"
                 title="Take Photo"
               >
                 <Camera className="w-5 h-5" />
@@ -477,7 +477,7 @@ export const ProfileDetailsV2 = () => {
               
               <button 
                 onClick={() => handlePickFromGallery('profilePhoto', fileInputRef)}
-                className="bg-orange-500 text-white p-3 rounded-2xl shadow-xl hover:bg-orange-600 transition-all active:scale-95 border-4 border-white flex items-center justify-center"
+                className="bg-orange-50 text-orange-600 p-3 rounded-2xl shadow-lg hover:bg-orange-100 transition-all active:scale-95 border-4 border-white ring-1 ring-orange-200 flex items-center justify-center"
                 title="Gallery"
               >
                 <ImageIcon className="w-5 h-5" />
@@ -486,7 +486,7 @@ export const ProfileDetailsV2 = () => {
               {profileImageUrl && (
                 <button 
                   onClick={() => setShowDeletePopup(true)}
-                  className="bg-red-500 text-white p-3 rounded-2xl shadow-xl hover:bg-red-600 transition-all active:scale-95 border-4 border-white flex items-center justify-center"
+                  className="bg-red-50 text-red-500 p-3 rounded-2xl shadow-lg hover:bg-red-100 transition-all active:scale-95 border-4 border-white ring-1 ring-red-200 flex items-center justify-center"
                   title="Remove"
                 >
                   <X className="w-5 h-5" />
