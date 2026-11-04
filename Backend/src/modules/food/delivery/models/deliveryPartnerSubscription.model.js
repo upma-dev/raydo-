@@ -19,8 +19,11 @@ const deliveryPartnerSubscriptionSchema = new mongoose.Schema(
         amount: { type: Number, required: true, min: 0 },
         durationDays: { type: Number, required: true, min: 1 },
         status: { type: String, enum: ['active', 'cancelled'], default: 'active', index: true },
-        // pocket = paid from the partner's Pocket balance, admin = given free by an admin
-        purchaseSource: { type: String, enum: ['pocket', 'admin'], default: 'pocket' },
+        // pocket = paid from the partner's Pocket balance, razorpay = paid online (UPI / Google Pay / card), admin = given free by an admin.
+        // Only "pocket" passes are taken out of the Pocket balance.
+        purchaseSource: { type: String, enum: ['pocket', 'razorpay', 'admin'], default: 'pocket' },
+        razorpayOrderId: { type: String, default: undefined },
+        razorpayPaymentId: { type: String, default: undefined },
         grantedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
         purchasedAt: { type: Date, default: Date.now },
         startedAt: { type: Date, required: true },
@@ -32,6 +35,11 @@ const deliveryPartnerSubscriptionSchema = new mongoose.Schema(
 );
 
 deliveryPartnerSubscriptionSchema.index({ partnerId: 1, service: 1, expiresAt: -1 });
+// One online payment can only ever buy one pass (also guards app verify + webhook arriving together)
+deliveryPartnerSubscriptionSchema.index(
+    { razorpayPaymentId: 1 },
+    { unique: true, partialFilterExpression: { razorpayPaymentId: { $type: 'string' } } },
+);
 
 export const FoodDeliveryPartnerSubscription =
     mongoose.models.FoodDeliveryPartnerSubscription ||

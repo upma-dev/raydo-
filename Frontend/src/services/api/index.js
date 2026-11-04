@@ -2024,6 +2024,10 @@ export const deliveryAPI = {
     apiClient.get("/food/delivery/subscriptions/me", { contextModule: "delivery" }),
   purchaseSubscription: (planId) =>
     apiClient.post("/food/delivery/subscriptions/purchase", { planId }, { contextModule: "delivery" }),
+  createSubscriptionPaymentOrder: (planId) =>
+    apiClient.post("/food/delivery/subscriptions/pay/order", { planId }, { contextModule: "delivery" }),
+  verifySubscriptionPayment: (body) =>
+    apiClient.post("/food/delivery/subscriptions/pay/verify", body ?? {}, { contextModule: "delivery" }),
   /** Ride & Parcel mode: the partner also takes taxi rides / parcels through a linked ride profile. */
   getRideMode: () =>
     apiClient.get("/food/delivery/ride-mode", { contextModule: "delivery" }),

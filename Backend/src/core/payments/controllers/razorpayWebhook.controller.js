@@ -54,6 +54,10 @@ export const handleRazorpayWebhook = async (req, res) => {
                         const { settleDeliveryCashDepositFromWebhook } = await import('../../../modules/food/delivery/services/deliveryFinance.service.js');
                         r = await settleDeliveryCashDepositFromWebhook(args);
                     }
+                    if (!r.handled) {
+                        const { settlePartnerSubscriptionFromWebhook } = await import('../../../modules/food/delivery/services/deliverySubscription.service.js');
+                        r = await settlePartnerSubscriptionFromWebhook(args);
+                    }
                     if (r.handled) logger.info(`Webhook [payment.captured]: ${rzOrder.notes?.purpose} ${rzPaymentId} -> ${JSON.stringify(r)}`);
                     else logger.warn(`Webhook [payment.captured]: No food order for RZ-Order: ${rzOrderId}`);
                 } catch (e) {

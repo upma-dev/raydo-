@@ -5,7 +5,7 @@ import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
 import { registerDeliveryPartnerController, updateDeliveryPartnerProfileController, updateDeliveryPartnerBankDetailsController, listSupportTicketsController, createSupportTicketController, getSupportTicketByIdController, updateDeliveryPartnerDetailsController, updateDeliveryPartnerProfilePhotoBase64Controller, updateAvailabilityController, getWalletController, createWithdrawalRequestController, createCashDepositOrderController, verifyCashDepositPaymentController, getEarningsController, getTripHistoryController, getPocketDetailsController, getEmergencyHelpController, getCashLimitController, getDeliveryReferralStatsController, getActiveEarningAddonsController, deleteDeliveryPartnerAccountController, getDeliveryPartnerReviewsController, requestEmergencyOfflineController, getEmergencyOfflineStatusController } from '../controllers/delivery.controller.js';
 
-import { getMySubscriptionsController, purchaseSubscriptionController } from '../controllers/deliverySubscription.controller.js';
+import { createSubscriptionPaymentOrderController, getMySubscriptionsController, purchaseSubscriptionController, verifySubscriptionPaymentController } from '../controllers/deliverySubscription.controller.js';
 import { applyForRideModeController, getRideDocumentRequirementsController, getRideModeStatusController, issueRideSessionController, listRideModeVehicleTypesController, setFoodOrdersController, switchRideModeController } from '../controllers/rideMode.controller.js';
 
 const router = express.Router();
@@ -81,6 +81,9 @@ router.post('/ride-mode/session', authMiddleware, requireRoles('DELIVERY_PARTNER
 // Subscription (food / two-wheeler ride / parcel passes, bought from the Pocket)
 router.get('/subscriptions/me', authMiddleware, requireRoles('DELIVERY_PARTNER'), getMySubscriptionsController);
 router.post('/subscriptions/purchase', authMiddleware, requireRoles('DELIVERY_PARTNER'), purchaseSubscriptionController);
+// Pay online with Razorpay (Google Pay / PhonePe / UPI / card) instead of the Pocket
+router.post('/subscriptions/pay/order', authMiddleware, requireRoles('DELIVERY_PARTNER'), createSubscriptionPaymentOrderController);
+router.post('/subscriptions/pay/verify', authMiddleware, requireRoles('DELIVERY_PARTNER'), verifySubscriptionPaymentController);
 
 // Pocket / requests page – wallet, earnings, and admin-set delivery settings
 router.get('/wallet', authMiddleware, requireRoles('DELIVERY_PARTNER'), getWalletController);

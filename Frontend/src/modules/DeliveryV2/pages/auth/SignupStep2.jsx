@@ -329,16 +329,12 @@ export default function SignupStep2() {
         : await deliveryAPI.completeProfile(formData)
 
       if (response?.data?.success) {
+        const submittedPhone = String(details.phone || "").replace(/\D/g, "").slice(-10)
         sessionStorage.removeItem("deliverySignupDetails")
         sessionStorage.removeItem("deliverySignupDocs")
-        if (isCompleteProfile) {
-          sessionStorage.removeItem("deliveryNeedsRegistration")
-          toast.success("Registration successful. Please login with OTP.")
-          setTimeout(() => navigate("/food/delivery/login", { replace: true }), 1500)
-        } else {
-          toast.success("Profile submitted. Waiting for admin approval.")
-          setTimeout(() => navigate("/food/delivery", { replace: true }), 1500)
-        }
+        sessionStorage.removeItem("deliveryNeedsRegistration")
+        toast.success("Registration submitted. Verification pending.")
+        navigate("/food/delivery/verification-pending", { replace: true, state: { phone: submittedPhone } })
       }
     } catch (error) {
       debugError("Error submitting registration:", error)

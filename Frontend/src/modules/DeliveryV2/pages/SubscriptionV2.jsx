@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  AlertCircle, ArrowLeft, BadgePercent, Bike, CheckCircle2, Loader2, Package, RefreshCw, UtensilsCrossed, Wallet,
+  AlertCircle, ArrowLeft, BadgePercent, Bike, CheckCircle2, Loader2, Package, RefreshCw, UtensilsCrossed, Wallet, Smartphone,
 } from 'lucide-react';
 import { deliveryAPI } from '@food/api';
+import { initRazorpayPayment } from '@food/utils/razorpay';
+import { getCompanyNameAsync } from '@food/utils/businessSettings';
 import useDeliveryBackNavigation from '../hooks/useDeliveryBackNavigation';
 import { apiErrorOf, unwrap } from '../utils/rideModeSession';
 
@@ -72,6 +74,65 @@ const SubscriptionV2 = () => {
     } catch (err) {
       toast.error(apiErrorOf(err).message);
     } finally {
+      setBuyingId('');
+    }
+  };
+
+  // Pay online: Razorpay opens Google Pay / PhonePe / Paytm / UPI / card. Works even with an empty Pocket.
+  const payOnline = async (service, plan) => {
+    if (buyingId) return;
+    try {
+      setBuyingId(`${plan.id}:online`);
+      const orderRes = await deliveryAPI.createSubscriptionPaymentOrder(plan.id);
+      const rp = orderRes?.data?.data?.razorpay;
+      if (!rp?.orderId || !rp?.key) {
+        toast.error('Payment gateway not ready. Please try again.');
+        setBuyingId('');
+        return;
+      }
+
+      let profile = {};
+      try {
+        const pr = await deliveryAPI.getProfile();
+        profile = pr?.data?.data?.profile || pr?.data?.profile || {};
+      } catch (_) { /* prefill is optional */ }
+      const companyName = await getCompanyNameAsync();
+
+      await initRazorpayPayment({
+        key: rp.key,
+        amount: rp.amount,
+        currency: rp.currency || 'INR',
+        order_id: rp.orderId,
+        name: companyName,
+        description: `${plan.name} - ${money(plan.amount)}`,
+        prefill: {
+          name: profile?.name || '',
+          email: profile?.email || '',
+          contact: String(profile?.phone || '').replace(/\D/g, '').slice(-10),
+        },
+        handler: async (res) => {
+          try {
+            const verifyRes = await deliveryAPI.verifySubscriptionPayment({
+              razorpay_order_id: res.razorpay_order_id,
+              razorpay_payment_id: res.razorpay_payment_id,
+              razorpay_signature: res.razorpay_signature,
+            });
+            toast.success(verifyRes?.data?.message || 'Subscription activated');
+            await load();
+          } catch (err) {
+            toast.error(apiErrorOf(err).message || 'Verification failed. Contact support.');
+          } finally {
+            setBuyingId('');
+          }
+        },
+        onError: (e) => {
+          toast.error(e?.description || 'Payment failed');
+          setBuyingId('');
+        },
+        onClose: () => setBuyingId(''),
+      });
+    } catch (err) {
+      toast.error(apiErrorOf(err).message);
       setBuyingId('');
     }
   };
@@ -158,19 +219,40 @@ const SubscriptionV2 = () => {
                   ) : (
                     <div className="divide-y divide-gray-50 border-t border-gray-50">
                       {service.plans.map((plan) => (
-                        <div key={plan.id} className="flex items-center justify-between gap-3 p-4">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-bold">{plan.name}</p>
-                            <p className="text-[11px] font-semibold text-gray-400">{plan.duration} day{plan.duration === 1 ? '' : 's'}{plan.description ? ` · ${plan.description}` : ''}</p>
+                        <div key={plan.id} className="p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold">{plan.name}</p>
+                              <p className="text-[11px] font-semibold text-gray-400">{plan.duration} day{plan.duration === 1 ? '' : 's'}{plan.description ? ` · ${plan.description}` : ''}</p>
+                            </div>
+                            <p className="shrink-0 text-base font-black">{money(plan.amount)}</p>
                           </div>
-                          <button
-                            type="button"
-                            disabled={Boolean(buyingId)}
-                            onClick={() => buy(service, plan)}
-                            className="shrink-0 rounded-xl bg-black px-4 py-2 text-xs font-black text-white disabled:opacity-50"
-                          >
-                            {buyingId === plan.id ? <Loader2 size={14} className="animate-spin" /> : `${money(plan.amount)} · ${service.current ? 'Renew' : 'Buy'}`}
-                          </button>
+                          <div className="mt-3 flex gap-2">
+                            {plan.amount >= 1 && (
+                              <button
+                                type="button"
+                                disabled={Boolean(buyingId)}
+                                onClick={() => payOnline(service, plan)}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-black px-3 py-2.5 text-xs font-black text-white disabled:opacity-50"
+                              >
+                                {buyingId === `${plan.id}:online`
+                                  ? <Loader2 size={14} className="animate-spin" />
+                                  : <><Smartphone size={14} /> Pay online (GPay / UPI)</>}
+                              </button>
+                            )}
+                            {(plan.amount < 1 || Number(state?.pocketBalance || 0) >= plan.amount) && (
+                              <button
+                                type="button"
+                                disabled={Boolean(buyingId)}
+                                onClick={() => buy(service, plan)}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-black text-gray-800 disabled:opacity-50"
+                              >
+                                {buyingId === plan.id
+                                  ? <Loader2 size={14} className="animate-spin" />
+                                  : <><Wallet size={14} /> {plan.amount < 1 ? (service.current ? 'Renew free' : 'Get free') : 'Use Pocket'}</>}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>

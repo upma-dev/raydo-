@@ -6,6 +6,7 @@ import { getDeliveryPocketTotals } from './deliveryFinance.service.js';
 import { SubscriptionPlan } from '../../../taxi/admin/models/SubscriptionPlan.js';
 import { Driver } from '../../../taxi/driver/models/Driver.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../../../core/auth/errors.js';
+import { createRazorpayCheckoutOrder, isRazorpayConfigured, verifyPaymentSignature, fetchRazorpayOrder, fetchRazorpayPayment } from '../../orders/helpers/razorpay.helper.js';
 import {
     DELIVERY_SERVICES,
     SERVICE_LABEL,
@@ -130,7 +131,8 @@ export const getPartnerSubscriptionState = async (partnerId) => {
  * re-checked after the pass exists, so two taps (or a tap and a withdrawal) can never spend the same rupees.
  * A renewal bought while a pass of that service is running starts when that pass ends.
  */
-export const purchasePartnerSubscription = async ({ partnerId, planId }) => {
+/** Everything that must be true before a partner may buy a plan (same for Pocket and online payment). */
+const resolvePurchasablePlan = async (partnerId, planId) => {
     if (!mongoose.Types.ObjectId.isValid(String(planId || ''))) throw new ValidationError('Valid subscription plan id is required');
 
     const [plan, partner] = await Promise.all([
@@ -151,8 +153,126 @@ export const purchasePartnerSubscription = async ({ partnerId, planId }) => {
     }
     if (!planFitsPartner(plan, service, rideProfile)) throw new ForbiddenError('This plan is not available for your vehicle');
 
-    const amount = round2(plan.amount);
+    return {
+        plan,
+        partner,
+        service,
+        amount: round2(plan.amount),
+        durationDays: Math.max(1, Math.round(Number(plan.duration || 0))),
+    };
+};
+
+/* ---------------------------------------------------------------------------------------------------------------- */
+/* Buying online (Razorpay: Google Pay / PhonePe / UPI / card), no Pocket balance needed                             */
+/* ---------------------------------------------------------------------------------------------------------------- */
+
+const receiptPrefix = (partnerId) => `dsub_${String(partnerId).slice(-8)}_`;
+
+export const createPartnerSubscriptionPaymentOrder = async ({ partnerId, planId }) => {
+    const { plan, amount } = await resolvePurchasablePlan(partnerId, planId);
+    if (amount < 1) throw new ValidationError('This plan is free. Buy it from your Pocket.');
+    if (!isRazorpayConfigured()) throw new ValidationError('Razorpay payment gateway is not configured');
+
+    try {
+        const razorpay = await createRazorpayCheckoutOrder(
+            Math.round(amount * 100),
+            'INR',
+            `${receiptPrefix(partnerId)}${Date.now()}`,
+            { purpose: 'delivery_subscription', deliveryPartnerId: String(partnerId), planId: String(plan._id) },
+        );
+        return { razorpay, plan: serializePlan(plan) };
+    } catch (error) {
+        throw new ValidationError(error?.message || 'Payment gateway error');
+    }
+};
+
+/**
+ * Turns a paid Razorpay order into a pass. Safe to call any number of times and from both the app and the webhook:
+ * the unique index on razorpayPaymentId means one payment can only ever create one pass.
+ */
+const activatePaidPass = async ({ partnerId, rzOrder, paymentId }) => {
+    const existing = await FoodDeliveryPartnerSubscription.findOne({ razorpayPaymentId: paymentId }).lean();
+    if (existing) {
+        if (String(existing.partnerId) !== String(partnerId)) throw new ValidationError('This payment has already been used');
+        return { subscription: serializePass(existing, new Date()), startsLater: new Date(existing.startedAt) > new Date(), alreadyRecorded: true };
+    }
+
+    const planId = String(rzOrder?.notes?.planId || '');
+    // The plan is read WITHOUT the "active" filter: the partner already paid, so a plan hidden meanwhile must still be delivered
+    const plan = mongoose.Types.ObjectId.isValid(planId)
+        ? await SubscriptionPlan.findOne({ _id: planId, audience: 'delivery' }).lean()
+        : null;
+    if (!plan || !DELIVERY_SERVICES.includes(plan.service_type)) throw new NotFoundError('Subscription plan not found. Contact support with your payment id.');
+
+    const service = plan.service_type;
     const durationDays = Math.max(1, Math.round(Number(plan.duration || 0)));
+    const paidAmount = round2(Number(rzOrder.amount) / 100);
+
+    return withPartnerWalletLock(partnerId, async () => {
+        const now = new Date();
+        const latest = await FoodDeliveryPartnerSubscription.findOne({ partnerId, service, status: 'active', expiresAt: { $gt: now } })
+            .sort({ expiresAt: -1 }).lean();
+        const startedAt = latest ? new Date(latest.expiresAt) : now;
+        const expiresAt = new Date(startedAt.getTime() + durationDays * DAY_MS);
+
+        try {
+            const pass = await FoodDeliveryPartnerSubscription.create({
+                partnerId, planId: plan._id, service, name: plan.name || '', description: plan.description || '',
+                amount: paidAmount, durationDays, status: 'active', purchaseSource: 'razorpay',
+                razorpayOrderId: String(rzOrder.id), razorpayPaymentId: paymentId,
+                purchasedAt: now, startedAt, expiresAt,
+            });
+            return { subscription: serializePass(pass.toObject(), now), startsLater: startedAt > now };
+        } catch (err) {
+            if (err?.code !== 11000) throw err;
+            const again = await FoodDeliveryPartnerSubscription.findOne({ razorpayPaymentId: paymentId }).lean();
+            if (!again || String(again.partnerId) !== String(partnerId)) throw new ValidationError('This payment has already been used');
+            return { subscription: serializePass(again, now), startsLater: new Date(again.startedAt) > now, alreadyRecorded: true };
+        }
+    });
+};
+
+export const verifyPartnerSubscriptionPayment = async (partnerId, payload = {}) => {
+    const orderId = String(payload?.razorpayOrderId || '').trim();
+    const paymentId = String(payload?.razorpayPaymentId || '').trim();
+    const signature = String(payload?.razorpaySignature || '').trim();
+    if (!orderId) throw new ValidationError('razorpayOrderId is required');
+    if (!paymentId) throw new ValidationError('razorpayPaymentId is required');
+    if (!signature) throw new ValidationError('razorpaySignature is required');
+    if (!isRazorpayConfigured()) throw new ValidationError('Razorpay payment gateway is not configured');
+    if (!verifyPaymentSignature(orderId, paymentId, signature)) throw new ValidationError('Payment verification failed');
+
+    // Razorpay is the source of truth: a real, completed payment for a subscription order made by THIS partner
+    let rzOrder;
+    let rzPayment;
+    try {
+        [rzOrder, rzPayment] = await Promise.all([fetchRazorpayOrder(orderId), fetchRazorpayPayment(paymentId)]);
+    } catch (err) {
+        throw new ValidationError('We could not confirm this payment with the bank yet. If money was deducted, please try again in a minute.');
+    }
+    if (String(rzPayment?.order_id) !== orderId) throw new ValidationError('This payment does not belong to this order');
+    if (!['captured', 'authorized'].includes(String(rzPayment?.status))) throw new ValidationError('Payment is not completed yet');
+    if (Number(rzPayment?.amount) !== Number(rzOrder?.amount)) throw new ValidationError('Paid amount does not match the order');
+    if (rzOrder?.notes?.purpose !== 'delivery_subscription' || !String(rzOrder?.receipt || '').startsWith(receiptPrefix(partnerId))) {
+        throw new ValidationError('This order was not created by your account');
+    }
+
+    return activatePaidPass({ partnerId, rzOrder, paymentId });
+};
+
+/** Webhook path: gives the pass even if the app was closed right after paying. */
+export const settlePartnerSubscriptionFromWebhook = async ({ rzOrder, paymentId, amountPaise }) => {
+    const partnerId = String(rzOrder?.notes?.deliveryPartnerId || '').trim();
+    if (rzOrder?.notes?.purpose !== 'delivery_subscription' || !partnerId) return { handled: false };
+    if (!String(rzOrder?.receipt || '').startsWith(receiptPrefix(partnerId))) return { handled: true, recorded: false, reason: 'receipt mismatch' };
+    if (Number(rzOrder.amount) !== Number(amountPaise)) return { handled: true, recorded: false, reason: 'amount mismatch' };
+
+    const result = await activatePaidPass({ partnerId, rzOrder, paymentId });
+    return { handled: true, recorded: !result.alreadyRecorded, partnerId };
+};
+
+export const purchasePartnerSubscription = async ({ partnerId, planId }) => {
+    const { plan, partner, service, amount, durationDays } = await resolvePurchasablePlan(partnerId, planId);
 
     // Ride earnings are swept into the Pocket first (as the withdrawal does), outside the lock
     if (partner.rideMode?.taxiDriverId) {
