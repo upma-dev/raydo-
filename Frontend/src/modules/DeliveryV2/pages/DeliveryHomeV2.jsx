@@ -21,7 +21,6 @@ import { SelfieVerificationModal } from '@/modules/DeliveryV2/components/modals/
 import FoodOrderChatScreen from '@food/pages/user/orders/FoodOrderChatScreen';
 import ActionSlider from '@/modules/DeliveryV2/components/ui/ActionSlider';
 import GlobalLanguageSelector from '@/shared/components/GlobalLanguageSelector';
-import IncentiveProgressStrip from '@/modules/DeliveryV2/components/IncentiveProgressStrip';
 import EarningsScroller from '@/modules/DeliveryV2/components/EarningsScroller';
 import FoodOrdersToggle from '@/modules/DeliveryV2/components/FoodOrdersToggle';
 import ActiveRideCard from '@/modules/DeliveryV2/components/ActiveRideCard';
@@ -1520,9 +1519,6 @@ export default function DeliveryHomeV2({ tab = 'feed' }) {
 
           {/* Rapido style scroller: wallet, today's earnings, rating, orders */}
           {currentTab === 'feed' && <EarningsScroller />}
-
-          {/* Admin-set incentive: complete N orders, earn a fixed amount (live counter) */}
-          <IncentiveProgressStrip />
 
           {/* A ride / parcel that is already running stays visible here until it is finished */}
           {currentTab === 'feed' && <ActiveRideCard />}
